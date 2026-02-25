@@ -9,8 +9,6 @@ export const categoryScoreEnum = z.enum([
   "multi-country_region",
   "international",
 ]);
-export const ahrefDataTypeEnum = z.enum(["authority", "traffic"]);
-
 // --- Outlets ---
 
 export const createOutletSchema = z.object({
@@ -90,24 +88,6 @@ export const listCategoriesQuerySchema = z.object({
   campaignId: z.string().uuid(),
 });
 
-// --- Domain Rating ---
-
-export const updateDomainRatingSchema = z.object({
-  dataType: ahrefDataTypeEnum,
-  urlInput: z.string(),
-  domain: z.string(),
-  dataCapturedAt: z.string().datetime(),
-  rawData: z.record(z.unknown()),
-  authorityDomainRating: z.number().int().nullable().optional(),
-  authorityUrlRating: z.number().int().nullable().optional(),
-  authorityBacklinks: z.number().int().nullable().optional(),
-  authorityRefdomains: z.number().int().nullable().optional(),
-  authorityDofollowBacklinks: z.number().int().nullable().optional(),
-  authorityDofollowRefdomains: z.number().int().nullable().optional(),
-  trafficMonthlyAvg: z.number().int().nullable().optional(),
-  costMonthlyAvg: z.number().nullable().optional(),
-});
-
 // --- Response schemas ---
 
 export const outletResponseSchema = z.object({
@@ -144,19 +124,6 @@ export const categoryResponseSchema = z.object({
   updatedAt: z.string(),
 });
 
-export const drStatusResponseSchema = z.object({
-  outletId: z.string().uuid(),
-  outletName: z.string(),
-  outletUrl: z.string(),
-  outletDomain: z.string(),
-  drToUpdate: z.boolean(),
-  drUpdateReason: z.string().nullable(),
-  drLatestSearchDate: z.string().nullable(),
-  latestValidDr: z.number().nullable(),
-  latestValidDrDate: z.string().nullable(),
-  hasLowDomainRating: z.boolean(),
-});
-
 export const healthResponseSchema = z.object({
   status: z.string(),
   service: z.string(),
@@ -175,4 +142,3 @@ export type BulkCreateOutlets = z.infer<typeof bulkCreateOutletsSchema>;
 export type SearchOutlets = z.infer<typeof searchOutletsSchema>;
 export type CreateCategory = z.infer<typeof createCategorySchema>;
 export type UpdateCategory = z.infer<typeof updateCategorySchema>;
-export type UpdateDomainRating = z.infer<typeof updateDomainRatingSchema>;
