@@ -2,7 +2,6 @@ import express from "express";
 import { apiKeyAuth } from "./middleware/auth";
 import outletsRouter from "./routes/outlets";
 import categoriesRouter from "./routes/categories";
-import domainRatingRouter from "./routes/domain-rating";
 import viewsRouter from "./routes/views";
 import internalRouter from "./routes/internal";
 import path from "path";
@@ -28,9 +27,6 @@ export function createApp() {
       res.status(404).json({ error: "OpenAPI spec not generated" });
     }
   });
-
-  // Domain rating routes (must be before /outlets/:id to avoid path conflicts)
-  app.use("/outlets", domainRatingRouter);
 
   // View routes (must be before /outlets/:id to avoid path conflicts)
   app.use("/outlets", viewsRouter);

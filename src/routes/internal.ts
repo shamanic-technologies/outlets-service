@@ -43,7 +43,7 @@ router.get("/outlets/by-ids", async (req: Request, res: Response): Promise<void>
   }
 });
 
-// GET /internal/outlets/by-campaign/:campaignId — all outlets for a campaign with DR data
+// GET /internal/outlets/by-campaign/:campaignId — all outlets for a campaign
 router.get("/outlets/by-campaign/:campaignId", async (req: Request, res: Response): Promise<void> => {
   try {
     const { campaignId } = req.params;
@@ -53,11 +53,9 @@ router.get("/outlets/by-campaign/:campaignId", async (req: Request, res: Respons
         po.id, po.outlet_name, po.outlet_url, po.outlet_domain, po.status,
         co.why_relevant, co.why_not_relevant, co.relevance_score, co.status AS outlet_status,
         co.overal_relevance, co.relevance_rationale,
-        dr.latest_valid_dr, dr.latest_valid_dr_date, dr.dr_to_update, dr.has_low_domain_rating,
         po.created_at, po.updated_at
        FROM campaign_outlets co
        JOIN press_outlets po ON co.outlet_id = po.id
-       LEFT JOIN v_outlets_dr_status dr ON po.id = dr.outlet_id
        WHERE co.campaign_id = $1
        ORDER BY co.relevance_score DESC`,
       [campaignId]
@@ -77,10 +75,6 @@ router.get("/outlets/by-campaign/:campaignId", async (req: Request, res: Respons
         outletStatus: r.outlet_status,
         overalRelevance: r.overal_relevance,
         relevanceRationale: r.relevance_rationale,
-        latestValidDr: r.latest_valid_dr != null ? Number(r.latest_valid_dr) : null,
-        latestValidDrDate: r.latest_valid_dr_date,
-        drToUpdate: r.dr_to_update,
-        hasLowDomainRating: r.has_low_domain_rating,
         createdAt: r.created_at,
         updatedAt: r.updated_at,
       })),

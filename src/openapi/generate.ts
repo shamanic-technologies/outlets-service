@@ -4,13 +4,10 @@ import {
   createOutletSchema,
   updateOutletSchema,
   updateOutletStatusSchema,
-  listOutletsQuerySchema,
   bulkCreateOutletsSchema,
   searchOutletsSchema,
   createCategorySchema,
   updateCategorySchema,
-  listCategoriesQuerySchema,
-  updateDomainRatingSchema,
   healthResponseSchema,
   errorResponseSchema,
 } from "../schemas";
@@ -24,7 +21,7 @@ const spec = {
   openapi: "3.0.0",
   info: {
     title: "Outlets Service",
-    description: "Manages press outlets (publications) and their domain authority data",
+    description: "Manages press outlets (publications) and their campaign relevance data. Domain rating data is managed by the ahref-service.",
     version: "1.0.0",
   },
   servers: [{ url: "http://localhost:3000" }],
@@ -38,7 +35,6 @@ const spec = {
       SearchOutlets: zodToJsonSchema(searchOutletsSchema),
       CreateCategory: zodToJsonSchema(createCategorySchema),
       UpdateCategory: zodToJsonSchema(updateCategorySchema),
-      UpdateDomainRating: zodToJsonSchema(updateDomainRatingSchema),
       HealthResponse: zodToJsonSchema(healthResponseSchema),
       ErrorResponse: zodToJsonSchema(errorResponseSchema),
     },
@@ -47,7 +43,7 @@ const spec = {
         type: "apiKey",
         in: "header",
         name: "x-api-key",
-        description: "API key for authenticating requests",
+        description: "API key for authenticating requests. Must match OUTLETS_SERVICE_API_KEY env var.",
       },
     },
   },
@@ -115,16 +111,6 @@ const spec = {
         },
       },
     },
-    "/outlets/{id}/domain-rating": {
-      patch: {
-        summary: "Update domain rating data for outlet",
-        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
-        requestBody: { content: { "application/json": { schema: ref("UpdateDomainRating") } } },
-        responses: {
-          "200": { description: "Domain rating updated" },
-        },
-      },
-    },
     "/outlets/bulk": {
       post: {
         summary: "Bulk upsert outlets",
@@ -141,31 +127,6 @@ const spec = {
         responses: {
           "200": { description: "Search results" },
         },
-      },
-    },
-    "/outlets/dr-status": {
-      get: {
-        summary: "Outlets with domain rating info",
-        responses: { "200": { description: "DR status list" } },
-      },
-    },
-    "/outlets/dr-stale": {
-      get: {
-        summary: "Outlets with stale DR needing refresh",
-        responses: { "200": { description: "Stale DR outlets" } },
-      },
-    },
-    "/outlets/low-domain-rating": {
-      get: {
-        summary: "Outlets with low domain rating (< 10)",
-        responses: { "200": { description: "Low DR outlets" } },
-      },
-    },
-    "/outlets/campaign-categories-dr-status": {
-      get: {
-        summary: "DR status grouped by campaign category",
-        parameters: [{ in: "query", name: "campaignId", schema: { type: "string", format: "uuid" } }],
-        responses: { "200": { description: "Categories with DR stats" } },
       },
     },
     "/outlets/status": {
@@ -242,10 +203,10 @@ const spec = {
     },
     "/internal/outlets/by-campaign/{campaignId}": {
       get: {
-        summary: "All outlets for a campaign with DR data",
+        summary: "All outlets for a campaign",
         parameters: [{ in: "path", name: "campaignId", required: true, schema: { type: "string", format: "uuid" } }],
         responses: {
-          "200": { description: "Campaign outlets with DR" },
+          "200": { description: "Campaign outlets" },
         },
       },
     },

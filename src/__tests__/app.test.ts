@@ -231,7 +231,6 @@ describe("PATCH /outlets/:id/status", () => {
 // ========================
 describe("POST /outlets/bulk", () => {
   it("bulk upserts outlets", async () => {
-    // BEGIN, INSERT x2 (outlet+campaign), COMMIT
     mockQuery
       .mockResolvedValueOnce({}) // BEGIN
       .mockResolvedValueOnce({
@@ -425,141 +424,6 @@ describe("PATCH /categories/:id", () => {
 });
 
 // ========================
-// Domain Rating
-// ========================
-describe("GET /outlets/dr-status", () => {
-  it("returns DR status for all outlets", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        {
-          outlet_id: "11111111-1111-1111-1111-111111111111",
-          outlet_name: "TechCrunch",
-          outlet_url: "https://techcrunch.com",
-          outlet_domain: "techcrunch.com",
-          dr_to_update: false,
-          dr_update_reason: "DR exists < 1 year",
-          dr_latest_search_date: "2026-01-01T00:00:00Z",
-          latest_valid_dr: 92,
-          latest_valid_dr_date: "2026-01-01T00:00:00Z",
-          has_low_domain_rating: false,
-        },
-      ],
-    });
-
-    const res = await request(app).get("/outlets/dr-status");
-    expect(res.status).toBe(200);
-    expect(res.body.outlets).toHaveLength(1);
-    expect(res.body.outlets[0].latestValidDr).toBe(92);
-  });
-});
-
-describe("GET /outlets/dr-stale", () => {
-  it("returns stale DR outlets", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        {
-          outlet_id: "11111111-1111-1111-1111-111111111111",
-          outlet_name: "Old Outlet",
-          outlet_url: "https://old.com",
-          outlet_domain: "old.com",
-          dr_to_update: true,
-          dr_update_reason: "DR outdated",
-          dr_latest_search_date: "2024-01-01T00:00:00Z",
-          latest_valid_dr: 50,
-          latest_valid_dr_date: "2024-01-01T00:00:00Z",
-          has_low_domain_rating: false,
-        },
-      ],
-    });
-
-    const res = await request(app).get("/outlets/dr-stale");
-    expect(res.status).toBe(200);
-    expect(res.body.outlets[0].drToUpdate).toBe(true);
-  });
-});
-
-describe("PATCH /outlets/:id/domain-rating", () => {
-  it("updates domain rating for outlet", async () => {
-    mockQuery
-      .mockResolvedValueOnce({}) // BEGIN
-      .mockResolvedValueOnce({
-        rows: [{ id: "55555555-5555-5555-5555-555555555555" }],
-      }) // INSERT apify_ahref
-      .mockResolvedValueOnce({ rows: [] }) // INSERT ahref_outlets
-      .mockResolvedValueOnce({}); // COMMIT
-
-    const res = await request(app)
-      .patch("/outlets/11111111-1111-1111-1111-111111111111/domain-rating")
-      .send({
-        dataType: "authority",
-        urlInput: "https://techcrunch.com",
-        domain: "techcrunch.com",
-        dataCapturedAt: "2026-01-15T00:00:00Z",
-        rawData: { dr: 92, ur: 80 },
-        authorityDomainRating: 92,
-        authorityUrlRating: 80,
-      });
-
-    expect(res.status).toBe(200);
-    expect(res.body.authorityDomainRating).toBe(92);
-    expect(res.body.apifyAhrefId).toBe("55555555-5555-5555-5555-555555555555");
-  });
-});
-
-describe("GET /outlets/low-domain-rating", () => {
-  it("returns low DR outlets", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        {
-          outlet_id: "11111111-1111-1111-1111-111111111111",
-          outlet_name: "Small Blog",
-          outlet_url: "https://smallblog.com",
-          outlet_domain: "smallblog.com",
-          dr_to_update: false,
-          dr_update_reason: null,
-          dr_latest_search_date: "2026-01-01T00:00:00Z",
-          latest_valid_dr: 5,
-          latest_valid_dr_date: "2026-01-01T00:00:00Z",
-          has_low_domain_rating: true,
-        },
-      ],
-    });
-
-    const res = await request(app).get("/outlets/low-domain-rating");
-    expect(res.status).toBe(200);
-    expect(res.body.outlets[0].hasLowDomainRating).toBe(true);
-    expect(res.body.outlets[0].latestValidDr).toBe(5);
-  });
-});
-
-describe("GET /outlets/campaign-categories-dr-status", () => {
-  it("returns DR status by category", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        {
-          category_id: "44444444-4444-4444-4444-444444444444",
-          category_name: "Tech News",
-          campaign_id: "22222222-2222-2222-2222-222222222222",
-          total_outlets: "10",
-          outlets_with_dr: "8",
-          outlets_low_dr: "1",
-          outlets_stale_dr: "2",
-          avg_domain_rating: "55.5",
-        },
-      ],
-    });
-
-    const res = await request(app).get("/outlets/campaign-categories-dr-status").query({
-      campaignId: "22222222-2222-2222-2222-222222222222",
-    });
-
-    expect(res.status).toBe(200);
-    expect(res.body.categories[0].totalOutlets).toBe(10);
-    expect(res.body.categories[0].avgDomainRating).toBe(55.5);
-  });
-});
-
-// ========================
 // Views
 // ========================
 describe("GET /outlets/status", () => {
@@ -613,9 +477,7 @@ describe("GET /outlets/has-topics-articles", () => {
 
 describe("GET /outlets/has-recent-articles", () => {
   it("returns outlets list", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [],
-    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
     const res = await request(app).get("/outlets/has-recent-articles");
     expect(res.status).toBe(200);
     expect(res.body.outlets).toEqual([]);
@@ -624,9 +486,7 @@ describe("GET /outlets/has-recent-articles", () => {
 
 describe("GET /outlets/has-journalists", () => {
   it("returns outlets list", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [],
-    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
     const res = await request(app).get("/outlets/has-journalists");
     expect(res.status).toBe(200);
     expect(res.body.outlets).toEqual([]);
@@ -667,7 +527,7 @@ describe("GET /internal/outlets/by-ids", () => {
 });
 
 describe("GET /internal/outlets/by-campaign/:campaignId", () => {
-  it("returns campaign outlets with DR data", async () => {
+  it("returns campaign outlets", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
@@ -682,10 +542,6 @@ describe("GET /internal/outlets/by-campaign/:campaignId", () => {
           outlet_status: "open",
           overal_relevance: null,
           relevance_rationale: null,
-          latest_valid_dr: 92,
-          latest_valid_dr_date: "2026-01-01T00:00:00Z",
-          dr_to_update: false,
-          has_low_domain_rating: false,
           created_at: "2026-01-01T00:00:00Z",
           updated_at: "2026-01-01T00:00:00Z",
         },
@@ -698,10 +554,10 @@ describe("GET /internal/outlets/by-campaign/:campaignId", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(1);
-    expect(res.body.outlets[0].latestValidDr).toBe(92);
     expect(res.body.outlets[0].campaignId).toBe(
       "22222222-2222-2222-2222-222222222222"
     );
+    expect(res.body.outlets[0].relevanceScore).toBe(85);
   });
 });
 
