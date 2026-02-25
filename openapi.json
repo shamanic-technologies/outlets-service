@@ -1,0 +1,922 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Outlets Service",
+    "description": "Manages press outlets (publications) and their domain authority data",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000"
+    }
+  ],
+  "security": [
+    {
+      "apiKey": []
+    }
+  ],
+  "components": {
+    "schemas": {
+      "CreateOutlet": {
+        "type": "object",
+        "properties": {
+          "outletName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "outletUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "outletDomain": {
+            "type": "string",
+            "minLength": 1
+          },
+          "campaignId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "whyRelevant": {
+            "type": "string"
+          },
+          "whyNotRelevant": {
+            "type": "string"
+          },
+          "relevanceScore": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "overalRelevance": {
+            "type": "string"
+          },
+          "relevanceRationale": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "ended",
+              "denied"
+            ],
+            "default": "open"
+          }
+        },
+        "required": [
+          "outletName",
+          "outletUrl",
+          "outletDomain",
+          "campaignId",
+          "whyRelevant",
+          "whyNotRelevant",
+          "relevanceScore"
+        ]
+      },
+      "UpdateOutlet": {
+        "type": "object",
+        "properties": {
+          "outletName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "outletUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "outletDomain": {
+            "type": "string",
+            "minLength": 1
+          },
+          "whyRelevant": {
+            "type": "string"
+          },
+          "whyNotRelevant": {
+            "type": "string"
+          },
+          "relevanceScore": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "overalRelevance": {
+            "type": "string"
+          },
+          "relevanceRationale": {
+            "type": "string"
+          }
+        }
+      },
+      "UpdateOutletStatus": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "ended",
+              "denied"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "BulkCreateOutlets": {
+        "type": "object",
+        "properties": {
+          "outlets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "outletName": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "outletUrl": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "outletDomain": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "campaignId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "whyRelevant": {
+                  "type": "string"
+                },
+                "whyNotRelevant": {
+                  "type": "string"
+                },
+                "relevanceScore": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "overalRelevance": {
+                  "type": "string"
+                },
+                "relevanceRationale": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "open",
+                    "ended",
+                    "denied"
+                  ],
+                  "default": "open"
+                }
+              },
+              "required": [
+                "outletName",
+                "outletUrl",
+                "outletDomain",
+                "campaignId",
+                "whyRelevant",
+                "whyNotRelevant",
+                "relevanceScore"
+              ]
+            }
+          }
+        },
+        "required": [
+          "outlets"
+        ]
+      },
+      "SearchOutlets": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1
+          },
+          "campaignId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "default": 20
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "CreateCategory": {
+        "type": "object",
+        "properties": {
+          "campaignId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "categoryName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "city",
+              "state_or_province",
+              "country",
+              "multi-country_region",
+              "international"
+            ]
+          },
+          "region": {
+            "type": "string"
+          },
+          "exampleOutlets": {
+            "type": "string"
+          },
+          "whyRelevant": {
+            "type": "string",
+            "default": ""
+          },
+          "whyNotRelevant": {
+            "type": "string",
+            "default": ""
+          },
+          "relevanceScore": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "default": 0
+          }
+        },
+        "required": [
+          "campaignId",
+          "categoryName"
+        ]
+      },
+      "UpdateCategory": {
+        "type": "object",
+        "properties": {
+          "categoryName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "city",
+              "state_or_province",
+              "country",
+              "multi-country_region",
+              "international"
+            ]
+          },
+          "region": {
+            "type": "string",
+            "nullable": true
+          },
+          "exampleOutlets": {
+            "type": "string",
+            "nullable": true
+          },
+          "whyRelevant": {
+            "type": "string"
+          },
+          "whyNotRelevant": {
+            "type": "string"
+          },
+          "relevanceScore": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          }
+        }
+      },
+      "UpdateDomainRating": {
+        "type": "object",
+        "properties": {
+          "dataType": {
+            "type": "string",
+            "enum": [
+              "authority",
+              "traffic"
+            ]
+          },
+          "urlInput": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "dataCapturedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "rawData": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "authorityDomainRating": {
+            "type": "integer",
+            "nullable": true
+          },
+          "authorityUrlRating": {
+            "type": "integer",
+            "nullable": true
+          },
+          "authorityBacklinks": {
+            "type": "integer",
+            "nullable": true
+          },
+          "authorityRefdomains": {
+            "type": "integer",
+            "nullable": true
+          },
+          "authorityDofollowBacklinks": {
+            "type": "integer",
+            "nullable": true
+          },
+          "authorityDofollowRefdomains": {
+            "type": "integer",
+            "nullable": true
+          },
+          "trafficMonthlyAvg": {
+            "type": "integer",
+            "nullable": true
+          },
+          "costMonthlyAvg": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "dataType",
+          "urlInput",
+          "domain",
+          "dataCapturedAt",
+          "rawData"
+        ]
+      },
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "service": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "service"
+        ]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      }
+    },
+    "securitySchemes": {
+      "apiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-api-key",
+        "description": "API key for authenticating requests"
+      }
+    }
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health check",
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/outlets": {
+      "post": {
+        "summary": "Create outlet (upsert by outlet_url)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOutlet"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Outlet created"
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "List outlets with filters",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "campaignId",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "ended",
+                "denied"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 100
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of outlets"
+          }
+        }
+      }
+    },
+    "/outlets/{id}": {
+      "get": {
+        "summary": "Get outlet by ID",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Outlet found"
+          },
+          "404": {
+            "description": "Outlet not found"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update outlet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOutlet"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Outlet updated"
+          },
+          "404": {
+            "description": "Outlet not found"
+          }
+        }
+      }
+    },
+    "/outlets/{id}/status": {
+      "patch": {
+        "summary": "Update outlet status",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "campaignId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOutletStatus"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Status updated"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/outlets/{id}/domain-rating": {
+      "patch": {
+        "summary": "Update domain rating data for outlet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDomainRating"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Domain rating updated"
+          }
+        }
+      }
+    },
+    "/outlets/bulk": {
+      "post": {
+        "summary": "Bulk upsert outlets",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkCreateOutlets"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Outlets created"
+          }
+        }
+      }
+    },
+    "/outlets/search": {
+      "post": {
+        "summary": "Search outlets by name/url",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchOutlets"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Search results"
+          }
+        }
+      }
+    },
+    "/outlets/dr-status": {
+      "get": {
+        "summary": "Outlets with domain rating info",
+        "responses": {
+          "200": {
+            "description": "DR status list"
+          }
+        }
+      }
+    },
+    "/outlets/dr-stale": {
+      "get": {
+        "summary": "Outlets with stale DR needing refresh",
+        "responses": {
+          "200": {
+            "description": "Stale DR outlets"
+          }
+        }
+      }
+    },
+    "/outlets/low-domain-rating": {
+      "get": {
+        "summary": "Outlets with low domain rating (< 10)",
+        "responses": {
+          "200": {
+            "description": "Low DR outlets"
+          }
+        }
+      }
+    },
+    "/outlets/campaign-categories-dr-status": {
+      "get": {
+        "summary": "DR status grouped by campaign category",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "campaignId",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Categories with DR stats"
+          }
+        }
+      }
+    },
+    "/outlets/status": {
+      "get": {
+        "summary": "Outlets with targeting readiness status",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "campaignId",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Outlet status list"
+          }
+        }
+      }
+    },
+    "/outlets/has-topics-articles": {
+      "get": {
+        "summary": "Outlets that need topic/article updates",
+        "responses": {
+          "200": {
+            "description": "Outlets needing updates"
+          }
+        }
+      }
+    },
+    "/outlets/has-recent-articles": {
+      "get": {
+        "summary": "Outlets with recent articles to search",
+        "responses": {
+          "200": {
+            "description": "Outlets with recent articles"
+          }
+        }
+      }
+    },
+    "/outlets/has-journalists": {
+      "get": {
+        "summary": "Outlets with journalist coverage status",
+        "responses": {
+          "200": {
+            "description": "Outlets with journalist info"
+          }
+        }
+      }
+    },
+    "/categories": {
+      "post": {
+        "summary": "Create press category",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCategory"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Category created"
+          }
+        }
+      },
+      "get": {
+        "summary": "List categories by campaign",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "campaignId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Category list"
+          }
+        }
+      }
+    },
+    "/categories/{id}": {
+      "patch": {
+        "summary": "Update category",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCategory"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Category updated"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/categories/{id}/status": {
+      "patch": {
+        "summary": "Update category status",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCategory"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Category status updated"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/internal/outlets/by-ids": {
+      "get": {
+        "summary": "Batch lookup outlets by IDs",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ids",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated outlet IDs"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Outlets found"
+          }
+        }
+      }
+    },
+    "/internal/outlets/by-campaign/{campaignId}": {
+      "get": {
+        "summary": "All outlets for a campaign with DR data",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "campaignId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Campaign outlets with DR"
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "summary": "Get OpenAPI specification",
+        "responses": {
+          "200": {
+            "description": "OpenAPI JSON document"
+          },
+          "404": {
+            "description": "Spec not generated"
+          }
+        }
+      }
+    }
+  }
+}
