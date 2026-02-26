@@ -1,5 +1,6 @@
 import express from "express";
 import { apiKeyAuth } from "./middleware/auth";
+import { extractOrgContext } from "./middleware/org-context";
 import outletsRouter from "./routes/outlets";
 import categoriesRouter from "./routes/categories";
 import viewsRouter from "./routes/views";
@@ -12,6 +13,7 @@ export function createApp() {
 
   app.use(express.json({ limit: "10mb" }));
   app.use(apiKeyAuth);
+  app.use(extractOrgContext);
 
   // Health check
   app.get("/health", (_req, res) => {
