@@ -17,6 +17,11 @@ function ref(name: string) {
   return { $ref: `#/components/schemas/${name}` };
 }
 
+const orgContextHeaders = [
+  { in: "header", name: "x-org-id", schema: { type: "string", format: "uuid" }, description: "Organization ID (from client-service)" },
+  { in: "header", name: "x-user-id", schema: { type: "string", format: "uuid" }, description: "User ID (from client-service)" },
+];
+
 const spec = {
   openapi: "3.0.0",
   info: {
@@ -59,6 +64,7 @@ const spec = {
     "/outlets": {
       post: {
         summary: "Create outlet (upsert by outlet_url)",
+        parameters: [...orgContextHeaders],
         requestBody: { content: { "application/json": { schema: ref("CreateOutlet") } } },
         responses: {
           "201": { description: "Outlet created" },
@@ -89,7 +95,7 @@ const spec = {
       },
       patch: {
         summary: "Update outlet",
-        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }, ...orgContextHeaders],
         requestBody: { content: { "application/json": { schema: ref("UpdateOutlet") } } },
         responses: {
           "200": { description: "Outlet updated" },
@@ -103,6 +109,7 @@ const spec = {
         parameters: [
           { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
           { in: "query", name: "campaignId", required: true, schema: { type: "string", format: "uuid" } },
+          ...orgContextHeaders,
         ],
         requestBody: { content: { "application/json": { schema: ref("UpdateOutletStatus") } } },
         responses: {
@@ -114,6 +121,7 @@ const spec = {
     "/outlets/bulk": {
       post: {
         summary: "Bulk upsert outlets",
+        parameters: [...orgContextHeaders],
         requestBody: { content: { "application/json": { schema: ref("BulkCreateOutlets") } } },
         responses: {
           "201": { description: "Outlets created" },
@@ -123,6 +131,7 @@ const spec = {
     "/outlets/search": {
       post: {
         summary: "Search outlets by name/url",
+        parameters: [...orgContextHeaders],
         requestBody: { content: { "application/json": { schema: ref("SearchOutlets") } } },
         responses: {
           "200": { description: "Search results" },
@@ -157,6 +166,7 @@ const spec = {
     "/categories": {
       post: {
         summary: "Create press category",
+        parameters: [...orgContextHeaders],
         requestBody: { content: { "application/json": { schema: ref("CreateCategory") } } },
         responses: {
           "201": { description: "Category created" },
@@ -173,7 +183,7 @@ const spec = {
     "/categories/{id}": {
       patch: {
         summary: "Update category",
-        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }, ...orgContextHeaders],
         requestBody: { content: { "application/json": { schema: ref("UpdateCategory") } } },
         responses: {
           "200": { description: "Category updated" },
@@ -184,7 +194,7 @@ const spec = {
     "/categories/{id}/status": {
       patch: {
         summary: "Update category status",
-        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }, ...orgContextHeaders],
         requestBody: { content: { "application/json": { schema: ref("UpdateCategory") } } },
         responses: {
           "200": { description: "Category status updated" },

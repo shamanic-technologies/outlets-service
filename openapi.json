@@ -357,6 +357,26 @@
     "/outlets": {
       "post": {
         "summary": "Create outlet (upsert by outlet_url)",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -463,6 +483,24 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
           }
         ],
         "requestBody": {
@@ -505,6 +543,24 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
           }
         ],
         "requestBody": {
@@ -529,6 +585,26 @@
     "/outlets/bulk": {
       "post": {
         "summary": "Bulk upsert outlets",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -548,6 +624,26 @@
     "/outlets/search": {
       "post": {
         "summary": "Search outlets by name/url",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -617,6 +713,26 @@
     "/categories": {
       "post": {
         "summary": "Create press category",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -664,6 +780,24 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
           }
         ],
         "requestBody": {
@@ -697,6 +831,24 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
           }
         ],
         "requestBody": {

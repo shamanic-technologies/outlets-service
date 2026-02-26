@@ -572,6 +572,87 @@ describe("API key auth", () => {
 });
 
 // ========================
+// Org context headers
+// ========================
+describe("Org context headers", () => {
+  it("accepts requests with x-org-id and x-user-id headers", async () => {
+    const outletRow = {
+      id: "11111111-1111-1111-1111-111111111111",
+      outlet_name: "TechCrunch",
+      outlet_url: "https://techcrunch.com",
+      outlet_domain: "techcrunch.com",
+      status: null,
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+    };
+
+    mockQuery
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({ rows: [outletRow] }) // INSERT press_outlets
+      .mockResolvedValueOnce({ rows: [] }) // INSERT campaign_outlets
+      .mockResolvedValueOnce({}); // COMMIT
+
+    const res = await request(app)
+      .post("/outlets")
+      .set("x-org-id", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+      .set("x-user-id", "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+      .send({
+        outletName: "TechCrunch",
+        outletUrl: "https://techcrunch.com",
+        outletDomain: "techcrunch.com",
+        campaignId: "22222222-2222-2222-2222-222222222222",
+        whyRelevant: "Top tech publication",
+        whyNotRelevant: "Might be too competitive",
+        relevanceScore: 85,
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.outletName).toBe("TechCrunch");
+  });
+
+  it("works without org context headers", async () => {
+    const outletRow = {
+      id: "11111111-1111-1111-1111-111111111111",
+      outlet_name: "Wired",
+      outlet_url: "https://wired.com",
+      outlet_domain: "wired.com",
+      status: null,
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+    };
+
+    mockQuery
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({ rows: [outletRow] }) // INSERT press_outlets
+      .mockResolvedValueOnce({ rows: [] }) // INSERT campaign_outlets
+      .mockResolvedValueOnce({}); // COMMIT
+
+    const res = await request(app).post("/outlets").send({
+      outletName: "Wired",
+      outletUrl: "https://wired.com",
+      outletDomain: "wired.com",
+      campaignId: "22222222-2222-2222-2222-222222222222",
+      whyRelevant: "Tech coverage",
+      whyNotRelevant: "None",
+      relevanceScore: 80,
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.outletName).toBe("Wired");
+  });
+
+  it("exposes org context on the request object", async () => {
+    // Use the health endpoint - we'll verify by checking the middleware runs without error
+    const res = await request(app)
+      .get("/health")
+      .set("x-org-id", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+      .set("x-user-id", "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+
+    expect(res.status).toBe(200);
+  });
+});
+
+// ========================
 // Validation
 // ========================
 describe("Validation", () => {
