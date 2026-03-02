@@ -18,8 +18,8 @@ function ref(name: string) {
 }
 
 const orgContextHeaders = [
-  { in: "header", name: "x-org-id", schema: { type: "string", format: "uuid" }, description: "Organization ID (from client-service)" },
-  { in: "header", name: "x-user-id", schema: { type: "string", format: "uuid" }, description: "User ID (from client-service)" },
+  { in: "header", name: "x-org-id", required: true, schema: { type: "string", format: "uuid" }, description: "Organization ID (from client-service)" },
+  { in: "header", name: "x-user-id", required: true, schema: { type: "string", format: "uuid" }, description: "User ID (from client-service)" },
 ];
 
 const spec = {
@@ -74,6 +74,7 @@ const spec = {
       get: {
         summary: "List outlets with filters",
         parameters: [
+          ...orgContextHeaders,
           { in: "query", name: "campaignId", schema: { type: "string", format: "uuid" } },
           { in: "query", name: "status", schema: { type: "string", enum: ["open", "ended", "denied"] } },
           { in: "query", name: "limit", schema: { type: "integer", default: 100 } },
@@ -87,7 +88,7 @@ const spec = {
     "/outlets/{id}": {
       get: {
         summary: "Get outlet by ID",
-        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }, ...orgContextHeaders],
         responses: {
           "200": { description: "Outlet found" },
           "404": { description: "Outlet not found" },
@@ -141,25 +142,28 @@ const spec = {
     "/outlets/status": {
       get: {
         summary: "Outlets with targeting readiness status",
-        parameters: [{ in: "query", name: "campaignId", schema: { type: "string", format: "uuid" } }],
+        parameters: [...orgContextHeaders, { in: "query", name: "campaignId", schema: { type: "string", format: "uuid" } }],
         responses: { "200": { description: "Outlet status list" } },
       },
     },
     "/outlets/has-topics-articles": {
       get: {
         summary: "Outlets that need topic/article updates",
+        parameters: [...orgContextHeaders],
         responses: { "200": { description: "Outlets needing updates" } },
       },
     },
     "/outlets/has-recent-articles": {
       get: {
         summary: "Outlets with recent articles to search",
+        parameters: [...orgContextHeaders],
         responses: { "200": { description: "Outlets with recent articles" } },
       },
     },
     "/outlets/has-journalists": {
       get: {
         summary: "Outlets with journalist coverage status",
+        parameters: [...orgContextHeaders],
         responses: { "200": { description: "Outlets with journalist info" } },
       },
     },
@@ -174,7 +178,7 @@ const spec = {
       },
       get: {
         summary: "List categories by campaign",
-        parameters: [{ in: "query", name: "campaignId", required: true, schema: { type: "string", format: "uuid" } }],
+        parameters: [...orgContextHeaders, { in: "query", name: "campaignId", required: true, schema: { type: "string", format: "uuid" } }],
         responses: {
           "200": { description: "Category list" },
         },
@@ -205,7 +209,7 @@ const spec = {
     "/internal/outlets/by-ids": {
       get: {
         summary: "Batch lookup outlets by IDs",
-        parameters: [{ in: "query", name: "ids", required: true, schema: { type: "string" }, description: "Comma-separated outlet IDs" }],
+        parameters: [...orgContextHeaders, { in: "query", name: "ids", required: true, schema: { type: "string" }, description: "Comma-separated outlet IDs" }],
         responses: {
           "200": { description: "Outlets found" },
         },
@@ -214,7 +218,7 @@ const spec = {
     "/internal/outlets/by-campaign/{campaignId}": {
       get: {
         summary: "All outlets for a campaign",
-        parameters: [{ in: "path", name: "campaignId", required: true, schema: { type: "string", format: "uuid" } }],
+        parameters: [...orgContextHeaders, { in: "path", name: "campaignId", required: true, schema: { type: "string", format: "uuid" } }],
         responses: {
           "200": { description: "Campaign outlets" },
         },

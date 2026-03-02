@@ -361,6 +361,7 @@
           {
             "in": "header",
             "name": "x-org-id",
+            "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -370,6 +371,7 @@
           {
             "in": "header",
             "name": "x-user-id",
+            "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -405,6 +407,26 @@
       "get": {
         "summary": "List outlets with filters",
         "parameters": [
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
+          },
           {
             "in": "query",
             "name": "campaignId",
@@ -461,6 +483,26 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
           }
         ],
         "responses": {
@@ -487,6 +529,7 @@
           {
             "in": "header",
             "name": "x-org-id",
+            "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -496,6 +539,7 @@
           {
             "in": "header",
             "name": "x-user-id",
+            "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -547,6 +591,7 @@
           {
             "in": "header",
             "name": "x-org-id",
+            "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -556,6 +601,7 @@
           {
             "in": "header",
             "name": "x-user-id",
+            "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -589,6 +635,7 @@
           {
             "in": "header",
             "name": "x-org-id",
+            "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -598,6 +645,7 @@
           {
             "in": "header",
             "name": "x-user-id",
+            "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -628,6 +676,7 @@
           {
             "in": "header",
             "name": "x-org-id",
+            "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -637,6 +686,7 @@
           {
             "in": "header",
             "name": "x-user-id",
+            "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -665,6 +715,26 @@
         "summary": "Outlets with targeting readiness status",
         "parameters": [
           {
+            "in": "header",
+            "name": "x-org-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
+          },
+          {
             "in": "query",
             "name": "campaignId",
             "schema": {
@@ -683,6 +753,28 @@
     "/outlets/has-topics-articles": {
       "get": {
         "summary": "Outlets that need topic/article updates",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Outlets needing updates"
@@ -693,6 +785,28 @@
     "/outlets/has-recent-articles": {
       "get": {
         "summary": "Outlets with recent articles to search",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Outlets with recent articles"
@@ -703,6 +817,28 @@
     "/outlets/has-journalists": {
       "get": {
         "summary": "Outlets with journalist coverage status",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Outlets with journalist info"
@@ -717,6 +853,7 @@
           {
             "in": "header",
             "name": "x-org-id",
+            "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -726,6 +863,7 @@
           {
             "in": "header",
             "name": "x-user-id",
+            "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -751,6 +889,26 @@
       "get": {
         "summary": "List categories by campaign",
         "parameters": [
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
+          },
           {
             "in": "query",
             "name": "campaignId",
@@ -784,6 +942,7 @@
           {
             "in": "header",
             "name": "x-org-id",
+            "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -793,6 +952,7 @@
           {
             "in": "header",
             "name": "x-user-id",
+            "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -835,6 +995,7 @@
           {
             "in": "header",
             "name": "x-org-id",
+            "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -844,6 +1005,7 @@
           {
             "in": "header",
             "name": "x-user-id",
+            "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -875,6 +1037,26 @@
         "summary": "Batch lookup outlets by IDs",
         "parameters": [
           {
+            "in": "header",
+            "name": "x-org-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
+          },
+          {
             "in": "query",
             "name": "ids",
             "required": true,
@@ -895,6 +1077,26 @@
       "get": {
         "summary": "All outlets for a campaign",
         "parameters": [
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
+          },
           {
             "in": "path",
             "name": "campaignId",

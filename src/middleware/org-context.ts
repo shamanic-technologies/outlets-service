@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from "express";
 
 export interface OrgContext {
-  orgId: string | undefined;
-  userId: string | undefined;
+  orgId: string;
+  userId: string;
 }
 
 declare global {
@@ -13,14 +13,25 @@ declare global {
   }
 }
 
+const EXEMPT_PATHS = ["/health", "/openapi.json"];
+
 export function extractOrgContext(
   req: Request,
-  _res: Response,
+  res: Response,
   next: NextFunction
 ): void {
-  req.orgContext = {
-    orgId: req.headers["x-org-id"] as string | undefined,
-    userId: req.headers["x-user-id"] as string | undefined,
-  };
+  if (EXEMPT_PATHS.includes(req.path)) {
+    return next();
+  }
+
+  const orgId = req.headers["x-org-id"] as string | undefined;
+  const userId = req.headers["x-user-id"] as string | undefined;
+
+  if (!orgId || !userId) {
+    res.status(400).json({ error: "x-org-id and x-user-id headers are required" });
+    return;
+  }
+
+  req.orgContext = { orgId, userId };
   next();
 }
