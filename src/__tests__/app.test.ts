@@ -19,6 +19,13 @@ vi.mock("../db/pool", () => ({
   },
 }));
 
+const ORG_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+const USER_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+
+function withIdentity(req: request.Test): request.Test {
+  return req.set("x-org-id", ORG_ID).set("x-user-id", USER_ID);
+}
+
 let app: Express;
 
 beforeEach(() => {
@@ -60,7 +67,7 @@ describe("POST /outlets", () => {
       .mockResolvedValueOnce({ rows: [] }) // INSERT campaign_outlets
       .mockResolvedValueOnce({}); // COMMIT
 
-    const res = await request(app).post("/outlets").send({
+    const res = await withIdentity(request(app).post("/outlets")).send({
       outletName: "TechCrunch",
       outletUrl: "https://techcrunch.com",
       outletDomain: "techcrunch.com",
@@ -79,7 +86,7 @@ describe("POST /outlets", () => {
   });
 
   it("returns 400 for invalid body", async () => {
-    const res = await request(app).post("/outlets").send({
+    const res = await withIdentity(request(app).post("/outlets")).send({
       outletName: "",
     });
     expect(res.status).toBe(400);
@@ -111,7 +118,7 @@ describe("GET /outlets", () => {
       rowCount: 1,
     });
 
-    const res = await request(app).get("/outlets").query({
+    const res = await withIdentity(request(app).get("/outlets")).query({
       campaignId: "22222222-2222-2222-2222-222222222222",
     });
 
@@ -123,7 +130,7 @@ describe("GET /outlets", () => {
 
   it("lists outlets without filters", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-    const res = await request(app).get("/outlets");
+    const res = await withIdentity(request(app).get("/outlets"));
     expect(res.status).toBe(200);
     expect(res.body.outlets).toEqual([]);
   });
@@ -145,8 +152,8 @@ describe("GET /outlets/:id", () => {
       ],
     });
 
-    const res = await request(app).get(
-      "/outlets/11111111-1111-1111-1111-111111111111"
+    const res = await withIdentity(
+      request(app).get("/outlets/11111111-1111-1111-1111-111111111111")
     );
     expect(res.status).toBe(200);
     expect(res.body.outletName).toBe("TechCrunch");
@@ -154,8 +161,8 @@ describe("GET /outlets/:id", () => {
 
   it("returns 404 for missing outlet", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
-    const res = await request(app).get(
-      "/outlets/99999999-9999-9999-9999-999999999999"
+    const res = await withIdentity(
+      request(app).get("/outlets/99999999-9999-9999-9999-999999999999")
     );
     expect(res.status).toBe(404);
   });
@@ -177,9 +184,9 @@ describe("PATCH /outlets/:id", () => {
       ],
     });
 
-    const res = await request(app)
-      .patch("/outlets/11111111-1111-1111-1111-111111111111")
-      .send({ outletName: "Updated Name" });
+    const res = await withIdentity(
+      request(app).patch("/outlets/11111111-1111-1111-1111-111111111111")
+    ).send({ outletName: "Updated Name" });
 
     expect(res.status).toBe(200);
     expect(res.body.outletName).toBe("Updated Name");
@@ -187,9 +194,9 @@ describe("PATCH /outlets/:id", () => {
 
   it("returns 404 when outlet not found", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
-    const res = await request(app)
-      .patch("/outlets/99999999-9999-9999-9999-999999999999")
-      .send({ outletName: "X" });
+    const res = await withIdentity(
+      request(app).patch("/outlets/99999999-9999-9999-9999-999999999999")
+    ).send({ outletName: "X" });
     expect(res.status).toBe(404);
   });
 });
@@ -208,19 +215,22 @@ describe("PATCH /outlets/:id/status", () => {
       ],
     });
 
-    const res = await request(app)
-      .patch("/outlets/11111111-1111-1111-1111-111111111111/status")
-      .query({ campaignId: "22222222-2222-2222-2222-222222222222" })
-      .send({ status: "ended", reason: "No longer relevant" });
+    const res = await withIdentity(
+      request(app)
+        .patch("/outlets/11111111-1111-1111-1111-111111111111/status")
+        .query({ campaignId: "22222222-2222-2222-2222-222222222222" })
+    ).send({ status: "ended", reason: "No longer relevant" });
 
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("ended");
   });
 
   it("returns 400 without campaignId", async () => {
-    const res = await request(app)
-      .patch("/outlets/11111111-1111-1111-1111-111111111111/status")
-      .send({ status: "ended" });
+    const res = await withIdentity(
+      request(app).patch(
+        "/outlets/11111111-1111-1111-1111-111111111111/status"
+      )
+    ).send({ status: "ended" });
     expect(res.status).toBe(400);
     expect(res.body.error).toContain("campaignId");
   });
@@ -257,30 +267,28 @@ describe("POST /outlets/bulk", () => {
       .mockResolvedValueOnce({ rows: [] }) // campaign_outlets
       .mockResolvedValueOnce({}); // COMMIT
 
-    const res = await request(app)
-      .post("/outlets/bulk")
-      .send({
-        outlets: [
-          {
-            outletName: "Outlet1",
-            outletUrl: "https://outlet1.com",
-            outletDomain: "outlet1.com",
-            campaignId: "33333333-3333-3333-3333-333333333333",
-            whyRelevant: "Good",
-            whyNotRelevant: "None",
-            relevanceScore: 90,
-          },
-          {
-            outletName: "Outlet2",
-            outletUrl: "https://outlet2.com",
-            outletDomain: "outlet2.com",
-            campaignId: "33333333-3333-3333-3333-333333333333",
-            whyRelevant: "Also good",
-            whyNotRelevant: "None",
-            relevanceScore: 80,
-          },
-        ],
-      });
+    const res = await withIdentity(request(app).post("/outlets/bulk")).send({
+      outlets: [
+        {
+          outletName: "Outlet1",
+          outletUrl: "https://outlet1.com",
+          outletDomain: "outlet1.com",
+          campaignId: "33333333-3333-3333-3333-333333333333",
+          whyRelevant: "Good",
+          whyNotRelevant: "None",
+          relevanceScore: 90,
+        },
+        {
+          outletName: "Outlet2",
+          outletUrl: "https://outlet2.com",
+          outletDomain: "outlet2.com",
+          campaignId: "33333333-3333-3333-3333-333333333333",
+          whyRelevant: "Also good",
+          whyNotRelevant: "None",
+          relevanceScore: 80,
+        },
+      ],
+    });
 
     expect(res.status).toBe(201);
     expect(res.body.count).toBe(2);
@@ -305,9 +313,9 @@ describe("POST /outlets/search", () => {
       rowCount: 1,
     });
 
-    const res = await request(app)
-      .post("/outlets/search")
-      .send({ query: "tech" });
+    const res = await withIdentity(
+      request(app).post("/outlets/search")
+    ).send({ query: "tech" });
 
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(1);
@@ -338,7 +346,7 @@ describe("POST /categories", () => {
       ],
     });
 
-    const res = await request(app).post("/categories").send({
+    const res = await withIdentity(request(app).post("/categories")).send({
       campaignId: "22222222-2222-2222-2222-222222222222",
       categoryName: "Tech News",
       scope: "international",
@@ -373,7 +381,7 @@ describe("GET /categories", () => {
       ],
     });
 
-    const res = await request(app).get("/categories").query({
+    const res = await withIdentity(request(app).get("/categories")).query({
       campaignId: "22222222-2222-2222-2222-222222222222",
     });
 
@@ -382,7 +390,7 @@ describe("GET /categories", () => {
   });
 
   it("returns 400 without campaignId", async () => {
-    const res = await request(app).get("/categories");
+    const res = await withIdentity(request(app).get("/categories"));
     expect(res.status).toBe(400);
   });
 });
@@ -407,18 +415,18 @@ describe("PATCH /categories/:id", () => {
       ],
     });
 
-    const res = await request(app)
-      .patch("/categories/44444444-4444-4444-4444-444444444444")
-      .send({ categoryName: "Updated Tech" });
+    const res = await withIdentity(
+      request(app).patch("/categories/44444444-4444-4444-4444-444444444444")
+    ).send({ categoryName: "Updated Tech" });
 
     expect(res.status).toBe(200);
     expect(res.body.categoryName).toBe("Updated Tech");
   });
 
   it("returns 400 with empty body", async () => {
-    const res = await request(app)
-      .patch("/categories/44444444-4444-4444-4444-444444444444")
-      .send({});
+    const res = await withIdentity(
+      request(app).patch("/categories/44444444-4444-4444-4444-444444444444")
+    ).send({});
     expect(res.status).toBe(400);
   });
 });
@@ -446,7 +454,9 @@ describe("GET /outlets/status", () => {
       ],
     });
 
-    const res = await request(app).get("/outlets/status").query({
+    const res = await withIdentity(
+      request(app).get("/outlets/status")
+    ).query({
       campaignId: "22222222-2222-2222-2222-222222222222",
     });
 
@@ -469,7 +479,9 @@ describe("GET /outlets/has-topics-articles", () => {
       ],
     });
 
-    const res = await request(app).get("/outlets/has-topics-articles");
+    const res = await withIdentity(
+      request(app).get("/outlets/has-topics-articles")
+    );
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(1);
   });
@@ -478,7 +490,9 @@ describe("GET /outlets/has-topics-articles", () => {
 describe("GET /outlets/has-recent-articles", () => {
   it("returns outlets list", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
-    const res = await request(app).get("/outlets/has-recent-articles");
+    const res = await withIdentity(
+      request(app).get("/outlets/has-recent-articles")
+    );
     expect(res.status).toBe(200);
     expect(res.body.outlets).toEqual([]);
   });
@@ -487,7 +501,9 @@ describe("GET /outlets/has-recent-articles", () => {
 describe("GET /outlets/has-journalists", () => {
   it("returns outlets list", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
-    const res = await request(app).get("/outlets/has-journalists");
+    const res = await withIdentity(
+      request(app).get("/outlets/has-journalists")
+    );
     expect(res.status).toBe(200);
     expect(res.body.outlets).toEqual([]);
   });
@@ -512,16 +528,18 @@ describe("GET /internal/outlets/by-ids", () => {
       ],
     });
 
-    const res = await request(app)
-      .get("/internal/outlets/by-ids")
-      .query({ ids: "11111111-1111-1111-1111-111111111111" });
+    const res = await withIdentity(
+      request(app).get("/internal/outlets/by-ids")
+    ).query({ ids: "11111111-1111-1111-1111-111111111111" });
 
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(1);
   });
 
   it("returns 400 without ids", async () => {
-    const res = await request(app).get("/internal/outlets/by-ids");
+    const res = await withIdentity(
+      request(app).get("/internal/outlets/by-ids")
+    );
     expect(res.status).toBe(400);
   });
 });
@@ -548,8 +566,10 @@ describe("GET /internal/outlets/by-campaign/:campaignId", () => {
       ],
     });
 
-    const res = await request(app).get(
-      "/internal/outlets/by-campaign/22222222-2222-2222-2222-222222222222"
+    const res = await withIdentity(
+      request(app).get(
+        "/internal/outlets/by-campaign/22222222-2222-2222-2222-222222222222"
+      )
     );
 
     expect(res.status).toBe(200);
@@ -592,41 +612,21 @@ describe("Org context headers", () => {
       .mockResolvedValueOnce({ rows: [] }) // INSERT campaign_outlets
       .mockResolvedValueOnce({}); // COMMIT
 
-    const res = await request(app)
-      .post("/outlets")
-      .set("x-org-id", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
-      .set("x-user-id", "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
-      .send({
-        outletName: "TechCrunch",
-        outletUrl: "https://techcrunch.com",
-        outletDomain: "techcrunch.com",
-        campaignId: "22222222-2222-2222-2222-222222222222",
-        whyRelevant: "Top tech publication",
-        whyNotRelevant: "Might be too competitive",
-        relevanceScore: 85,
-      });
+    const res = await withIdentity(request(app).post("/outlets")).send({
+      outletName: "TechCrunch",
+      outletUrl: "https://techcrunch.com",
+      outletDomain: "techcrunch.com",
+      campaignId: "22222222-2222-2222-2222-222222222222",
+      whyRelevant: "Top tech publication",
+      whyNotRelevant: "Might be too competitive",
+      relevanceScore: 85,
+    });
 
     expect(res.status).toBe(201);
     expect(res.body.outletName).toBe("TechCrunch");
   });
 
-  it("works without org context headers", async () => {
-    const outletRow = {
-      id: "11111111-1111-1111-1111-111111111111",
-      outlet_name: "Wired",
-      outlet_url: "https://wired.com",
-      outlet_domain: "wired.com",
-      status: null,
-      created_at: "2026-01-01T00:00:00Z",
-      updated_at: "2026-01-01T00:00:00Z",
-    };
-
-    mockQuery
-      .mockResolvedValueOnce({}) // BEGIN
-      .mockResolvedValueOnce({ rows: [outletRow] }) // INSERT press_outlets
-      .mockResolvedValueOnce({ rows: [] }) // INSERT campaign_outlets
-      .mockResolvedValueOnce({}); // COMMIT
-
+  it("rejects requests without org context headers", async () => {
     const res = await request(app).post("/outlets").send({
       outletName: "Wired",
       outletUrl: "https://wired.com",
@@ -637,18 +637,38 @@ describe("Org context headers", () => {
       relevanceScore: 80,
     });
 
-    expect(res.status).toBe(201);
-    expect(res.body.outletName).toBe("Wired");
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("x-org-id and x-user-id");
   });
 
-  it("exposes org context on the request object", async () => {
-    // Use the health endpoint - we'll verify by checking the middleware runs without error
+  it("rejects requests with only x-org-id", async () => {
     const res = await request(app)
-      .get("/health")
-      .set("x-org-id", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
-      .set("x-user-id", "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+      .post("/outlets")
+      .set("x-org-id", ORG_ID)
+      .send({
+        outletName: "Wired",
+        outletUrl: "https://wired.com",
+        outletDomain: "wired.com",
+        campaignId: "22222222-2222-2222-2222-222222222222",
+        whyRelevant: "Tech coverage",
+        whyNotRelevant: "None",
+        relevanceScore: 80,
+      });
 
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("x-org-id and x-user-id");
+  });
+
+  it("skips enforcement for /health", async () => {
+    const res = await request(app).get("/health");
     expect(res.status).toBe(200);
+  });
+
+  it("skips enforcement for /openapi.json", async () => {
+    // openapi.json may or may not exist, but should not be rejected for missing headers
+    const res = await request(app).get("/openapi.json");
+    // Either 200 (file exists) or 404 (file not found) — NOT 400
+    expect([200, 404]).toContain(res.status);
   });
 });
 
@@ -657,7 +677,7 @@ describe("Org context headers", () => {
 // ========================
 describe("Validation", () => {
   it("rejects invalid outlet URL", async () => {
-    const res = await request(app).post("/outlets").send({
+    const res = await withIdentity(request(app).post("/outlets")).send({
       outletName: "Test",
       outletUrl: "not-a-url",
       outletDomain: "test.com",
@@ -670,7 +690,7 @@ describe("Validation", () => {
   });
 
   it("rejects invalid campaign ID", async () => {
-    const res = await request(app).post("/outlets").send({
+    const res = await withIdentity(request(app).post("/outlets")).send({
       outletName: "Test",
       outletUrl: "https://test.com",
       outletDomain: "test.com",
@@ -683,7 +703,7 @@ describe("Validation", () => {
   });
 
   it("rejects relevance score out of range", async () => {
-    const res = await request(app).post("/outlets").send({
+    const res = await withIdentity(request(app).post("/outlets")).send({
       outletName: "Test",
       outletUrl: "https://test.com",
       outletDomain: "test.com",
@@ -696,10 +716,11 @@ describe("Validation", () => {
   });
 
   it("rejects invalid status enum", async () => {
-    const res = await request(app)
-      .patch("/outlets/11111111-1111-1111-1111-111111111111/status")
-      .query({ campaignId: "22222222-2222-2222-2222-222222222222" })
-      .send({ status: "invalid" });
+    const res = await withIdentity(
+      request(app)
+        .patch("/outlets/11111111-1111-1111-1111-111111111111/status")
+        .query({ campaignId: "22222222-2222-2222-2222-222222222222" })
+    ).send({ status: "invalid" });
     expect(res.status).toBe(400);
   });
 });
