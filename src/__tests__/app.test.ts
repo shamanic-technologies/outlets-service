@@ -21,9 +21,10 @@ vi.mock("../db/pool", () => ({
 
 const ORG_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const USER_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+const RUN_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc";
 
 function withIdentity(req: request.Test): request.Test {
-  return req.set("x-org-id", ORG_ID).set("x-user-id", USER_ID);
+  return req.set("x-org-id", ORG_ID).set("x-user-id", USER_ID).set("x-run-id", RUN_ID);
 }
 
 let app: Express;
@@ -594,8 +595,8 @@ describe("API key auth", () => {
 // ========================
 // Org context headers
 // ========================
-describe("Org context headers", () => {
-  it("accepts requests with x-org-id and x-user-id headers", async () => {
+describe("Request context headers", () => {
+  it("accepts requests with all required headers", async () => {
     const outletRow = {
       id: "11111111-1111-1111-1111-111111111111",
       outlet_name: "TechCrunch",
@@ -626,7 +627,7 @@ describe("Org context headers", () => {
     expect(res.body.outletName).toBe("TechCrunch");
   });
 
-  it("rejects requests without org context headers", async () => {
+  it("rejects requests without any context headers", async () => {
     const res = await request(app).post("/outlets").send({
       outletName: "Wired",
       outletUrl: "https://wired.com",
@@ -638,7 +639,7 @@ describe("Org context headers", () => {
     });
 
     expect(res.status).toBe(400);
-    expect(res.body.error).toContain("x-org-id and x-user-id");
+    expect(res.body.error).toContain("x-org-id, x-user-id, and x-run-id");
   });
 
   it("rejects requests with only x-org-id", async () => {
@@ -656,7 +657,44 @@ describe("Org context headers", () => {
       });
 
     expect(res.status).toBe(400);
-    expect(res.body.error).toContain("x-org-id and x-user-id");
+    expect(res.body.error).toContain("x-org-id, x-user-id, and x-run-id");
+  });
+
+  it("rejects requests missing only x-run-id", async () => {
+    const res = await request(app)
+      .post("/outlets")
+      .set("x-org-id", ORG_ID)
+      .set("x-user-id", USER_ID)
+      .send({
+        outletName: "Wired",
+        outletUrl: "https://wired.com",
+        outletDomain: "wired.com",
+        campaignId: "22222222-2222-2222-2222-222222222222",
+        whyRelevant: "Tech coverage",
+        whyNotRelevant: "None",
+        relevanceScore: 80,
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("x-run-id");
+  });
+
+  it("rejects requests with only x-run-id", async () => {
+    const res = await request(app)
+      .post("/outlets")
+      .set("x-run-id", RUN_ID)
+      .send({
+        outletName: "Wired",
+        outletUrl: "https://wired.com",
+        outletDomain: "wired.com",
+        campaignId: "22222222-2222-2222-2222-222222222222",
+        whyRelevant: "Tech coverage",
+        whyNotRelevant: "None",
+        relevanceScore: 80,
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("x-org-id");
   });
 
   it("skips enforcement for /health", async () => {
