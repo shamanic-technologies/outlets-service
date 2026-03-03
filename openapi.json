@@ -377,6 +377,16 @@
               "format": "uuid"
             },
             "description": "User ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
           }
         ],
         "requestBody": {
@@ -426,6 +436,16 @@
               "format": "uuid"
             },
             "description": "User ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
           },
           {
             "in": "query",
@@ -503,6 +523,16 @@
               "format": "uuid"
             },
             "description": "User ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
           }
         ],
         "responses": {
@@ -545,6 +575,16 @@
               "format": "uuid"
             },
             "description": "User ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
           }
         ],
         "requestBody": {
@@ -607,6 +647,16 @@
               "format": "uuid"
             },
             "description": "User ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
           }
         ],
         "requestBody": {
@@ -651,6 +701,16 @@
               "format": "uuid"
             },
             "description": "User ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
           }
         ],
         "requestBody": {
@@ -692,6 +752,16 @@
               "format": "uuid"
             },
             "description": "User ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
           }
         ],
         "requestBody": {
@@ -735,6 +805,16 @@
             "description": "User ID (from client-service)"
           },
           {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
+          },
+          {
             "in": "query",
             "name": "campaignId",
             "schema": {
@@ -773,6 +853,16 @@
               "format": "uuid"
             },
             "description": "User ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
           }
         ],
         "responses": {
@@ -805,6 +895,16 @@
               "format": "uuid"
             },
             "description": "User ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
           }
         ],
         "responses": {
@@ -837,6 +937,16 @@
               "format": "uuid"
             },
             "description": "User ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
           }
         ],
         "responses": {
@@ -869,6 +979,16 @@
               "format": "uuid"
             },
             "description": "User ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
           }
         ],
         "requestBody": {
@@ -908,6 +1028,16 @@
               "format": "uuid"
             },
             "description": "User ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
           },
           {
             "in": "query",
@@ -958,6 +1088,16 @@
               "format": "uuid"
             },
             "description": "User ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
           }
         ],
         "requestBody": {
@@ -1011,6 +1151,16 @@
               "format": "uuid"
             },
             "description": "User ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
           }
         ],
         "requestBody": {
@@ -1057,6 +1207,16 @@
             "description": "User ID (from client-service)"
           },
           {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
+          },
+          {
             "in": "query",
             "name": "ids",
             "required": true,
@@ -1096,6 +1256,16 @@
               "format": "uuid"
             },
             "description": "User ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
           },
           {
             "in": "path",
