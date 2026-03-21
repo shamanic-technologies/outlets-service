@@ -8,6 +8,8 @@ import {
   searchOutletsSchema,
   createCategorySchema,
   updateCategorySchema,
+  discoverOutletsSchema,
+  discoverOutletsResponseSchema,
   healthResponseSchema,
   errorResponseSchema,
 } from "../schemas";
@@ -41,6 +43,8 @@ const spec = {
       SearchOutlets: zodToJsonSchema(searchOutletsSchema),
       CreateCategory: zodToJsonSchema(createCategorySchema),
       UpdateCategory: zodToJsonSchema(updateCategorySchema),
+      DiscoverOutlets: zodToJsonSchema(discoverOutletsSchema),
+      DiscoverOutletsResponse: zodToJsonSchema(discoverOutletsResponseSchema),
       HealthResponse: zodToJsonSchema(healthResponseSchema),
       ErrorResponse: zodToJsonSchema(errorResponseSchema),
     },
@@ -137,6 +141,20 @@ const spec = {
         requestBody: { content: { "application/json": { schema: ref("SearchOutlets") } } },
         responses: {
           "200": { description: "Search results" },
+        },
+      },
+    },
+    "/outlets/discover": {
+      post: {
+        summary: "Discover relevant outlets via Google search + LLM scoring",
+        description: "Takes a brand brief, generates search queries via LLM, searches Google via google-service, scores results for relevance via LLM, and bulk upserts discovered outlets into the database.",
+        parameters: [...orgContextHeaders],
+        requestBody: { content: { "application/json": { schema: ref("DiscoverOutlets") } } },
+        responses: {
+          "201": { description: "Outlets discovered and saved", content: { "application/json": { schema: ref("DiscoverOutletsResponse") } } },
+          "200": { description: "No outlets found (empty results)" },
+          "400": { description: "Validation error", content: { "application/json": { schema: ref("ErrorResponse") } } },
+          "502": { description: "Upstream service error (chat-service or google-service)", content: { "application/json": { schema: ref("ErrorResponse") } } },
         },
       },
     },

@@ -133,6 +133,39 @@ export const errorResponseSchema = z.object({
   error: z.string(),
 });
 
+// --- Discover ---
+
+export const discoverOutletsSchema = z.object({
+  campaignId: z.string().uuid(),
+  brandName: z.string().min(1),
+  brandDescription: z.string().min(1),
+  industry: z.string().min(1),
+  targetGeo: z.string().optional(),
+  targetAudience: z.string().optional(),
+  angles: z.array(z.string()).optional(),
+});
+
+export const discoverOutletsResponseSchema = z.object({
+  discoveredCount: z.number(),
+  outlets: z.array(
+    z.object({
+      id: z.string().uuid(),
+      outletName: z.string(),
+      outletUrl: z.string(),
+      outletDomain: z.string(),
+      relevanceScore: z.number(),
+      whyRelevant: z.string(),
+      whyNotRelevant: z.string(),
+      overallRelevance: z.string(),
+    })
+  ),
+  searchQueries: z.number(),
+  tokensUsed: z.object({
+    queryGeneration: z.number(),
+    scoring: z.number(),
+  }),
+});
+
 // Type exports
 export type CreateOutlet = z.infer<typeof createOutletSchema>;
 export type UpdateOutlet = z.infer<typeof updateOutletSchema>;

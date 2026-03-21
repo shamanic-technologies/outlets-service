@@ -5,6 +5,7 @@ import outletsRouter from "./routes/outlets";
 import categoriesRouter from "./routes/categories";
 import viewsRouter from "./routes/views";
 import internalRouter from "./routes/internal";
+import discoverRouter from "./routes/discover";
 import path from "path";
 import fs from "fs";
 
@@ -32,6 +33,9 @@ export function createApp() {
 
   // View routes (must be before /outlets/:id to avoid path conflicts)
   app.use("/outlets", viewsRouter);
+
+  // Discovery route (must be before /outlets/:id to avoid path conflicts)
+  app.use("/outlets", discoverRouter);
 
   // CRUD routes
   app.use("/outlets", outletsRouter);

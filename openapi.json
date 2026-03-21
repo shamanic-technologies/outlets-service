@@ -300,6 +300,120 @@
           }
         }
       },
+      "DiscoverOutlets": {
+        "type": "object",
+        "properties": {
+          "campaignId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "brandName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "brandDescription": {
+            "type": "string",
+            "minLength": 1
+          },
+          "industry": {
+            "type": "string",
+            "minLength": 1
+          },
+          "targetGeo": {
+            "type": "string"
+          },
+          "targetAudience": {
+            "type": "string"
+          },
+          "angles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "campaignId",
+          "brandName",
+          "brandDescription",
+          "industry"
+        ]
+      },
+      "DiscoverOutletsResponse": {
+        "type": "object",
+        "properties": {
+          "discoveredCount": {
+            "type": "number"
+          },
+          "outlets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "outletName": {
+                  "type": "string"
+                },
+                "outletUrl": {
+                  "type": "string"
+                },
+                "outletDomain": {
+                  "type": "string"
+                },
+                "relevanceScore": {
+                  "type": "number"
+                },
+                "whyRelevant": {
+                  "type": "string"
+                },
+                "whyNotRelevant": {
+                  "type": "string"
+                },
+                "overallRelevance": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "outletName",
+                "outletUrl",
+                "outletDomain",
+                "relevanceScore",
+                "whyRelevant",
+                "whyNotRelevant",
+                "overallRelevance"
+              ]
+            }
+          },
+          "searchQueries": {
+            "type": "number"
+          },
+          "tokensUsed": {
+            "type": "object",
+            "properties": {
+              "queryGeneration": {
+                "type": "number"
+              },
+              "scoring": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "queryGeneration",
+              "scoring"
+            ]
+          }
+        },
+        "required": [
+          "discoveredCount",
+          "outlets",
+          "searchQueries",
+          "tokensUsed"
+        ]
+      },
       "HealthResponse": {
         "type": "object",
         "properties": {
@@ -776,6 +890,88 @@
         "responses": {
           "200": {
             "description": "Search results"
+          }
+        }
+      }
+    },
+    "/outlets/discover": {
+      "post": {
+        "summary": "Discover relevant outlets via Google search + LLM scoring",
+        "description": "Takes a brand brief, generates search queries via LLM, searches Google via google-service, scores results for relevance via LLM, and bulk upserts discovered outlets into the database.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscoverOutlets"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "No outlets found (empty results)"
+          },
+          "201": {
+            "description": "Outlets discovered and saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoverOutletsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Upstream service error (chat-service or google-service)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
