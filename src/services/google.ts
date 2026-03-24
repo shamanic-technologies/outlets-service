@@ -32,22 +32,30 @@ export interface BatchSearchResponse {
   }>;
 }
 
+function buildHeaders(headers: { orgId: string; userId: string; runId: string; featureSlug?: string }): Record<string, string> {
+  const h: Record<string, string> = {
+    "Content-Type": "application/json",
+    "x-api-key": config.googleServiceApiKey,
+    "x-org-id": headers.orgId,
+    "x-user-id": headers.userId,
+    "x-run-id": headers.runId,
+  };
+  if (headers.featureSlug) {
+    h["x-feature-slug"] = headers.featureSlug;
+  }
+  return h;
+}
+
 async function searchSingle(
   query: string,
   type: "web" | "news",
-  headers: { orgId: string; userId: string; runId: string },
+  headers: { orgId: string; userId: string; runId: string; featureSlug?: string },
   options?: { num?: number; gl?: string; hl?: string }
 ): Promise<SearchResponse> {
   const endpoint = type === "news" ? "/search/news" : "/search/web";
   const res = await fetch(`${config.googleServiceUrl}${endpoint}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": config.googleServiceApiKey,
-      "x-org-id": headers.orgId,
-      "x-user-id": headers.userId,
-      "x-run-id": headers.runId,
-    },
+    headers: buildHeaders(headers),
     body: JSON.stringify({
       query,
       type,
@@ -67,17 +75,11 @@ async function searchSingle(
 
 export async function searchBatch(
   req: BatchSearchRequest,
-  headers: { orgId: string; userId: string; runId: string }
+  headers: { orgId: string; userId: string; runId: string; featureSlug?: string }
 ): Promise<BatchSearchResponse> {
   const res = await fetch(`${config.googleServiceUrl}/search/batch`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": config.googleServiceApiKey,
-      "x-org-id": headers.orgId,
-      "x-user-id": headers.userId,
-      "x-run-id": headers.runId,
-    },
+    headers: buildHeaders(headers),
     body: JSON.stringify(req),
   });
 

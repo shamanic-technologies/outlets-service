@@ -711,6 +711,79 @@ describe("Request context headers", () => {
 });
 
 // ========================
+// Feature slug header
+// ========================
+describe("x-feature-slug header", () => {
+  it("accepts requests with x-feature-slug and stores it in orgContext", async () => {
+    const outletRow = {
+      id: "11111111-1111-1111-1111-111111111111",
+      outlet_name: "TechCrunch",
+      outlet_url: "https://techcrunch.com",
+      outlet_domain: "techcrunch.com",
+      status: null,
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+    };
+
+    mockQuery
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({ rows: [outletRow] }) // INSERT press_outlets
+      .mockResolvedValueOnce({ rows: [] }) // INSERT campaign_outlets
+      .mockResolvedValueOnce({}); // COMMIT
+
+    const res = await withIdentity(request(app).post("/outlets"))
+      .set("x-feature-slug", "my-feature")
+      .send({
+        outletName: "TechCrunch",
+        outletUrl: "https://techcrunch.com",
+        outletDomain: "techcrunch.com",
+        campaignId: "22222222-2222-2222-2222-222222222222",
+        whyRelevant: "Top tech publication",
+        whyNotRelevant: "Might be too competitive",
+        relevanceScore: 85,
+      });
+
+    expect(res.status).toBe(201);
+    // Verify feature_slug was passed to campaign_outlets INSERT (3rd query, index 2)
+    const campaignOutletsCall = mockQuery.mock.calls[2];
+    expect(campaignOutletsCall[1]).toContain("my-feature");
+  });
+
+  it("works without x-feature-slug (optional)", async () => {
+    const outletRow = {
+      id: "11111111-1111-1111-1111-111111111111",
+      outlet_name: "TechCrunch",
+      outlet_url: "https://techcrunch.com",
+      outlet_domain: "techcrunch.com",
+      status: null,
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+    };
+
+    mockQuery
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({ rows: [outletRow] }) // INSERT press_outlets
+      .mockResolvedValueOnce({ rows: [] }) // INSERT campaign_outlets
+      .mockResolvedValueOnce({}); // COMMIT
+
+    const res = await withIdentity(request(app).post("/outlets")).send({
+      outletName: "TechCrunch",
+      outletUrl: "https://techcrunch.com",
+      outletDomain: "techcrunch.com",
+      campaignId: "22222222-2222-2222-2222-222222222222",
+      whyRelevant: "Top tech publication",
+      whyNotRelevant: "Might be too competitive",
+      relevanceScore: 85,
+    });
+
+    expect(res.status).toBe(201);
+    // Verify feature_slug was passed as null
+    const campaignOutletsCall = mockQuery.mock.calls[2];
+    expect(campaignOutletsCall[1]).toContain(null);
+  });
+});
+
+// ========================
 // Validation
 // ========================
 describe("Validation", () => {

@@ -18,17 +18,21 @@ export interface CompleteResponse {
 
 export async function chatComplete(
   req: CompleteRequest,
-  headers: { orgId: string; userId: string; runId: string }
+  headers: { orgId: string; userId: string; runId: string; featureSlug?: string }
 ): Promise<CompleteResponse> {
+  const reqHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+    "x-api-key": config.chatServiceApiKey,
+    "x-org-id": headers.orgId,
+    "x-user-id": headers.userId,
+    "x-run-id": headers.runId,
+  };
+  if (headers.featureSlug) {
+    reqHeaders["x-feature-slug"] = headers.featureSlug;
+  }
   const res = await fetch(`${config.chatServiceUrl}/complete`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": config.chatServiceApiKey,
-      "x-org-id": headers.orgId,
-      "x-user-id": headers.userId,
-      "x-run-id": headers.runId,
-    },
+    headers: reqHeaders,
     body: JSON.stringify(req),
   });
 

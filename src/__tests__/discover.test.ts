@@ -304,4 +304,30 @@ describe("POST /outlets/discover", () => {
       runId: RUN_ID,
     });
   });
+
+  it("propagates x-feature-slug to downstream services", async () => {
+    mockChatComplete.mockResolvedValueOnce(llmQueriesResponse);
+    mockSearchBatch.mockResolvedValueOnce(googleBatchResponse);
+    mockChatComplete.mockResolvedValueOnce({
+      content: "",
+      json: { outlets: [] },
+      tokensInput: 100,
+      tokensOutput: 20,
+      model: "claude-sonnet-4-6",
+    });
+
+    await withIdentity(
+      request(app).post("/outlets/discover")
+    )
+      .set("x-feature-slug", "discover-feature")
+      .send(validDiscoverBody);
+
+    // Check feature slug passed to chatComplete
+    const chatHeaders = mockChatComplete.mock.calls[0][1];
+    expect(chatHeaders.featureSlug).toBe("discover-feature");
+
+    // Check feature slug passed to searchBatch
+    const googleHeaders = mockSearchBatch.mock.calls[0][1];
+    expect(googleHeaders.featureSlug).toBe("discover-feature");
+  });
 });

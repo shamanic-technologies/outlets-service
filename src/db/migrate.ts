@@ -70,6 +70,11 @@ CREATE TABLE IF NOT EXISTS campaigns_categories_outlets (
   PRIMARY KEY (campaign_id, category_id, outlet_id)
 );
 
+-- Add feature_slug columns
+ALTER TABLE campaign_outlets ADD COLUMN IF NOT EXISTS feature_slug TEXT;
+ALTER TABLE press_categories ADD COLUMN IF NOT EXISTS feature_slug TEXT;
+ALTER TABLE campaigns_categories_outlets ADD COLUMN IF NOT EXISTS feature_slug TEXT;
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_campaign_outlets_campaign ON campaign_outlets(campaign_id);
 CREATE INDEX IF NOT EXISTS idx_campaign_outlets_outlet ON campaign_outlets(outlet_id);
