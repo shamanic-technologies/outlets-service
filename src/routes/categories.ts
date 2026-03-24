@@ -17,11 +17,12 @@ router.post(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const b = req.body;
+      const featureSlug = req.orgContext?.featureSlug || null;
       const result = await pool.query(
-        `INSERT INTO press_categories (campaign_id, category_name, scope, region, example_outlets, why_relevant, why_not_relevant, relevance_score)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        `INSERT INTO press_categories (campaign_id, category_name, scope, region, example_outlets, why_relevant, why_not_relevant, relevance_score, feature_slug)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          RETURNING *`,
-        [b.campaignId, b.categoryName, b.scope || null, b.region || null, b.exampleOutlets || null, b.whyRelevant, b.whyNotRelevant, b.relevanceScore]
+        [b.campaignId, b.categoryName, b.scope || null, b.region || null, b.exampleOutlets || null, b.whyRelevant, b.whyNotRelevant, b.relevanceScore, featureSlug]
       );
 
       const r = result.rows[0];

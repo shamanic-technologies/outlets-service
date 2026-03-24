@@ -4,6 +4,7 @@ export interface OrgContext {
   orgId: string;
   userId: string;
   runId: string;
+  featureSlug?: string;
 }
 
 declare global {
@@ -28,12 +29,13 @@ export function extractOrgContext(
   const orgId = req.headers["x-org-id"] as string | undefined;
   const userId = req.headers["x-user-id"] as string | undefined;
   const runId = req.headers["x-run-id"] as string | undefined;
+  const featureSlug = req.headers["x-feature-slug"] as string | undefined;
 
   if (!orgId || !userId || !runId) {
     res.status(400).json({ error: "x-org-id, x-user-id, and x-run-id headers are required" });
     return;
   }
 
-  req.orgContext = { orgId, userId, runId };
+  req.orgContext = { orgId, userId, runId, featureSlug };
   next();
 }

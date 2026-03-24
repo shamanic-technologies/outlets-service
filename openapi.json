@@ -501,6 +501,15 @@
               "format": "uuid"
             },
             "description": "Run ID (caller's run from runs-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
           }
         ],
         "requestBody": {
@@ -560,6 +569,15 @@
               "format": "uuid"
             },
             "description": "Run ID (caller's run from runs-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
           },
           {
             "in": "query",
@@ -647,6 +665,15 @@
               "format": "uuid"
             },
             "description": "Run ID (caller's run from runs-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
           }
         ],
         "responses": {
@@ -699,6 +726,15 @@
               "format": "uuid"
             },
             "description": "Run ID (caller's run from runs-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
           }
         ],
         "requestBody": {
@@ -771,6 +807,15 @@
               "format": "uuid"
             },
             "description": "Run ID (caller's run from runs-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
           }
         ],
         "requestBody": {
@@ -825,6 +870,15 @@
               "format": "uuid"
             },
             "description": "Run ID (caller's run from runs-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
           }
         ],
         "requestBody": {
@@ -876,6 +930,15 @@
               "format": "uuid"
             },
             "description": "Run ID (caller's run from runs-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
           }
         ],
         "requestBody": {
@@ -928,6 +991,15 @@
               "format": "uuid"
             },
             "description": "Run ID (caller's run from runs-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
           }
         ],
         "requestBody": {
@@ -1011,6 +1083,15 @@
             "description": "Run ID (caller's run from runs-service)"
           },
           {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
+          },
+          {
             "in": "query",
             "name": "campaignId",
             "schema": {
@@ -1059,6 +1140,15 @@
               "format": "uuid"
             },
             "description": "Run ID (caller's run from runs-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
           }
         ],
         "responses": {
@@ -1101,6 +1191,15 @@
               "format": "uuid"
             },
             "description": "Run ID (caller's run from runs-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
           }
         ],
         "responses": {
@@ -1143,6 +1242,15 @@
               "format": "uuid"
             },
             "description": "Run ID (caller's run from runs-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
           }
         ],
         "responses": {
@@ -1185,6 +1293,15 @@
               "format": "uuid"
             },
             "description": "Run ID (caller's run from runs-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
           }
         ],
         "requestBody": {
@@ -1234,6 +1351,15 @@
               "format": "uuid"
             },
             "description": "Run ID (caller's run from runs-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
           },
           {
             "in": "query",
@@ -1294,6 +1420,15 @@
               "format": "uuid"
             },
             "description": "Run ID (caller's run from runs-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
           }
         ],
         "requestBody": {
@@ -1357,6 +1492,15 @@
               "format": "uuid"
             },
             "description": "Run ID (caller's run from runs-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
           }
         ],
         "requestBody": {
@@ -1413,6 +1557,15 @@
             "description": "Run ID (caller's run from runs-service)"
           },
           {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
+          },
+          {
             "in": "query",
             "name": "ids",
             "required": true,
@@ -1462,6 +1615,15 @@
               "format": "uuid"
             },
             "description": "Run ID (caller's run from runs-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
           },
           {
             "in": "path",

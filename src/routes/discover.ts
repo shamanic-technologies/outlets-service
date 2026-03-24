@@ -140,6 +140,7 @@ router.post(
         return;
       }
 
+      const featureSlug = ctx.featureSlug || null;
       const client = await pool.connect();
       const saved: Array<{
         id: string;
@@ -171,13 +172,14 @@ router.post(
           const outlet = outletResult.rows[0];
 
           await client.query(
-            `INSERT INTO campaign_outlets (campaign_id, outlet_id, why_relevant, why_not_relevant, relevance_score, status, overal_relevance)
-             VALUES ($1, $2, $3, $4, $5, 'open', $6)
+            `INSERT INTO campaign_outlets (campaign_id, outlet_id, why_relevant, why_not_relevant, relevance_score, status, overal_relevance, feature_slug)
+             VALUES ($1, $2, $3, $4, $5, 'open', $6, $7)
              ON CONFLICT (campaign_id, outlet_id)
              DO UPDATE SET why_relevant = EXCLUDED.why_relevant, why_not_relevant = EXCLUDED.why_not_relevant,
                relevance_score = EXCLUDED.relevance_score, overal_relevance = EXCLUDED.overal_relevance,
+               feature_slug = EXCLUDED.feature_slug,
                updated_at = CURRENT_TIMESTAMP`,
-            [body.campaignId, outlet.id, o.whyRelevant, o.whyNotRelevant, o.relevanceScore, o.overallRelevance]
+            [body.campaignId, outlet.id, o.whyRelevant, o.whyNotRelevant, o.relevanceScore, o.overallRelevance, featureSlug]
           );
 
           saved.push({

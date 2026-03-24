@@ -23,6 +23,7 @@ const orgContextHeaders = [
   { in: "header", name: "x-org-id", required: true, schema: { type: "string", format: "uuid" }, description: "Organization ID (from client-service)" },
   { in: "header", name: "x-user-id", required: true, schema: { type: "string", format: "uuid" }, description: "User ID (from client-service)" },
   { in: "header", name: "x-run-id", required: true, schema: { type: "string", format: "uuid" }, description: "Run ID (caller's run from runs-service)" },
+  { in: "header", name: "x-feature-slug", required: false, schema: { type: "string" }, description: "Feature slug for tracking (propagated downstream)" },
 ];
 
 const spec = {

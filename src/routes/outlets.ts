@@ -29,6 +29,7 @@ router.post(
     try {
       const b = req.body;
       const domain = b.outletDomain || extractDomain(b.outletUrl);
+      const featureSlug = req.orgContext?.featureSlug || null;
 
       const client = await pool.connect();
       try {
@@ -47,14 +48,15 @@ router.post(
 
         // Upsert campaign_outlets
         await client.query(
-          `INSERT INTO campaign_outlets (campaign_id, outlet_id, why_relevant, why_not_relevant, relevance_score, status, overal_relevance, relevance_rationale)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          `INSERT INTO campaign_outlets (campaign_id, outlet_id, why_relevant, why_not_relevant, relevance_score, status, overal_relevance, relevance_rationale, feature_slug)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
            ON CONFLICT (campaign_id, outlet_id)
            DO UPDATE SET why_relevant = EXCLUDED.why_relevant, why_not_relevant = EXCLUDED.why_not_relevant,
              relevance_score = EXCLUDED.relevance_score, status = EXCLUDED.status,
              overal_relevance = EXCLUDED.overal_relevance, relevance_rationale = EXCLUDED.relevance_rationale,
+             feature_slug = EXCLUDED.feature_slug,
              updated_at = CURRENT_TIMESTAMP`,
-          [b.campaignId, outlet.id, b.whyRelevant, b.whyNotRelevant, b.relevanceScore, b.status || "open", b.overalRelevance || null, b.relevanceRationale || null]
+          [b.campaignId, outlet.id, b.whyRelevant, b.whyNotRelevant, b.relevanceScore, b.status || "open", b.overalRelevance || null, b.relevanceRationale || null, featureSlug]
         );
 
         await client.query("COMMIT");
@@ -277,6 +279,7 @@ router.post(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const { outlets } = req.body;
+      const featureSlug = req.orgContext?.featureSlug || null;
       const client = await pool.connect();
       const results: any[] = [];
 
@@ -297,14 +300,15 @@ router.post(
           const outlet = outletResult.rows[0];
 
           await client.query(
-            `INSERT INTO campaign_outlets (campaign_id, outlet_id, why_relevant, why_not_relevant, relevance_score, status, overal_relevance, relevance_rationale)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            `INSERT INTO campaign_outlets (campaign_id, outlet_id, why_relevant, why_not_relevant, relevance_score, status, overal_relevance, relevance_rationale, feature_slug)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
              ON CONFLICT (campaign_id, outlet_id)
              DO UPDATE SET why_relevant = EXCLUDED.why_relevant, why_not_relevant = EXCLUDED.why_not_relevant,
                relevance_score = EXCLUDED.relevance_score, status = EXCLUDED.status,
                overal_relevance = EXCLUDED.overal_relevance, relevance_rationale = EXCLUDED.relevance_rationale,
+               feature_slug = EXCLUDED.feature_slug,
                updated_at = CURRENT_TIMESTAMP`,
-            [b.campaignId, outlet.id, b.whyRelevant, b.whyNotRelevant, b.relevanceScore, b.status || "open", b.overalRelevance || null, b.relevanceRationale || null]
+            [b.campaignId, outlet.id, b.whyRelevant, b.whyNotRelevant, b.relevanceScore, b.status || "open", b.overalRelevance || null, b.relevanceRationale || null, featureSlug]
           );
 
           results.push({
