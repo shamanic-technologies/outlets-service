@@ -6,6 +6,7 @@ import categoriesRouter from "./routes/categories";
 import viewsRouter from "./routes/views";
 import internalRouter from "./routes/internal";
 import discoverRouter from "./routes/discover";
+import statsRouter from "./routes/stats";
 import path from "path";
 import fs from "fs";
 
@@ -33,6 +34,9 @@ export function createApp() {
 
   // View routes (must be before /outlets/:id to avoid path conflicts)
   app.use("/outlets", viewsRouter);
+
+  // Stats route (must be before /outlets/:id to avoid path conflicts)
+  app.use("/outlets", statsRouter);
 
   // Discovery route (must be before /outlets/:id to avoid path conflicts)
   app.use("/outlets", discoverRouter);

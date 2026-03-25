@@ -19,6 +19,8 @@ const discoverSchema = z.object({
   targetGeo: z.string().optional(),
   targetAudience: z.string().optional(),
   angles: z.array(z.string()).optional(),
+  brandId: z.string().uuid().optional(),
+  workflowName: z.string().optional(),
 });
 
 export type DiscoverRequest = z.infer<typeof discoverSchema>;
@@ -141,6 +143,7 @@ router.post(
       }
 
       const featureSlug = ctx.featureSlug || null;
+      const searchQueryCount = parsedQueries.data.queries.length;
       const client = await pool.connect();
       const saved: Array<{
         id: string;
@@ -156,7 +159,8 @@ router.post(
       try {
         await client.query("BEGIN");
 
-        for (const o of outlets) {
+        for (let i = 0; i < outlets.length; i++) {
+          const o = outlets[i];
           const domain = extractDomain(o.url);
           // Normalize URL — ensure it has a protocol
           const url = o.url.startsWith("http") ? o.url : `https://${o.url}`;
@@ -171,15 +175,18 @@ router.post(
           );
           const outlet = outletResult.rows[0];
 
+          // Only store search_queries_used on the first outlet to avoid double-counting in stats
           await client.query(
-            `INSERT INTO campaign_outlets (campaign_id, outlet_id, why_relevant, why_not_relevant, relevance_score, status, overal_relevance, feature_slug)
-             VALUES ($1, $2, $3, $4, $5, 'open', $6, $7)
+            `INSERT INTO campaign_outlets (campaign_id, outlet_id, why_relevant, why_not_relevant, relevance_score, status, overal_relevance, feature_slug, org_id, brand_id, workflow_name, search_queries_used)
+             VALUES ($1, $2, $3, $4, $5, 'open', $6, $7, $8, $9, $10, $11)
              ON CONFLICT (campaign_id, outlet_id)
              DO UPDATE SET why_relevant = EXCLUDED.why_relevant, why_not_relevant = EXCLUDED.why_not_relevant,
                relevance_score = EXCLUDED.relevance_score, overal_relevance = EXCLUDED.overal_relevance,
-               feature_slug = EXCLUDED.feature_slug,
+               feature_slug = EXCLUDED.feature_slug, org_id = EXCLUDED.org_id,
+               brand_id = EXCLUDED.brand_id, workflow_name = EXCLUDED.workflow_name,
+               search_queries_used = EXCLUDED.search_queries_used,
                updated_at = CURRENT_TIMESTAMP`,
-            [body.campaignId, outlet.id, o.whyRelevant, o.whyNotRelevant, o.relevanceScore, o.overallRelevance, featureSlug]
+            [body.campaignId, outlet.id, o.whyRelevant, o.whyNotRelevant, o.relevanceScore, o.overallRelevance, featureSlug, ctx.orgId, body.brandId || null, body.workflowName || null, i === 0 ? searchQueryCount : 0]
           );
 
           saved.push({

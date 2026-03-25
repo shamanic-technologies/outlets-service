@@ -75,6 +75,16 @@ ALTER TABLE campaign_outlets ADD COLUMN IF NOT EXISTS feature_slug TEXT;
 ALTER TABLE press_categories ADD COLUMN IF NOT EXISTS feature_slug TEXT;
 ALTER TABLE campaigns_categories_outlets ADD COLUMN IF NOT EXISTS feature_slug TEXT;
 
+-- Org tracking and stats support columns
+ALTER TABLE campaign_outlets ADD COLUMN IF NOT EXISTS org_id TEXT;
+ALTER TABLE campaign_outlets ADD COLUMN IF NOT EXISTS brand_id UUID;
+ALTER TABLE campaign_outlets ADD COLUMN IF NOT EXISTS workflow_name TEXT;
+ALTER TABLE campaign_outlets ADD COLUMN IF NOT EXISTS search_queries_used INT NOT NULL DEFAULT 0;
+
+-- Indexes for stats filtering
+CREATE INDEX IF NOT EXISTS idx_campaign_outlets_brand ON campaign_outlets(brand_id);
+CREATE INDEX IF NOT EXISTS idx_campaign_outlets_workflow ON campaign_outlets(workflow_name);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_campaign_outlets_campaign ON campaign_outlets(campaign_id);
 CREATE INDEX IF NOT EXISTS idx_campaign_outlets_outlet ON campaign_outlets(outlet_id);
