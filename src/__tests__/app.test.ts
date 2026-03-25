@@ -866,3 +866,175 @@ describe("Validation", () => {
     expect(res.status).toBe(400);
   });
 });
+
+// ========================
+// Stats
+// ========================
+describe("GET /outlets/stats", () => {
+  it("returns flat stats without groupBy", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          outlets_discovered: 47,
+          avg_relevance_score: "72.35",
+          search_queries_used: 15,
+        },
+      ],
+    });
+
+    const res = await withIdentity(request(app).get("/outlets/stats")).query({
+      campaignId: "22222222-2222-2222-2222-222222222222",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      outletsDiscovered: 47,
+      avgRelevanceScore: 72.35,
+      searchQueriesUsed: 15,
+    });
+
+    // Verify org_id filter is applied
+    const sql = mockQuery.mock.calls[0][0];
+    expect(sql).toContain("co.org_id = $1");
+    expect(mockQuery.mock.calls[0][1]).toContain(ORG_ID);
+  });
+
+  it("returns grouped stats with groupBy=workflowName", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          group_key: "outlet-discovery-v3",
+          outlets_discovered: 47,
+          avg_relevance_score: "72.00",
+          search_queries_used: 15,
+        },
+        {
+          group_key: "outlet-discovery-v2",
+          outlets_discovered: 20,
+          avg_relevance_score: "65.50",
+          search_queries_used: 8,
+        },
+      ],
+    });
+
+    const res = await withIdentity(request(app).get("/outlets/stats")).query({
+      groupBy: "workflowName",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.groups).toHaveLength(2);
+    expect(res.body.groups[0]).toEqual({
+      key: "outlet-discovery-v3",
+      outletsDiscovered: 47,
+      avgRelevanceScore: 72,
+      searchQueriesUsed: 15,
+    });
+  });
+
+  it("returns grouped stats with groupBy=brandId", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          group_key: "dddddddd-dddd-dddd-dddd-dddddddddddd",
+          outlets_discovered: 30,
+          avg_relevance_score: "80.00",
+          search_queries_used: 10,
+        },
+      ],
+    });
+
+    const res = await withIdentity(request(app).get("/outlets/stats")).query({
+      groupBy: "brandId",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.groups).toHaveLength(1);
+    expect(res.body.groups[0].key).toBe(
+      "dddddddd-dddd-dddd-dddd-dddddddddddd"
+    );
+  });
+
+  it("returns grouped stats with groupBy=campaignId", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          group_key: "22222222-2222-2222-2222-222222222222",
+          outlets_discovered: 47,
+          avg_relevance_score: "72.00",
+          search_queries_used: 15,
+        },
+      ],
+    });
+
+    const res = await withIdentity(request(app).get("/outlets/stats")).query({
+      groupBy: "campaignId",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.groups).toHaveLength(1);
+  });
+
+  it("returns zeros when no data matches", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          outlets_discovered: 0,
+          avg_relevance_score: null,
+          search_queries_used: null,
+        },
+      ],
+    });
+
+    const res = await withIdentity(request(app).get("/outlets/stats"));
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      outletsDiscovered: 0,
+      avgRelevanceScore: 0,
+      searchQueriesUsed: 0,
+    });
+  });
+
+  it("filters by brandId, campaignId, and workflowName simultaneously", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          outlets_discovered: 12,
+          avg_relevance_score: "88.00",
+          search_queries_used: 5,
+        },
+      ],
+    });
+
+    const res = await withIdentity(request(app).get("/outlets/stats")).query({
+      brandId: "dddddddd-dddd-dddd-dddd-dddddddddddd",
+      campaignId: "22222222-2222-2222-2222-222222222222",
+      workflowName: "outlet-discovery-v3",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.outletsDiscovered).toBe(12);
+
+    // Verify all filters are applied
+    const sql = mockQuery.mock.calls[0][0];
+    expect(sql).toContain("co.brand_id");
+    expect(sql).toContain("co.campaign_id");
+    expect(sql).toContain("co.workflow_name");
+  });
+
+  it("rejects invalid groupBy value", async () => {
+    const res = await withIdentity(request(app).get("/outlets/stats")).query({
+      groupBy: "invalidField",
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects invalid brandId format", async () => {
+    const res = await withIdentity(request(app).get("/outlets/stats")).query({
+      brandId: "not-a-uuid",
+    });
+
+    expect(res.status).toBe(400);
+  });
+});

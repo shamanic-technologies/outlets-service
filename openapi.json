@@ -61,6 +61,13 @@
               "denied"
             ],
             "default": "open"
+          },
+          "brandId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workflowName": {
+            "type": "string"
           }
         },
         "required": [
@@ -175,6 +182,13 @@
                     "denied"
                   ],
                   "default": "open"
+                },
+                "brandId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "workflowName": {
+                  "type": "string"
                 }
               },
               "required": [
@@ -522,6 +536,59 @@
           "outletStatus",
           "overalRelevance",
           "relevanceRationale"
+        ]
+      },
+      "StatsResponse": {
+        "type": "object",
+        "properties": {
+          "outletsDiscovered": {
+            "type": "number"
+          },
+          "avgRelevanceScore": {
+            "type": "number"
+          },
+          "searchQueriesUsed": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "outletsDiscovered",
+          "avgRelevanceScore",
+          "searchQueriesUsed"
+        ]
+      },
+      "StatsGroupedResponse": {
+        "type": "object",
+        "properties": {
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "outletsDiscovered": {
+                  "type": "number"
+                },
+                "avgRelevanceScore": {
+                  "type": "number"
+                },
+                "searchQueriesUsed": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "key",
+                "outletsDiscovered",
+                "avgRelevanceScore",
+                "searchQueriesUsed"
+              ]
+            }
+          }
+        },
+        "required": [
+          "groups"
         ]
       },
       "HealthResponse": {
@@ -1063,6 +1130,111 @@
         "responses": {
           "200": {
             "description": "Search results"
+          }
+        }
+      }
+    },
+    "/outlets/stats": {
+      "get": {
+        "summary": "Aggregated outlet discovery metrics",
+        "description": "Returns outlet discovery stats (count, avg relevance, search queries used). Supports filtering by brandId, campaignId, workflowName and optional groupBy.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
+          },
+          {
+            "in": "query",
+            "name": "brandId",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Filter by brand ID"
+          },
+          {
+            "in": "query",
+            "name": "campaignId",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Filter by campaign ID"
+          },
+          {
+            "in": "query",
+            "name": "workflowName",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by workflow name"
+          },
+          {
+            "in": "query",
+            "name": "groupBy",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "workflowName",
+                "brandId",
+                "campaignId"
+              ]
+            },
+            "description": "Group results by this dimension"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stats (flat or grouped)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/StatsResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/StatsGroupedResponse"
+                    }
+                  ]
+                }
+              }
+            }
           }
         }
       }

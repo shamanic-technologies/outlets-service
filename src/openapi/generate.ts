@@ -14,6 +14,8 @@ import {
   errorResponseSchema,
   outletResponseSchema,
   campaignOutletResponseSchema,
+  statsResponseSchema,
+  statsGroupedResponseSchema,
 } from "../schemas";
 import { zodToJsonSchema } from "./zod-to-json";
 
@@ -50,6 +52,8 @@ const spec = {
       DiscoverOutletsResponse: zodToJsonSchema(discoverOutletsResponseSchema),
       OutletResponse: zodToJsonSchema(outletResponseSchema),
       CampaignOutletResponse: zodToJsonSchema(campaignOutletResponseSchema),
+      StatsResponse: zodToJsonSchema(statsResponseSchema),
+      StatsGroupedResponse: zodToJsonSchema(statsGroupedResponseSchema),
       HealthResponse: zodToJsonSchema(healthResponseSchema),
       ErrorResponse: zodToJsonSchema(errorResponseSchema),
     },
@@ -146,6 +150,31 @@ const spec = {
         requestBody: { content: { "application/json": { schema: ref("SearchOutlets") } } },
         responses: {
           "200": { description: "Search results" },
+        },
+      },
+    },
+    "/outlets/stats": {
+      get: {
+        summary: "Aggregated outlet discovery metrics",
+        description: "Returns outlet discovery stats (count, avg relevance, search queries used). Supports filtering by brandId, campaignId, workflowName and optional groupBy.",
+        parameters: [
+          ...orgContextHeaders,
+          { in: "query", name: "brandId", schema: { type: "string", format: "uuid" }, description: "Filter by brand ID" },
+          { in: "query", name: "campaignId", schema: { type: "string", format: "uuid" }, description: "Filter by campaign ID" },
+          { in: "query", name: "workflowName", schema: { type: "string" }, description: "Filter by workflow name" },
+          { in: "query", name: "groupBy", schema: { type: "string", enum: ["workflowName", "brandId", "campaignId"] }, description: "Group results by this dimension" },
+        ],
+        responses: {
+          "200": {
+            description: "Stats (flat or grouped)",
+            content: {
+              "application/json": {
+                schema: {
+                  oneOf: [ref("StatsResponse"), ref("StatsGroupedResponse")],
+                },
+              },
+            },
+          },
         },
       },
     },

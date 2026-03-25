@@ -22,6 +22,8 @@ export const createOutletSchema = z.object({
   overalRelevance: z.string().optional(),
   relevanceRationale: z.string().optional(),
   status: outletStatusEnum.optional().default("open"),
+  brandId: z.string().uuid().optional(),
+  workflowName: z.string().optional(),
 });
 
 export const updateOutletSchema = z.object({
@@ -133,6 +135,34 @@ export const errorResponseSchema = z.object({
   error: z.string(),
 });
 
+// --- Stats ---
+
+const statsGroupByEnum = z.enum(["workflowName", "brandId", "campaignId"]);
+
+export const statsQuerySchema = z.object({
+  brandId: z.string().uuid().optional(),
+  campaignId: z.string().uuid().optional(),
+  workflowName: z.string().optional(),
+  groupBy: statsGroupByEnum.optional(),
+});
+
+export const statsResponseSchema = z.object({
+  outletsDiscovered: z.number(),
+  avgRelevanceScore: z.number(),
+  searchQueriesUsed: z.number(),
+});
+
+export const statsGroupedResponseSchema = z.object({
+  groups: z.array(
+    z.object({
+      key: z.string(),
+      outletsDiscovered: z.number(),
+      avgRelevanceScore: z.number(),
+      searchQueriesUsed: z.number(),
+    })
+  ),
+});
+
 // --- Discover ---
 
 export const discoverOutletsSchema = z.object({
@@ -175,3 +205,4 @@ export type BulkCreateOutlets = z.infer<typeof bulkCreateOutletsSchema>;
 export type SearchOutlets = z.infer<typeof searchOutletsSchema>;
 export type CreateCategory = z.infer<typeof createCategorySchema>;
 export type UpdateCategory = z.infer<typeof updateCategorySchema>;
+export type StatsQuery = z.infer<typeof statsQuerySchema>;
