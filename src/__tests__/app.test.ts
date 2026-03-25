@@ -583,6 +583,37 @@ describe("GET /internal/outlets/by-campaign/:campaignId", () => {
 });
 
 // ========================
+// OpenAPI spec response schemas
+// ========================
+describe("OpenAPI spec", () => {
+  it("documents response schema for /internal/outlets/by-campaign/{campaignId}", async () => {
+    const res = await request(app).get("/openapi.json");
+    if (res.status === 404) return; // spec not generated in test env
+    const spec = res.body;
+    const byCampaign = spec.paths["/internal/outlets/by-campaign/{campaignId}"]?.get;
+    expect(byCampaign).toBeDefined();
+    const schema = byCampaign.responses["200"].content["application/json"].schema;
+    expect(schema.properties.outlets.items.$ref).toBe("#/components/schemas/CampaignOutletResponse");
+    expect(spec.components.schemas.CampaignOutletResponse).toBeDefined();
+    expect(spec.components.schemas.CampaignOutletResponse.properties).toHaveProperty("id");
+    expect(spec.components.schemas.CampaignOutletResponse.properties).toHaveProperty("outletUrl");
+    expect(spec.components.schemas.CampaignOutletResponse.properties).toHaveProperty("outletName");
+    expect(spec.components.schemas.CampaignOutletResponse.properties).toHaveProperty("relevanceScore");
+  });
+
+  it("documents response schema for /internal/outlets/by-ids", async () => {
+    const res = await request(app).get("/openapi.json");
+    if (res.status === 404) return;
+    const spec = res.body;
+    const byIds = spec.paths["/internal/outlets/by-ids"]?.get;
+    expect(byIds).toBeDefined();
+    const schema = byIds.responses["200"].content["application/json"].schema;
+    expect(schema.properties.outlets.items.$ref).toBe("#/components/schemas/OutletResponse");
+    expect(spec.components.schemas.OutletResponse).toBeDefined();
+  });
+});
+
+// ========================
 // Auth middleware
 // ========================
 describe("API key auth", () => {
