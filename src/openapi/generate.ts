@@ -12,6 +12,8 @@ import {
   discoverOutletsResponseSchema,
   healthResponseSchema,
   errorResponseSchema,
+  outletResponseSchema,
+  campaignOutletResponseSchema,
 } from "../schemas";
 import { zodToJsonSchema } from "./zod-to-json";
 
@@ -46,6 +48,8 @@ const spec = {
       UpdateCategory: zodToJsonSchema(updateCategorySchema),
       DiscoverOutlets: zodToJsonSchema(discoverOutletsSchema),
       DiscoverOutletsResponse: zodToJsonSchema(discoverOutletsResponseSchema),
+      OutletResponse: zodToJsonSchema(outletResponseSchema),
+      CampaignOutletResponse: zodToJsonSchema(campaignOutletResponseSchema),
       HealthResponse: zodToJsonSchema(healthResponseSchema),
       ErrorResponse: zodToJsonSchema(errorResponseSchema),
     },
@@ -231,16 +235,42 @@ const spec = {
         summary: "Batch lookup outlets by IDs",
         parameters: [...orgContextHeaders, { in: "query", name: "ids", required: true, schema: { type: "string" }, description: "Comma-separated outlet IDs" }],
         responses: {
-          "200": { description: "Outlets found" },
+          "200": {
+            description: "Outlets found",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    outlets: { type: "array", items: ref("OutletResponse") },
+                  },
+                  required: ["outlets"],
+                },
+              },
+            },
+          },
         },
       },
     },
     "/internal/outlets/by-campaign/{campaignId}": {
       get: {
-        summary: "All outlets for a campaign",
+        summary: "All outlets for a campaign, sorted by relevance score descending",
         parameters: [...orgContextHeaders, { in: "path", name: "campaignId", required: true, schema: { type: "string", format: "uuid" } }],
         responses: {
-          "200": { description: "Campaign outlets" },
+          "200": {
+            description: "Campaign outlets sorted by relevance score (descending)",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    outlets: { type: "array", items: ref("CampaignOutletResponse") },
+                  },
+                  required: ["outlets"],
+                },
+              },
+            },
+          },
         },
       },
     },

@@ -414,6 +414,116 @@
           "tokensUsed"
         ]
       },
+      "OutletResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "outletName": {
+            "type": "string"
+          },
+          "outletUrl": {
+            "type": "string"
+          },
+          "outletDomain": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "outletName",
+          "outletUrl",
+          "outletDomain",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "CampaignOutletResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "outletName": {
+            "type": "string"
+          },
+          "outletUrl": {
+            "type": "string"
+          },
+          "outletDomain": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "campaignId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "whyRelevant": {
+            "type": "string"
+          },
+          "whyNotRelevant": {
+            "type": "string"
+          },
+          "relevanceScore": {
+            "type": "number"
+          },
+          "outletStatus": {
+            "type": "string",
+            "enum": [
+              "open",
+              "ended",
+              "denied"
+            ]
+          },
+          "overalRelevance": {
+            "type": "string",
+            "nullable": true
+          },
+          "relevanceRationale": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "outletName",
+          "outletUrl",
+          "outletDomain",
+          "status",
+          "createdAt",
+          "updatedAt",
+          "campaignId",
+          "whyRelevant",
+          "whyNotRelevant",
+          "relevanceScore",
+          "outletStatus",
+          "overalRelevance",
+          "relevanceRationale"
+        ]
+      },
       "HealthResponse": {
         "type": "object",
         "properties": {
@@ -1577,14 +1687,32 @@
         ],
         "responses": {
           "200": {
-            "description": "Outlets found"
+            "description": "Outlets found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "outlets": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/OutletResponse"
+                      }
+                    }
+                  },
+                  "required": [
+                    "outlets"
+                  ]
+                }
+              }
+            }
           }
         }
       }
     },
     "/internal/outlets/by-campaign/{campaignId}": {
       "get": {
-        "summary": "All outlets for a campaign",
+        "summary": "All outlets for a campaign, sorted by relevance score descending",
         "parameters": [
           {
             "in": "header",
@@ -1637,7 +1765,25 @@
         ],
         "responses": {
           "200": {
-            "description": "Campaign outlets"
+            "description": "Campaign outlets sorted by relevance score (descending)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "outlets": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CampaignOutletResponse"
+                      }
+                    }
+                  },
+                  "required": [
+                    "outlets"
+                  ]
+                }
+              }
+            }
           }
         }
       }
