@@ -1,5 +1,6 @@
 import { config } from "../config";
 import type { OrgContext } from "../middleware/org-context";
+import { buildServiceHeaders } from "./headers";
 
 export interface SearchResult {
   title: string;
@@ -33,21 +34,6 @@ export interface BatchSearchResponse {
   }>;
 }
 
-function buildHeaders(ctx: OrgContext): Record<string, string> {
-  const h: Record<string, string> = {
-    "Content-Type": "application/json",
-    "x-api-key": config.googleServiceApiKey,
-    "x-org-id": ctx.orgId,
-    "x-user-id": ctx.userId,
-    "x-run-id": ctx.runId,
-  };
-  if (ctx.featureSlug) h["x-feature-slug"] = ctx.featureSlug;
-  if (ctx.campaignId) h["x-campaign-id"] = ctx.campaignId;
-  if (ctx.brandId) h["x-brand-id"] = ctx.brandId;
-  if (ctx.workflowName) h["x-workflow-name"] = ctx.workflowName;
-  return h;
-}
-
 async function searchSingle(
   query: string,
   type: "web" | "news",
@@ -57,7 +43,7 @@ async function searchSingle(
   const endpoint = type === "news" ? "/search/news" : "/search/web";
   const res = await fetch(`${config.googleServiceUrl}${endpoint}`, {
     method: "POST",
-    headers: buildHeaders(ctx),
+    headers: buildServiceHeaders(config.googleServiceApiKey, ctx),
     body: JSON.stringify({
       query,
       type,
@@ -81,7 +67,7 @@ export async function searchBatch(
 ): Promise<BatchSearchResponse> {
   const res = await fetch(`${config.googleServiceUrl}/search/batch`, {
     method: "POST",
-    headers: buildHeaders(ctx),
+    headers: buildServiceHeaders(config.googleServiceApiKey, ctx),
     body: JSON.stringify(req),
   });
 
