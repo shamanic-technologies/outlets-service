@@ -31,26 +31,51 @@ vi.mock("../services/google", () => ({
   searchBatch: (...args: unknown[]) => mockSearchBatch(...args),
 }));
 
+// Mock brand service
+const mockGetBrand = vi.fn();
+const mockGetExtractedFields = vi.fn();
+vi.mock("../services/brand", async () => {
+  const actual = await vi.importActual("../services/brand");
+  return {
+    ...actual,
+    getBrand: (...args: unknown[]) => mockGetBrand(...args),
+    getExtractedFields: (...args: unknown[]) => mockGetExtractedFields(...args),
+  };
+});
+
 const ORG_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const USER_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 const RUN_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc";
 const CAMPAIGN_ID = "dddddddd-dddd-dddd-dddd-dddddddddddd";
 const BRAND_ID = "55555555-5555-5555-5555-555555555555";
 
-function withIdentity(req: request.Test): request.Test {
-  return req.set("x-org-id", ORG_ID).set("x-user-id", USER_ID).set("x-run-id", RUN_ID);
+function withHeaders(req: request.Test): request.Test {
+  return req
+    .set("x-org-id", ORG_ID)
+    .set("x-user-id", USER_ID)
+    .set("x-run-id", RUN_ID)
+    .set("x-campaign-id", CAMPAIGN_ID)
+    .set("x-brand-id", BRAND_ID);
 }
 
-const validDiscoverBody = {
-  campaignId: CAMPAIGN_ID,
-  brandId: BRAND_ID,
-  brandName: "Acme Corp",
-  brandDescription: "SaaS platform for HR automation",
-  industry: "HR Tech",
-  targetGeo: "US",
-  targetAudience: "HR directors",
-  angles: ["product launch"],
+const brandResponse = {
+  id: BRAND_ID,
+  name: "Acme Corp",
+  domain: "acme.com",
+  brandUrl: "https://acme.com",
+  elevatorPitch: null,
+  bio: null,
+  mission: null,
+  location: null,
+  categories: null,
 };
+
+const extractedFieldsResponse = [
+  { key: "elevator_pitch", value: "SaaS platform for HR automation", sourceUrls: ["https://acme.com"], extractedAt: "2026-03-01T00:00:00Z", expiresAt: null },
+  { key: "categories", value: "HR Tech", sourceUrls: ["https://acme.com"], extractedAt: "2026-03-01T00:00:00Z", expiresAt: null },
+  { key: "target_geo", value: "US", sourceUrls: null, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null },
+  { key: "target_audience", value: "HR directors", sourceUrls: null, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null },
+];
 
 const llmQueriesResponse = {
   content: "",
@@ -134,6 +159,8 @@ let app: Express;
 beforeEach(() => {
   vi.clearAllMocks();
   mockConnect.mockResolvedValue(undefined);
+  mockGetBrand.mockResolvedValue(brandResponse);
+  mockGetExtractedFields.mockResolvedValue(extractedFieldsResponse);
   app = createApp();
 });
 
@@ -156,9 +183,9 @@ describe("POST /outlets/discover", () => {
       .mockResolvedValueOnce({ rows: [] }) // campaign_outlets
       .mockResolvedValueOnce({}); // COMMIT
 
-    const res = await withIdentity(
+    const res = await withHeaders(
       request(app).post("/outlets/discover")
-    ).send(validDiscoverBody);
+    ).send({});
 
     expect(res.status).toBe(201);
     expect(res.body.discoveredCount).toBe(2);
@@ -169,41 +196,76 @@ describe("POST /outlets/discover", () => {
     expect(res.body.searchQueries).toBe(2);
     expect(res.body.tokensUsed).toBeDefined();
 
+    expect(mockGetBrand).toHaveBeenCalledTimes(1);
+    expect(mockGetBrand.mock.calls[0][0]).toBe(BRAND_ID);
+    expect(mockGetExtractedFields).toHaveBeenCalledTimes(1);
     expect(mockChatComplete).toHaveBeenCalledTimes(2);
     expect(mockSearchBatch).toHaveBeenCalledTimes(1);
     expect(mockSearchBatch.mock.calls[0][0].queries).toHaveLength(2);
   });
 
-  it("returns 400 for missing brandId", async () => {
-    const res = await withIdentity(
-      request(app).post("/outlets/discover")
-    ).send({
-      campaignId: CAMPAIGN_ID,
-      brandName: "Acme",
-      brandDescription: "SaaS",
-      industry: "Tech",
-    });
+  it("passes featureInput to LLM calls", async () => {
+    mockChatComplete
+      .mockResolvedValueOnce(llmQueriesResponse)
+      .mockResolvedValueOnce({ content: "", json: { outlets: [] }, tokensInput: 100, tokensOutput: 20, model: "claude-sonnet-4-6" });
+    mockSearchBatch.mockResolvedValueOnce(googleBatchResponse);
 
-    expect(res.status).toBe(400);
-    expect(res.body.error).toBe("Validation error");
+    await withHeaders(
+      request(app).post("/outlets/discover")
+    ).send({ featureInput: { customAngle: "AI in HR", targetRegion: "Europe" } });
+
+    // Verify featureInput is included in the LLM message
+    const queryGenMessage = mockChatComplete.mock.calls[0][0].message;
+    expect(queryGenMessage).toContain("Additional Context");
+    expect(queryGenMessage).toContain("AI in HR");
   });
 
-  it("returns 400 for invalid body", async () => {
-    const res = await withIdentity(
-      request(app).post("/outlets/discover")
-    ).send({ brandName: "Acme" }); // missing required fields
+  it("returns 400 when x-campaign-id header is missing", async () => {
+    const res = await request(app)
+      .post("/outlets/discover")
+      .set("x-org-id", ORG_ID)
+      .set("x-user-id", USER_ID)
+      .set("x-run-id", RUN_ID)
+      .set("x-brand-id", BRAND_ID)
+      .send({});
 
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe("Validation error");
+    expect(res.body.error).toContain("x-campaign-id");
+  });
+
+  it("returns 400 when x-brand-id header is missing", async () => {
+    const res = await request(app)
+      .post("/outlets/discover")
+      .set("x-org-id", ORG_ID)
+      .set("x-user-id", USER_ID)
+      .set("x-run-id", RUN_ID)
+      .set("x-campaign-id", CAMPAIGN_ID)
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("x-brand-id");
   });
 
   it("returns 400 without identity headers", async () => {
     const res = await request(app)
       .post("/outlets/discover")
-      .send(validDiscoverBody);
+      .send({});
 
     expect(res.status).toBe(400);
     expect(res.body.error).toContain("x-org-id");
+  });
+
+  it("returns 502 when brand-service is down", async () => {
+    mockGetBrand.mockRejectedValueOnce(
+      new Error("brand-service /brands/55555555-5555-5555-5555-555555555555 failed (503): Service Unavailable")
+    );
+
+    const res = await withHeaders(
+      request(app).post("/outlets/discover")
+    ).send({});
+
+    expect(res.status).toBe(502);
+    expect(res.body.error).toContain("brand-service");
   });
 
   it("returns 502 when LLM returns invalid query format", async () => {
@@ -215,9 +277,9 @@ describe("POST /outlets/discover", () => {
       model: "claude-sonnet-4-6",
     });
 
-    const res = await withIdentity(
+    const res = await withHeaders(
       request(app).post("/outlets/discover")
-    ).send(validDiscoverBody);
+    ).send({});
 
     expect(res.status).toBe(502);
     expect(res.body.error).toContain("search queries");
@@ -235,9 +297,9 @@ describe("POST /outlets/discover", () => {
       });
     mockSearchBatch.mockResolvedValueOnce(googleBatchResponse);
 
-    const res = await withIdentity(
+    const res = await withHeaders(
       request(app).post("/outlets/discover")
-    ).send(validDiscoverBody);
+    ).send({});
 
     expect(res.status).toBe(502);
     expect(res.body.error).toContain("score outlets");
@@ -248,9 +310,9 @@ describe("POST /outlets/discover", () => {
       new Error("chat-service /complete failed (503): Service Unavailable")
     );
 
-    const res = await withIdentity(
+    const res = await withHeaders(
       request(app).post("/outlets/discover")
-    ).send(validDiscoverBody);
+    ).send({});
 
     expect(res.status).toBe(502);
     expect(res.body.error).toContain("chat-service");
@@ -262,9 +324,9 @@ describe("POST /outlets/discover", () => {
       new Error("google-service /search/batch failed (503): Service Unavailable")
     );
 
-    const res = await withIdentity(
+    const res = await withHeaders(
       request(app).post("/outlets/discover")
-    ).send(validDiscoverBody);
+    ).send({});
 
     expect(res.status).toBe(502);
     expect(res.body.error).toContain("google-service");
@@ -282,16 +344,16 @@ describe("POST /outlets/discover", () => {
       });
     mockSearchBatch.mockResolvedValueOnce(googleBatchResponse);
 
-    const res = await withIdentity(
+    const res = await withHeaders(
       request(app).post("/outlets/discover")
-    ).send(validDiscoverBody);
+    ).send({});
 
     expect(res.status).toBe(200);
     expect(res.body.discoveredCount).toBe(0);
     expect(res.body.outlets).toEqual([]);
   });
 
-  it("passes correct headers to chat-service", async () => {
+  it("forwards all headers to downstream services", async () => {
     mockChatComplete.mockResolvedValueOnce(llmQueriesResponse);
     mockSearchBatch.mockResolvedValueOnce(googleBatchResponse);
     mockChatComplete.mockResolvedValueOnce({
@@ -302,39 +364,51 @@ describe("POST /outlets/discover", () => {
       model: "claude-sonnet-4-6",
     });
 
-    await withIdentity(
-      request(app).post("/outlets/discover")
-    ).send(validDiscoverBody);
-
-    const firstCallHeaders = mockChatComplete.mock.calls[0][1];
-    expect(firstCallHeaders).toEqual({
-      orgId: ORG_ID,
-      userId: USER_ID,
-      runId: RUN_ID,
-    });
-  });
-
-  it("propagates x-feature-slug to downstream services", async () => {
-    mockChatComplete.mockResolvedValueOnce(llmQueriesResponse);
-    mockSearchBatch.mockResolvedValueOnce(googleBatchResponse);
-    mockChatComplete.mockResolvedValueOnce({
-      content: "",
-      json: { outlets: [] },
-      tokensInput: 100,
-      tokensOutput: 20,
-      model: "claude-sonnet-4-6",
-    });
-
-    await withIdentity(
+    await withHeaders(
       request(app).post("/outlets/discover")
     )
       .set("x-feature-slug", "discover-feature")
-      .send(validDiscoverBody);
+      .set("x-workflow-name", "test-workflow")
+      .send({});
 
-    const chatHeaders = mockChatComplete.mock.calls[0][1];
-    expect(chatHeaders.featureSlug).toBe("discover-feature");
+    // Verify brand-service received full context
+    const brandCtx = mockGetBrand.mock.calls[0][1];
+    expect(brandCtx.orgId).toBe(ORG_ID);
+    expect(brandCtx.campaignId).toBe(CAMPAIGN_ID);
+    expect(brandCtx.brandId).toBe(BRAND_ID);
+    expect(brandCtx.workflowName).toBe("test-workflow");
 
-    const googleHeaders = mockSearchBatch.mock.calls[0][1];
-    expect(googleHeaders.featureSlug).toBe("discover-feature");
+    // Verify chat-service received full context
+    const chatCtx = mockChatComplete.mock.calls[0][1];
+    expect(chatCtx.orgId).toBe(ORG_ID);
+    expect(chatCtx.campaignId).toBe(CAMPAIGN_ID);
+    expect(chatCtx.brandId).toBe(BRAND_ID);
+    expect(chatCtx.featureSlug).toBe("discover-feature");
+    expect(chatCtx.workflowName).toBe("test-workflow");
+
+    // Verify google-service received full context
+    const googleCtx = mockSearchBatch.mock.calls[0][1];
+    expect(googleCtx.campaignId).toBe(CAMPAIGN_ID);
+    expect(googleCtx.brandId).toBe(BRAND_ID);
+    expect(googleCtx.workflowName).toBe("test-workflow");
+  });
+
+  it("uses brand-service data for prompts, not body fields", async () => {
+    mockChatComplete
+      .mockResolvedValueOnce(llmQueriesResponse)
+      .mockResolvedValueOnce({ content: "", json: { outlets: [] }, tokensInput: 100, tokensOutput: 20, model: "claude-sonnet-4-6" });
+    mockSearchBatch.mockResolvedValueOnce(googleBatchResponse);
+
+    await withHeaders(
+      request(app).post("/outlets/discover")
+    ).send({});
+
+    // Verify the query generation message uses brand-service data
+    const queryGenMessage = mockChatComplete.mock.calls[0][0].message;
+    expect(queryGenMessage).toContain("Acme Corp"); // from brand.name
+    expect(queryGenMessage).toContain("SaaS platform for HR automation"); // from extracted elevator_pitch
+    expect(queryGenMessage).toContain("HR Tech"); // from extracted categories
+    expect(queryGenMessage).toContain("US"); // from extracted target_geo
+    expect(queryGenMessage).toContain("HR directors"); // from extracted target_audience
   });
 });

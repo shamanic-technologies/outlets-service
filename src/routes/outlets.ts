@@ -25,11 +25,17 @@ router.post(
   "/",
   validateBody(createOutletSchema),
   async (req: Request, res: Response): Promise<void> => {
+    const ctx = req.orgContext!;
+
+    if (!ctx.campaignId || !ctx.brandId) {
+      res.status(400).json({ error: "x-campaign-id and x-brand-id headers are required" });
+      return;
+    }
+
     try {
       const b = req.body;
       const domain = b.outletDomain || extractDomain(b.outletUrl);
-      const featureSlug = req.orgContext?.featureSlug || null;
-      const orgId = req.orgContext?.orgId || null;
+      const featureSlug = ctx.featureSlug || null;
 
       const client = await pool.connect();
       try {
@@ -55,7 +61,7 @@ router.post(
              feature_slug = EXCLUDED.feature_slug, org_id = EXCLUDED.org_id,
              brand_id = EXCLUDED.brand_id, workflow_name = EXCLUDED.workflow_name,
              updated_at = CURRENT_TIMESTAMP`,
-          [b.campaignId, outlet.id, orgId, b.brandId, featureSlug, b.workflowName || null, b.whyRelevant, b.whyNotRelevant, b.relevanceScore, b.status || "open", b.overallRelevance || null, b.relevanceRationale || null]
+          [ctx.campaignId, outlet.id, ctx.orgId, ctx.brandId, featureSlug, ctx.workflowName || null, b.whyRelevant, b.whyNotRelevant, b.relevanceScore, b.status || "open", b.overallRelevance || null, b.relevanceRationale || null]
         );
 
         await client.query("COMMIT");
@@ -65,8 +71,8 @@ router.post(
           outletName: outlet.outlet_name,
           outletUrl: outlet.outlet_url,
           outletDomain: outlet.outlet_domain,
-          campaignId: b.campaignId,
-          brandId: b.brandId,
+          campaignId: ctx.campaignId,
+          brandId: ctx.brandId,
           whyRelevant: b.whyRelevant,
           whyNotRelevant: b.whyNotRelevant,
           relevanceScore: Number(b.relevanceScore),
@@ -233,13 +239,15 @@ router.patch(
   "/:id/status",
   validateBody(updateOutletStatusSchema),
   async (req: Request, res: Response): Promise<void> => {
+    const ctx = req.orgContext!;
+
+    if (!ctx.campaignId) {
+      res.status(400).json({ error: "x-campaign-id header is required" });
+      return;
+    }
+
     try {
       const { status, reason } = req.body;
-      const campaignId = req.query.campaignId as string;
-      if (!campaignId) {
-        res.status(400).json({ error: "campaignId query parameter required" });
-        return;
-      }
 
       const result = await pool.query(
         `UPDATE campaign_outlets
@@ -248,7 +256,7 @@ router.patch(
              updated_at = CURRENT_TIMESTAMP
          WHERE outlet_id = $3 AND campaign_id = $4
          RETURNING campaign_id, outlet_id, status, relevance_rationale, updated_at`,
-        [status, reason || null, req.params.id, campaignId]
+        [status, reason || null, req.params.id, ctx.campaignId]
       );
 
       if (result.rows.length === 0) {
@@ -276,10 +284,16 @@ router.post(
   "/bulk",
   validateBody(bulkCreateOutletsSchema),
   async (req: Request, res: Response): Promise<void> => {
+    const ctx = req.orgContext!;
+
+    if (!ctx.campaignId || !ctx.brandId) {
+      res.status(400).json({ error: "x-campaign-id and x-brand-id headers are required" });
+      return;
+    }
+
     try {
       const { outlets } = req.body;
-      const featureSlug = req.orgContext?.featureSlug || null;
-      const orgId = req.orgContext?.orgId || null;
+      const featureSlug = ctx.featureSlug || null;
       const client = await pool.connect();
       const results: any[] = [];
 
@@ -309,14 +323,14 @@ router.post(
                feature_slug = EXCLUDED.feature_slug, org_id = EXCLUDED.org_id,
                brand_id = EXCLUDED.brand_id, workflow_name = EXCLUDED.workflow_name,
                updated_at = CURRENT_TIMESTAMP`,
-            [b.campaignId, outlet.id, orgId, b.brandId, featureSlug, b.workflowName || null, b.whyRelevant, b.whyNotRelevant, b.relevanceScore, b.status || "open", b.overallRelevance || null, b.relevanceRationale || null]
+            [ctx.campaignId, outlet.id, ctx.orgId, ctx.brandId, featureSlug, ctx.workflowName || null, b.whyRelevant, b.whyNotRelevant, b.relevanceScore, b.status || "open", b.overallRelevance || null, b.relevanceRationale || null]
           );
 
           results.push({
             id: outlet.id,
             outletName: outlet.outlet_name,
             outletUrl: outlet.outlet_url,
-            campaignId: b.campaignId,
+            campaignId: ctx.campaignId,
           });
         }
 

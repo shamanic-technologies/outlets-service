@@ -57,49 +57,61 @@ Respond with JSON matching this schema:
   ]
 }`;
 
-export function buildQueryGenerationMessage(input: {
+export interface BrandPromptContext {
   brandName: string;
   brandDescription: string;
   industry: string;
   targetGeo?: string;
   targetAudience?: string;
   angles?: string[];
-}): string {
-  const parts = [
-    `Brand: ${input.brandName}`,
-    `Description: ${input.brandDescription}`,
-    `Industry: ${input.industry}`,
-  ];
-  if (input.targetGeo) parts.push(`Target Geography: ${input.targetGeo}`);
-  if (input.targetAudience) parts.push(`Target Audience: ${input.targetAudience}`);
-  if (input.angles?.length) parts.push(`PR Angles: ${input.angles.join(", ")}`);
+}
 
-  return `Generate Google search queries to find relevant press outlets for this brand:\n\n${parts.join("\n")}`;
+export function buildQueryGenerationMessage(
+  brand: BrandPromptContext,
+  featureInput?: Record<string, unknown>
+): string {
+  const parts = [
+    `Brand: ${brand.brandName}`,
+    `Description: ${brand.brandDescription}`,
+    `Industry: ${brand.industry}`,
+  ];
+  if (brand.targetGeo) parts.push(`Target Geography: ${brand.targetGeo}`);
+  if (brand.targetAudience) parts.push(`Target Audience: ${brand.targetAudience}`);
+  if (brand.angles?.length) parts.push(`PR Angles: ${brand.angles.join(", ")}`);
+
+  let msg = `Generate Google search queries to find relevant press outlets for this brand:\n\n${parts.join("\n")}`;
+
+  if (featureInput && Object.keys(featureInput).length > 0) {
+    msg += `\n\n## Additional Context\n${JSON.stringify(featureInput, null, 2)}`;
+  }
+
+  return msg;
 }
 
 export function buildScoringMessage(
-  brandContext: {
-    brandName: string;
-    brandDescription: string;
-    industry: string;
-    targetGeo?: string;
-    targetAudience?: string;
-  },
-  searchResults: Array<{ query: string; results: Array<{ title: string; url: string; snippet: string; domain: string }> }>
+  brand: BrandPromptContext,
+  searchResults: Array<{ query: string; results: Array<{ title: string; url: string; snippet: string; domain: string }> }>,
+  featureInput?: Record<string, unknown>
 ): string {
   const contextParts = [
-    `Brand: ${brandContext.brandName}`,
-    `Description: ${brandContext.brandDescription}`,
-    `Industry: ${brandContext.industry}`,
+    `Brand: ${brand.brandName}`,
+    `Description: ${brand.brandDescription}`,
+    `Industry: ${brand.industry}`,
   ];
-  if (brandContext.targetGeo) contextParts.push(`Target Geography: ${brandContext.targetGeo}`);
-  if (brandContext.targetAudience) contextParts.push(`Target Audience: ${brandContext.targetAudience}`);
+  if (brand.targetGeo) contextParts.push(`Target Geography: ${brand.targetGeo}`);
+  if (brand.targetAudience) contextParts.push(`Target Audience: ${brand.targetAudience}`);
 
-  return `Evaluate these search results and identify relevant press outlets for this brand:
+  let msg = `Evaluate these search results and identify relevant press outlets for this brand:
 
 ## Brand Context
 ${contextParts.join("\n")}
 
 ## Search Results
 ${JSON.stringify(searchResults, null, 2)}`;
+
+  if (featureInput && Object.keys(featureInput).length > 0) {
+    msg += `\n\n## Additional Context\n${JSON.stringify(featureInput, null, 2)}`;
+  }
+
+  return msg;
 }

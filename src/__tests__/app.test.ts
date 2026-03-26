@@ -29,6 +29,12 @@ function withIdentity(req: request.Test): request.Test {
   return req.set("x-org-id", ORG_ID).set("x-user-id", USER_ID).set("x-run-id", RUN_ID);
 }
 
+function withFullHeaders(req: request.Test): request.Test {
+  return withIdentity(req)
+    .set("x-campaign-id", CAMPAIGN_ID)
+    .set("x-brand-id", BRAND_ID);
+}
+
 let app: Express;
 
 beforeEach(() => {
@@ -69,12 +75,10 @@ describe("POST /outlets", () => {
       .mockResolvedValueOnce({ rows: [] }) // INSERT campaign_outlets
       .mockResolvedValueOnce({}); // COMMIT
 
-    const res = await withIdentity(request(app).post("/outlets")).send({
+    const res = await withFullHeaders(request(app).post("/outlets")).send({
       outletName: "TechCrunch",
       outletUrl: "https://techcrunch.com",
       outletDomain: "techcrunch.com",
-      campaignId: CAMPAIGN_ID,
-      brandId: BRAND_ID,
       whyRelevant: "Top tech publication",
       whyNotRelevant: "Might be too competitive",
       relevanceScore: 85,
@@ -89,22 +93,23 @@ describe("POST /outlets", () => {
     expect(res.body.outletStatus).toBe("open");
   });
 
-  it("returns 400 for missing brandId", async () => {
-    const res = await withIdentity(request(app).post("/outlets")).send({
-      outletName: "TechCrunch",
-      outletUrl: "https://techcrunch.com",
-      outletDomain: "techcrunch.com",
-      campaignId: CAMPAIGN_ID,
-      whyRelevant: "Good",
-      whyNotRelevant: "None",
-      relevanceScore: 85,
-    });
+  it("returns 400 when x-campaign-id header is missing", async () => {
+    const res = await withIdentity(request(app).post("/outlets"))
+      .set("x-brand-id", BRAND_ID)
+      .send({
+        outletName: "TechCrunch",
+        outletUrl: "https://techcrunch.com",
+        outletDomain: "techcrunch.com",
+        whyRelevant: "Good",
+        whyNotRelevant: "None",
+        relevanceScore: 85,
+      });
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe("Validation error");
+    expect(res.body.error).toContain("x-campaign-id");
   });
 
   it("returns 400 for invalid body", async () => {
-    const res = await withIdentity(request(app).post("/outlets")).send({
+    const res = await withFullHeaders(request(app).post("/outlets")).send({
       outletName: "",
     });
     expect(res.status).toBe(400);
@@ -219,7 +224,7 @@ describe("PATCH /outlets/:id", () => {
 });
 
 describe("PATCH /outlets/:id/status", () => {
-  it("updates outlet status with campaignId", async () => {
+  it("updates outlet status with x-campaign-id header", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
@@ -235,21 +240,21 @@ describe("PATCH /outlets/:id/status", () => {
     const res = await withIdentity(
       request(app)
         .patch("/outlets/11111111-1111-1111-1111-111111111111/status")
-        .query({ campaignId: CAMPAIGN_ID })
+        .set("x-campaign-id", CAMPAIGN_ID)
     ).send({ status: "ended", reason: "No longer relevant" });
 
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("ended");
   });
 
-  it("returns 400 without campaignId", async () => {
+  it("returns 400 without x-campaign-id header", async () => {
     const res = await withIdentity(
       request(app).patch(
         "/outlets/11111111-1111-1111-1111-111111111111/status"
       )
     ).send({ status: "ended" });
     expect(res.status).toBe(400);
-    expect(res.body.error).toContain("campaignId");
+    expect(res.body.error).toContain("x-campaign-id");
   });
 });
 
@@ -284,14 +289,12 @@ describe("POST /outlets/bulk", () => {
       .mockResolvedValueOnce({ rows: [] }) // campaign_outlets
       .mockResolvedValueOnce({}); // COMMIT
 
-    const res = await withIdentity(request(app).post("/outlets/bulk")).send({
+    const res = await withFullHeaders(request(app).post("/outlets/bulk")).send({
       outlets: [
         {
           outletName: "Outlet1",
           outletUrl: "https://outlet1.com",
           outletDomain: "outlet1.com",
-          campaignId: "33333333-3333-3333-3333-333333333333",
-          brandId: BRAND_ID,
           whyRelevant: "Good",
           whyNotRelevant: "None",
           relevanceScore: 90,
@@ -300,8 +303,6 @@ describe("POST /outlets/bulk", () => {
           outletName: "Outlet2",
           outletUrl: "https://outlet2.com",
           outletDomain: "outlet2.com",
-          campaignId: "33333333-3333-3333-3333-333333333333",
-          brandId: BRAND_ID,
           whyRelevant: "Also good",
           whyNotRelevant: "None",
           relevanceScore: 80,
@@ -312,6 +313,24 @@ describe("POST /outlets/bulk", () => {
     expect(res.status).toBe(201);
     expect(res.body.count).toBe(2);
     expect(res.body.outlets).toHaveLength(2);
+    expect(res.body.outlets[0].campaignId).toBe(CAMPAIGN_ID);
+  });
+
+  it("returns 400 without x-campaign-id and x-brand-id headers", async () => {
+    const res = await withIdentity(request(app).post("/outlets/bulk")).send({
+      outlets: [
+        {
+          outletName: "Outlet1",
+          outletUrl: "https://outlet1.com",
+          outletDomain: "outlet1.com",
+          whyRelevant: "Good",
+          whyNotRelevant: "None",
+          relevanceScore: 90,
+        },
+      ],
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("x-campaign-id");
   });
 });
 

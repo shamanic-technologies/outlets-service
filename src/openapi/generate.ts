@@ -26,14 +26,17 @@ const orgContextHeaders = [
   { in: "header", name: "x-user-id", required: true, schema: { type: "string", format: "uuid" }, description: "User ID (from client-service)" },
   { in: "header", name: "x-run-id", required: true, schema: { type: "string", format: "uuid" }, description: "Run ID (caller's run from runs-service)" },
   { in: "header", name: "x-feature-slug", required: false, schema: { type: "string" }, description: "Feature slug for tracking (propagated downstream)" },
+  { in: "header", name: "x-campaign-id", required: false, schema: { type: "string", format: "uuid" }, description: "Campaign ID (required for mutating endpoints)" },
+  { in: "header", name: "x-brand-id", required: false, schema: { type: "string", format: "uuid" }, description: "Brand ID (required for mutating endpoints)" },
+  { in: "header", name: "x-workflow-name", required: false, schema: { type: "string" }, description: "Workflow name for tracking (propagated downstream)" },
 ];
 
 const spec = {
   openapi: "3.0.0",
   info: {
     title: "Outlets Service",
-    description: "Manages press outlets (publications) and their campaign relevance data. Scoped by org × brand × feature × campaign × workflow.",
-    version: "2.0.0",
+    description: "Manages press outlets (publications) and their campaign relevance data. Scoped by org × brand × feature × campaign × workflow. Brand fields (brandName, industry, etc.) are fetched from brand-service — callers provide brandId via x-brand-id header and optionally pass featureInput as opaque context for LLM calls.",
+    version: "3.0.0",
   },
   servers: [{ url: "http://localhost:3000" }],
   security: [{ apiKey: [] }],
@@ -74,11 +77,12 @@ const spec = {
     "/outlets": {
       post: {
         summary: "Create outlet (upsert by outlet_url)",
+        description: "Requires x-campaign-id and x-brand-id headers.",
         parameters: [...orgContextHeaders],
         requestBody: { content: { "application/json": { schema: ref("CreateOutlet") } } },
         responses: {
           "201": { description: "Outlet created", content: { "application/json": { schema: ref("CampaignOutletResponse") } } },
-          "400": { description: "Validation error", content: { "application/json": { schema: ref("ErrorResponse") } } },
+          "400": { description: "Validation error or missing headers", content: { "application/json": { schema: ref("ErrorResponse") } } },
         },
       },
       get: {
@@ -118,14 +122,15 @@ const spec = {
     "/outlets/{id}/status": {
       patch: {
         summary: "Update outlet status",
+        description: "Requires x-campaign-id header to identify the campaign_outlets row.",
         parameters: [
           { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
-          { in: "query", name: "campaignId", required: true, schema: { type: "string", format: "uuid" } },
           ...orgContextHeaders,
         ],
         requestBody: { content: { "application/json": { schema: ref("UpdateOutletStatus") } } },
         responses: {
           "200": { description: "Status updated" },
+          "400": { description: "Missing x-campaign-id header" },
           "404": { description: "Not found" },
         },
       },
@@ -133,10 +138,12 @@ const spec = {
     "/outlets/bulk": {
       post: {
         summary: "Bulk upsert outlets",
+        description: "Requires x-campaign-id and x-brand-id headers. All outlets in the batch share the same campaign and brand.",
         parameters: [...orgContextHeaders],
         requestBody: { content: { "application/json": { schema: ref("BulkCreateOutlets") } } },
         responses: {
           "201": { description: "Outlets created" },
+          "400": { description: "Validation error or missing headers" },
         },
       },
     },
@@ -178,14 +185,14 @@ const spec = {
     "/outlets/discover": {
       post: {
         summary: "Discover relevant outlets via Google search + LLM scoring",
-        description: "Takes a brand brief, generates search queries via LLM, searches Google via google-service, scores results for relevance via LLM, and bulk upserts discovered outlets into the database.",
+        description: "Requires x-campaign-id and x-brand-id headers. Fetches brand data from brand-service, generates search queries via LLM, searches Google via google-service, scores results for relevance via LLM, and bulk upserts discovered outlets. Pass featureInput as opaque context forwarded to LLM calls.",
         parameters: [...orgContextHeaders],
         requestBody: { content: { "application/json": { schema: ref("DiscoverOutlets") } } },
         responses: {
           "201": { description: "Outlets discovered and saved", content: { "application/json": { schema: ref("DiscoverOutletsResponse") } } },
           "200": { description: "No outlets found (empty results)" },
-          "400": { description: "Validation error", content: { "application/json": { schema: ref("ErrorResponse") } } },
-          "502": { description: "Upstream service error (chat-service or google-service)", content: { "application/json": { schema: ref("ErrorResponse") } } },
+          "400": { description: "Validation error or missing headers", content: { "application/json": { schema: ref("ErrorResponse") } } },
+          "502": { description: "Upstream service error (brand-service, chat-service, or google-service)", content: { "application/json": { schema: ref("ErrorResponse") } } },
         },
       },
     },
