@@ -2,13 +2,7 @@ import { z } from "zod";
 
 // Enums
 export const outletStatusEnum = z.enum(["open", "ended", "denied"]);
-export const categoryScoreEnum = z.enum([
-  "city",
-  "state_or_province",
-  "country",
-  "multi-country_region",
-  "international",
-]);
+
 // --- Outlets ---
 
 export const createOutletSchema = z.object({
@@ -16,13 +10,13 @@ export const createOutletSchema = z.object({
   outletUrl: z.string().url(),
   outletDomain: z.string().min(1),
   campaignId: z.string().uuid(),
+  brandId: z.string().uuid(),
   whyRelevant: z.string(),
   whyNotRelevant: z.string(),
   relevanceScore: z.number().min(0).max(100),
-  overalRelevance: z.string().optional(),
+  overallRelevance: z.string().optional(),
   relevanceRationale: z.string().optional(),
   status: outletStatusEnum.optional().default("open"),
-  brandId: z.string().uuid().optional(),
   workflowName: z.string().optional(),
 });
 
@@ -33,7 +27,7 @@ export const updateOutletSchema = z.object({
   whyRelevant: z.string().optional(),
   whyNotRelevant: z.string().optional(),
   relevanceScore: z.number().min(0).max(100).optional(),
-  overalRelevance: z.string().optional(),
+  overallRelevance: z.string().optional(),
   relevanceRationale: z.string().optional(),
 });
 
@@ -44,6 +38,7 @@ export const updateOutletStatusSchema = z.object({
 
 export const listOutletsQuerySchema = z.object({
   campaignId: z.string().uuid().optional(),
+  brandId: z.string().uuid().optional(),
   status: outletStatusEnum.optional(),
   limit: z.coerce.number().int().positive().max(1000).optional().default(100),
   offset: z.coerce.number().int().min(0).optional().default(0),
@@ -59,37 +54,6 @@ export const searchOutletsSchema = z.object({
   limit: z.coerce.number().int().positive().max(100).optional().default(20),
 });
 
-export const byIdsQuerySchema = z.object({
-  ids: z.string().min(1),
-});
-
-// --- Categories ---
-
-export const createCategorySchema = z.object({
-  campaignId: z.string().uuid(),
-  categoryName: z.string().min(1),
-  scope: categoryScoreEnum.optional(),
-  region: z.string().optional(),
-  exampleOutlets: z.string().optional(),
-  whyRelevant: z.string().default(""),
-  whyNotRelevant: z.string().default(""),
-  relevanceScore: z.number().min(0).max(100).default(0),
-});
-
-export const updateCategorySchema = z.object({
-  categoryName: z.string().min(1).optional(),
-  scope: categoryScoreEnum.optional(),
-  region: z.string().nullable().optional(),
-  exampleOutlets: z.string().nullable().optional(),
-  whyRelevant: z.string().optional(),
-  whyNotRelevant: z.string().optional(),
-  relevanceScore: z.number().min(0).max(100).optional(),
-});
-
-export const listCategoriesQuerySchema = z.object({
-  campaignId: z.string().uuid(),
-});
-
 // --- Response schemas ---
 
 export const outletResponseSchema = z.object({
@@ -97,33 +61,19 @@ export const outletResponseSchema = z.object({
   outletName: z.string(),
   outletUrl: z.string(),
   outletDomain: z.string(),
-  status: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
 
 export const campaignOutletResponseSchema = outletResponseSchema.extend({
   campaignId: z.string().uuid(),
+  brandId: z.string().uuid(),
   whyRelevant: z.string(),
   whyNotRelevant: z.string(),
   relevanceScore: z.number(),
   outletStatus: outletStatusEnum,
-  overalRelevance: z.string().nullable(),
+  overallRelevance: z.string().nullable(),
   relevanceRationale: z.string().nullable(),
-});
-
-export const categoryResponseSchema = z.object({
-  id: z.string().uuid(),
-  campaignId: z.string().uuid(),
-  categoryName: z.string(),
-  scope: categoryScoreEnum.nullable(),
-  region: z.string().nullable(),
-  exampleOutlets: z.string().nullable(),
-  whyRelevant: z.string(),
-  whyNotRelevant: z.string(),
-  relevanceScore: z.number(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
 });
 
 export const healthResponseSchema = z.object({
@@ -167,12 +117,14 @@ export const statsGroupedResponseSchema = z.object({
 
 export const discoverOutletsSchema = z.object({
   campaignId: z.string().uuid(),
+  brandId: z.string().uuid(),
   brandName: z.string().min(1),
   brandDescription: z.string().min(1),
   industry: z.string().min(1),
   targetGeo: z.string().optional(),
   targetAudience: z.string().optional(),
   angles: z.array(z.string()).optional(),
+  workflowName: z.string().optional(),
 });
 
 export const discoverOutletsResponseSchema = z.object({
@@ -203,6 +155,4 @@ export type UpdateOutletStatus = z.infer<typeof updateOutletStatusSchema>;
 export type ListOutletsQuery = z.infer<typeof listOutletsQuerySchema>;
 export type BulkCreateOutlets = z.infer<typeof bulkCreateOutletsSchema>;
 export type SearchOutlets = z.infer<typeof searchOutletsSchema>;
-export type CreateCategory = z.infer<typeof createCategorySchema>;
-export type UpdateCategory = z.infer<typeof updateCategorySchema>;
 export type StatsQuery = z.infer<typeof statsQuerySchema>;

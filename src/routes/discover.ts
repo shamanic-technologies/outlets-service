@@ -10,20 +10,9 @@ import {
   buildQueryGenerationMessage,
   buildScoringMessage,
 } from "../prompts";
+import { discoverOutletsSchema } from "../schemas";
 
-const discoverSchema = z.object({
-  campaignId: z.string().uuid(),
-  brandName: z.string().min(1),
-  brandDescription: z.string().min(1),
-  industry: z.string().min(1),
-  targetGeo: z.string().optional(),
-  targetAudience: z.string().optional(),
-  angles: z.array(z.string()).optional(),
-  brandId: z.string().uuid().optional(),
-  workflowName: z.string().optional(),
-});
-
-export type DiscoverRequest = z.infer<typeof discoverSchema>;
+export type DiscoverRequest = z.infer<typeof discoverOutletsSchema>;
 
 const querySchema = z.object({
   queries: z.array(
@@ -62,7 +51,7 @@ const router = Router();
 // POST /outlets/discover — find relevant outlets via Google search + LLM scoring
 router.post(
   "/discover",
-  validateBody(discoverSchema),
+  validateBody(discoverOutletsSchema),
   async (req: Request, res: Response): Promise<void> => {
     const ctx = req.orgContext!;
     const body = req.body as DiscoverRequest;
@@ -162,11 +151,10 @@ router.post(
         for (let i = 0; i < outlets.length; i++) {
           const o = outlets[i];
           const domain = extractDomain(o.url);
-          // Normalize URL — ensure it has a protocol
           const url = o.url.startsWith("http") ? o.url : `https://${o.url}`;
 
           const outletResult = await client.query(
-            `INSERT INTO press_outlets (outlet_name, outlet_url, outlet_domain)
+            `INSERT INTO outlets (outlet_name, outlet_url, outlet_domain)
              VALUES ($1, $2, $3)
              ON CONFLICT (outlet_url)
              DO UPDATE SET outlet_name = EXCLUDED.outlet_name, outlet_domain = EXCLUDED.outlet_domain, updated_at = CURRENT_TIMESTAMP
@@ -175,18 +163,17 @@ router.post(
           );
           const outlet = outletResult.rows[0];
 
-          // Only store search_queries_used on the first outlet to avoid double-counting in stats
           await client.query(
-            `INSERT INTO campaign_outlets (campaign_id, outlet_id, why_relevant, why_not_relevant, relevance_score, status, overal_relevance, feature_slug, org_id, brand_id, workflow_name, search_queries_used)
-             VALUES ($1, $2, $3, $4, $5, 'open', $6, $7, $8, $9, $10, $11)
+            `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_id, feature_slug, workflow_name, why_relevant, why_not_relevant, relevance_score, status, overall_relevance, search_queries_used)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'open', $10, $11)
              ON CONFLICT (campaign_id, outlet_id)
              DO UPDATE SET why_relevant = EXCLUDED.why_relevant, why_not_relevant = EXCLUDED.why_not_relevant,
-               relevance_score = EXCLUDED.relevance_score, overal_relevance = EXCLUDED.overal_relevance,
+               relevance_score = EXCLUDED.relevance_score, overall_relevance = EXCLUDED.overall_relevance,
                feature_slug = EXCLUDED.feature_slug, org_id = EXCLUDED.org_id,
                brand_id = EXCLUDED.brand_id, workflow_name = EXCLUDED.workflow_name,
                search_queries_used = EXCLUDED.search_queries_used,
                updated_at = CURRENT_TIMESTAMP`,
-            [body.campaignId, outlet.id, o.whyRelevant, o.whyNotRelevant, o.relevanceScore, o.overallRelevance, featureSlug, ctx.orgId, body.brandId || null, body.workflowName || null, i === 0 ? searchQueryCount : 0]
+            [body.campaignId, outlet.id, ctx.orgId, body.brandId, featureSlug, body.workflowName || null, o.whyRelevant, o.whyNotRelevant, o.relevanceScore, o.overallRelevance, i === 0 ? searchQueryCount : 0]
           );
 
           saved.push({
@@ -228,4 +215,3 @@ router.post(
 );
 
 export default router;
-export { discoverSchema };
