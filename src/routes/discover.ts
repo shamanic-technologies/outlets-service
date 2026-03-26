@@ -41,6 +41,21 @@ const scoringSchema = z.object({
   ),
 });
 
+/**
+ * Try to extract a JSON object from an LLM response that may be wrapped
+ * in markdown code fences (```json ... ```) or contain other noise.
+ */
+function tryParseJsonFromContent(content: string): unknown | undefined {
+  // Strip markdown code fences if present
+  const fenceMatch = content.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
+  const raw = fenceMatch ? fenceMatch[1].trim() : content.trim();
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+}
+
 function extractDomain(url: string): string {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
@@ -106,7 +121,15 @@ router.post(
         ctx
       );
 
-      const parsedQueries = querySchema.safeParse(queryGenResponse.json);
+      const queryJson = queryGenResponse.json
+        ?? tryParseJsonFromContent(queryGenResponse.content);
+      // Filter out empty/incomplete query objects (LLM sometimes emits empty {} entries)
+      if (queryJson && typeof queryJson === "object" && Array.isArray((queryJson as Record<string, unknown>).queries)) {
+        (queryJson as Record<string, unknown>).queries = (
+          (queryJson as Record<string, unknown>).queries as Array<Record<string, unknown>>
+        ).filter((q) => q.query && q.type && q.rationale);
+      }
+      const parsedQueries = querySchema.safeParse(queryJson);
       if (!parsedQueries.success) {
         console.error("LLM returned invalid query format:", queryGenResponse.content);
         res.status(502).json({ error: "Failed to generate search queries — unexpected LLM output" });
@@ -149,7 +172,9 @@ router.post(
         ctx
       );
 
-      const parsedOutlets = scoringSchema.safeParse(scoringResponse.json);
+      const scoringJson = scoringResponse.json
+        ?? tryParseJsonFromContent(scoringResponse.content);
+      const parsedOutlets = scoringSchema.safeParse(scoringJson);
       if (!parsedOutlets.success) {
         console.error("LLM returned invalid scoring format:", scoringResponse.content);
         res.status(502).json({ error: "Failed to score outlets — unexpected LLM output" });

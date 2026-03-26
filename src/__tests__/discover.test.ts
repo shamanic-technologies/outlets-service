@@ -336,6 +336,94 @@ describe("POST /outlets/discover", () => {
     expect(res.body.error).toContain("campaign-service");
   });
 
+  it("recovers when LLM wraps queries in markdown code fences", async () => {
+    const fencedContent = '```json\n{"queries":[{"query":"HR tech news","type":"web","rationale":"Find HR outlets"}]}\n```';
+    mockChatComplete.mockResolvedValueOnce({
+      content: fencedContent,
+      json: undefined, // chat-service couldn't parse the fenced JSON
+      tokensInput: 200,
+      tokensOutput: 150,
+      model: "claude-sonnet-4-6",
+    });
+    mockSearchBatch.mockResolvedValueOnce(googleBatchResponse);
+    mockChatComplete.mockResolvedValueOnce({
+      content: "",
+      json: { outlets: [] },
+      tokensInput: 100,
+      tokensOutput: 20,
+      model: "claude-sonnet-4-6",
+    });
+
+    const res = await withHeaders(
+      request(app).post("/outlets/discover")
+    ).send({});
+
+    expect(res.status).toBe(200);
+    expect(mockSearchBatch).toHaveBeenCalledTimes(1);
+    expect(mockSearchBatch.mock.calls[0][0].queries).toHaveLength(1);
+    expect(mockSearchBatch.mock.calls[0][0].queries[0].query).toBe("HR tech news");
+  });
+
+  it("filters out empty objects from LLM query array", async () => {
+    mockChatComplete.mockResolvedValueOnce({
+      content: "",
+      json: {
+        queries: [
+          { query: "HR tech news", type: "web", rationale: "Find HR outlets" },
+          {}, // empty object from malformed LLM output
+          { query: "HR SaaS funding", type: "news", rationale: "Funding news" },
+        ],
+      },
+      tokensInput: 200,
+      tokensOutput: 150,
+      model: "claude-sonnet-4-6",
+    });
+    mockSearchBatch.mockResolvedValueOnce(googleBatchResponse);
+    mockChatComplete.mockResolvedValueOnce({
+      content: "",
+      json: { outlets: [] },
+      tokensInput: 100,
+      tokensOutput: 20,
+      model: "claude-sonnet-4-6",
+    });
+
+    const res = await withHeaders(
+      request(app).post("/outlets/discover")
+    ).send({});
+
+    expect(res.status).toBe(200);
+    expect(mockSearchBatch.mock.calls[0][0].queries).toHaveLength(2);
+  });
+
+  it("recovers when LLM wraps scoring in markdown code fences", async () => {
+    mockChatComplete.mockResolvedValueOnce(llmQueriesResponse);
+    mockSearchBatch.mockResolvedValueOnce(googleBatchResponse);
+    const fencedScoring = '```json\n{"outlets":[{"name":"HR Weekly","url":"https://hrweekly.com","domain":"hrweekly.com","relevanceScore":88,"whyRelevant":"Good fit","whyNotRelevant":"Small","overallRelevance":"high"}]}\n```';
+    mockChatComplete.mockResolvedValueOnce({
+      content: fencedScoring,
+      json: undefined,
+      tokensInput: 800,
+      tokensOutput: 400,
+      model: "claude-sonnet-4-6",
+    });
+
+    mockQuery
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({
+        rows: [{ id: "11111111-1111-1111-1111-111111111111", outlet_name: "HR Weekly", outlet_url: "https://hrweekly.com", outlet_domain: "hrweekly.com" }],
+      })
+      .mockResolvedValueOnce({ rows: [] }) // campaign_outlets
+      .mockResolvedValueOnce({}); // COMMIT
+
+    const res = await withHeaders(
+      request(app).post("/outlets/discover")
+    ).send({});
+
+    expect(res.status).toBe(201);
+    expect(res.body.discoveredCount).toBe(1);
+    expect(res.body.outlets[0].outletName).toBe("HR Weekly");
+  });
+
   it("returns 502 when LLM returns invalid query format", async () => {
     mockChatComplete.mockResolvedValueOnce({
       content: "not valid json",
