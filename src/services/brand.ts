@@ -13,12 +13,18 @@ export interface Brand {
   categories: string | null;
 }
 
-export interface ExtractedField {
+export interface ExtractFieldResult {
   key: string;
   value: string | string[] | Record<string, unknown> | null;
-  sourceUrls: string[] | null;
+  cached: boolean;
   extractedAt: string;
   expiresAt: string | null;
+  sourceUrls: string[] | null;
+}
+
+export interface FieldRequest {
+  key: string;
+  description: string;
 }
 
 function buildHeaders(ctx: OrgContext): Record<string, string> {
@@ -48,20 +54,26 @@ export async function getBrand(brandId: string, ctx: OrgContext): Promise<Brand>
   return data.brand;
 }
 
-export async function getExtractedFields(brandId: string, ctx: OrgContext): Promise<ExtractedField[]> {
-  const res = await fetch(`${config.brandServiceUrl}/brands/${brandId}/extracted-fields`, {
+export async function extractFields(
+  brandId: string,
+  fields: FieldRequest[],
+  ctx: OrgContext
+): Promise<ExtractFieldResult[]> {
+  const res = await fetch(`${config.brandServiceUrl}/brands/${brandId}/extract-fields`, {
+    method: "POST",
     headers: buildHeaders(ctx),
+    body: JSON.stringify({ fields }),
   });
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`brand-service /brands/${brandId}/extracted-fields failed (${res.status}): ${body}`);
+    throw new Error(`brand-service /brands/${brandId}/extract-fields failed (${res.status}): ${body}`);
   }
-  const data = (await res.json()) as { brandId: string; fields: ExtractedField[] };
-  return data.fields;
+  const data = (await res.json()) as { brandId: string; results: ExtractFieldResult[] };
+  return data.results;
 }
 
-/** Helper: find an extracted field by key, returning its value as string or null */
-export function findField(fields: ExtractedField[], key: string): string | null {
+/** Helper: find a field result by key, returning its value as string or null */
+export function findField(fields: ExtractFieldResult[], key: string): string | null {
   const field = fields.find((f) => f.key === key);
   if (!field || field.value === null) return null;
   if (typeof field.value === "string") return field.value;

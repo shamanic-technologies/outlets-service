@@ -8,4 +8,6 @@ export const config = {
   googleServiceApiKey: process.env.GOOGLE_SERVICE_API_KEY || "",
   brandServiceUrl: process.env.BRAND_SERVICE_URL || "",
   brandServiceApiKey: process.env.BRAND_SERVICE_API_KEY || "",
+  campaignServiceUrl: process.env.CAMPAIGN_SERVICE_URL || "",
+  campaignServiceApiKey: process.env.CAMPAIGN_SERVICE_API_KEY || "",
 };

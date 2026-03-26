@@ -4,7 +4,8 @@ import { validateBody } from "../middleware/validate";
 import { pool } from "../db/pool";
 import { chatComplete } from "../services/chat";
 import { searchBatch } from "../services/google";
-import { getBrand, getExtractedFields, findField } from "../services/brand";
+import { getBrand, extractFields, findField } from "../services/brand";
+import { getFeatureInputs } from "../services/campaign";
 import {
   GENERATE_QUERIES_SYSTEM_PROMPT,
   SCORE_OUTLETS_SYSTEM_PROMPT,
@@ -48,6 +49,15 @@ function extractDomain(url: string): string {
   }
 }
 
+/** Fields we need from brand-service for outlet discovery */
+const BRAND_FIELDS = [
+  { key: "elevator_pitch", description: "A concise elevator pitch describing what the brand does" },
+  { key: "categories", description: "The brand's primary industry vertical or categories" },
+  { key: "target_geo", description: "Priority geographic markets for outreach" },
+  { key: "target_audience", description: "Target audience for the brand's products or services" },
+  { key: "angles", description: "PR angles and editorial hooks the brand can leverage" },
+];
+
 const router = Router();
 
 // POST /outlets/discover — find relevant outlets via Google search + LLM scoring
@@ -62,14 +72,12 @@ router.post(
       return;
     }
 
-    const body = req.body as DiscoverRequest;
-    const featureInput = body.featureInput;
-
     try {
-      // Step 0: Fetch brand data from brand-service
-      const [brand, extractedFields] = await Promise.all([
+      // Step 0: Fetch brand data and campaign context in parallel
+      const [brand, extractedFields, featureInputs] = await Promise.all([
         getBrand(ctx.brandId, ctx),
-        getExtractedFields(ctx.brandId, ctx),
+        extractFields(ctx.brandId, BRAND_FIELDS, ctx),
+        getFeatureInputs(ctx.campaignId, ctx),
       ]);
 
       const brandContext: BrandPromptContext = {
@@ -83,6 +91,8 @@ router.post(
           return raw ? raw.split(", ") : undefined;
         })(),
       };
+
+      const featureInput = featureInputs ?? undefined;
 
       // Step 1: Generate search queries via LLM
       const queryGenResponse = await chatComplete(

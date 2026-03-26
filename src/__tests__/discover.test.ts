@@ -33,15 +33,21 @@ vi.mock("../services/google", () => ({
 
 // Mock brand service
 const mockGetBrand = vi.fn();
-const mockGetExtractedFields = vi.fn();
+const mockExtractFields = vi.fn();
 vi.mock("../services/brand", async () => {
   const actual = await vi.importActual("../services/brand");
   return {
     ...actual,
     getBrand: (...args: unknown[]) => mockGetBrand(...args),
-    getExtractedFields: (...args: unknown[]) => mockGetExtractedFields(...args),
+    extractFields: (...args: unknown[]) => mockExtractFields(...args),
   };
 });
+
+// Mock campaign service
+const mockGetFeatureInputs = vi.fn();
+vi.mock("../services/campaign", () => ({
+  getFeatureInputs: (...args: unknown[]) => mockGetFeatureInputs(...args),
+}));
 
 const ORG_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const USER_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
@@ -70,12 +76,15 @@ const brandResponse = {
   categories: null,
 };
 
-const extractedFieldsResponse = [
-  { key: "elevator_pitch", value: "SaaS platform for HR automation", sourceUrls: ["https://acme.com"], extractedAt: "2026-03-01T00:00:00Z", expiresAt: null },
-  { key: "categories", value: "HR Tech", sourceUrls: ["https://acme.com"], extractedAt: "2026-03-01T00:00:00Z", expiresAt: null },
-  { key: "target_geo", value: "US", sourceUrls: null, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null },
-  { key: "target_audience", value: "HR directors", sourceUrls: null, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null },
+const extractFieldsResponse = [
+  { key: "elevator_pitch", value: "SaaS platform for HR automation", cached: true, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: ["https://acme.com"] },
+  { key: "categories", value: "HR Tech", cached: true, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: ["https://acme.com"] },
+  { key: "target_geo", value: "US", cached: true, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: null },
+  { key: "target_audience", value: "HR directors", cached: true, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: null },
+  { key: "angles", value: null, cached: false, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: null },
 ];
+
+const featureInputsResponse = { customAngle: "AI in HR", targetRegion: "Europe" };
 
 const llmQueriesResponse = {
   content: "",
@@ -160,7 +169,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockConnect.mockResolvedValue(undefined);
   mockGetBrand.mockResolvedValue(brandResponse);
-  mockGetExtractedFields.mockResolvedValue(extractedFieldsResponse);
+  mockExtractFields.mockResolvedValue(extractFieldsResponse);
+  mockGetFeatureInputs.mockResolvedValue(featureInputsResponse);
   app = createApp();
 });
 
@@ -198,13 +208,17 @@ describe("POST /outlets/discover", () => {
 
     expect(mockGetBrand).toHaveBeenCalledTimes(1);
     expect(mockGetBrand.mock.calls[0][0]).toBe(BRAND_ID);
-    expect(mockGetExtractedFields).toHaveBeenCalledTimes(1);
+    expect(mockExtractFields).toHaveBeenCalledTimes(1);
+    expect(mockExtractFields.mock.calls[0][0]).toBe(BRAND_ID);
+    expect(mockExtractFields.mock.calls[0][1]).toHaveLength(5); // 5 field requests
+    expect(mockGetFeatureInputs).toHaveBeenCalledTimes(1);
+    expect(mockGetFeatureInputs.mock.calls[0][0]).toBe(CAMPAIGN_ID);
     expect(mockChatComplete).toHaveBeenCalledTimes(2);
     expect(mockSearchBatch).toHaveBeenCalledTimes(1);
     expect(mockSearchBatch.mock.calls[0][0].queries).toHaveLength(2);
   });
 
-  it("passes featureInput to LLM calls", async () => {
+  it("fetches featureInputs from campaign-service and injects into LLM calls", async () => {
     mockChatComplete
       .mockResolvedValueOnce(llmQueriesResponse)
       .mockResolvedValueOnce({ content: "", json: { outlets: [] }, tokensInput: 100, tokensOutput: 20, model: "claude-sonnet-4-6" });
@@ -212,12 +226,53 @@ describe("POST /outlets/discover", () => {
 
     await withHeaders(
       request(app).post("/outlets/discover")
-    ).send({ featureInput: { customAngle: "AI in HR", targetRegion: "Europe" } });
+    ).send({});
 
-    // Verify featureInput is included in the LLM message
+    // Verify featureInputs from campaign-service are included in the LLM message
     const queryGenMessage = mockChatComplete.mock.calls[0][0].message;
     expect(queryGenMessage).toContain("Additional Context");
     expect(queryGenMessage).toContain("AI in HR");
+    expect(queryGenMessage).toContain("Europe");
+  });
+
+  it("works when campaign has no featureInputs", async () => {
+    mockGetFeatureInputs.mockResolvedValue(null);
+    mockChatComplete
+      .mockResolvedValueOnce(llmQueriesResponse)
+      .mockResolvedValueOnce({ content: "", json: { outlets: [] }, tokensInput: 100, tokensOutput: 20, model: "claude-sonnet-4-6" });
+    mockSearchBatch.mockResolvedValueOnce(googleBatchResponse);
+
+    const res = await withHeaders(
+      request(app).post("/outlets/discover")
+    ).send({});
+
+    expect(res.status).toBe(200);
+    // Should NOT contain "Additional Context" when featureInputs is null
+    const queryGenMessage = mockChatComplete.mock.calls[0][0].message;
+    expect(queryGenMessage).not.toContain("Additional Context");
+  });
+
+  it("calls extract-fields with specific field requests", async () => {
+    mockChatComplete
+      .mockResolvedValueOnce(llmQueriesResponse)
+      .mockResolvedValueOnce({ content: "", json: { outlets: [] }, tokensInput: 100, tokensOutput: 20, model: "claude-sonnet-4-6" });
+    mockSearchBatch.mockResolvedValueOnce(googleBatchResponse);
+
+    await withHeaders(
+      request(app).post("/outlets/discover")
+    ).send({});
+
+    // Verify extract-fields is called with specific field descriptors
+    const fields = mockExtractFields.mock.calls[0][1];
+    expect(fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "elevator_pitch", description: expect.any(String) }),
+        expect.objectContaining({ key: "categories", description: expect.any(String) }),
+        expect.objectContaining({ key: "target_geo", description: expect.any(String) }),
+        expect.objectContaining({ key: "target_audience", description: expect.any(String) }),
+        expect.objectContaining({ key: "angles", description: expect.any(String) }),
+      ])
+    );
   });
 
   it("returns 400 when x-campaign-id header is missing", async () => {
@@ -266,6 +321,19 @@ describe("POST /outlets/discover", () => {
 
     expect(res.status).toBe(502);
     expect(res.body.error).toContain("brand-service");
+  });
+
+  it("returns 502 when campaign-service is down", async () => {
+    mockGetFeatureInputs.mockRejectedValueOnce(
+      new Error("campaign-service /campaigns/dddddddd-dddd-dddd-dddd-dddddddddddd failed (503): Service Unavailable")
+    );
+
+    const res = await withHeaders(
+      request(app).post("/outlets/discover")
+    ).send({});
+
+    expect(res.status).toBe(502);
+    expect(res.body.error).toContain("campaign-service");
   });
 
   it("returns 502 when LLM returns invalid query format", async () => {
@@ -377,6 +445,17 @@ describe("POST /outlets/discover", () => {
     expect(brandCtx.campaignId).toBe(CAMPAIGN_ID);
     expect(brandCtx.brandId).toBe(BRAND_ID);
     expect(brandCtx.workflowName).toBe("test-workflow");
+
+    // Verify extract-fields received full context
+    const extractCtx = mockExtractFields.mock.calls[0][2];
+    expect(extractCtx.orgId).toBe(ORG_ID);
+    expect(extractCtx.campaignId).toBe(CAMPAIGN_ID);
+    expect(extractCtx.brandId).toBe(BRAND_ID);
+
+    // Verify campaign-service received full context
+    const campaignCtx = mockGetFeatureInputs.mock.calls[0][1];
+    expect(campaignCtx.orgId).toBe(ORG_ID);
+    expect(campaignCtx.campaignId).toBe(CAMPAIGN_ID);
 
     // Verify chat-service received full context
     const chatCtx = mockChatComplete.mock.calls[0][1];
