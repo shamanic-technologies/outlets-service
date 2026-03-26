@@ -207,12 +207,7 @@
       },
       "DiscoverOutlets": {
         "type": "object",
-        "properties": {
-          "featureInput": {
-            "type": "object",
-            "additionalProperties": true
-          }
-        }
+        "properties": {}
       },
       "DiscoverOutletsResponse": {
         "type": "object",

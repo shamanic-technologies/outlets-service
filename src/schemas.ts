@@ -112,9 +112,7 @@ export const statsGroupedResponseSchema = z.object({
 
 // --- Discover ---
 
-export const discoverOutletsSchema = z.object({
-  featureInput: z.record(z.unknown()).optional(),
-});
+export const discoverOutletsSchema = z.object({});
 
 export const discoverOutletsResponseSchema = z.object({
   discoveredCount: z.number(),
