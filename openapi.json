@@ -2,8 +2,8 @@
   "openapi": "3.0.0",
   "info": {
     "title": "Outlets Service",
-    "description": "Manages press outlets (publications) and their campaign relevance data. Scoped by org × brand × feature × campaign × workflow.",
-    "version": "2.0.0"
+    "description": "Manages press outlets (publications) and their campaign relevance data. Domain rating data is managed by the ahref-service.",
+    "version": "1.0.0"
   },
   "servers": [
     {
@@ -36,10 +36,6 @@
             "type": "string",
             "format": "uuid"
           },
-          "brandId": {
-            "type": "string",
-            "format": "uuid"
-          },
           "whyRelevant": {
             "type": "string"
           },
@@ -51,7 +47,7 @@
             "minimum": 0,
             "maximum": 100
           },
-          "overallRelevance": {
+          "overalRelevance": {
             "type": "string"
           },
           "relevanceRationale": {
@@ -66,6 +62,10 @@
             ],
             "default": "open"
           },
+          "brandId": {
+            "type": "string",
+            "format": "uuid"
+          },
           "workflowName": {
             "type": "string"
           }
@@ -75,7 +75,6 @@
           "outletUrl",
           "outletDomain",
           "campaignId",
-          "brandId",
           "whyRelevant",
           "whyNotRelevant",
           "relevanceScore"
@@ -107,7 +106,7 @@
             "minimum": 0,
             "maximum": 100
           },
-          "overallRelevance": {
+          "overalRelevance": {
             "type": "string"
           },
           "relevanceRationale": {
@@ -158,10 +157,6 @@
                   "type": "string",
                   "format": "uuid"
                 },
-                "brandId": {
-                  "type": "string",
-                  "format": "uuid"
-                },
                 "whyRelevant": {
                   "type": "string"
                 },
@@ -173,7 +168,7 @@
                   "minimum": 0,
                   "maximum": 100
                 },
-                "overallRelevance": {
+                "overalRelevance": {
                   "type": "string"
                 },
                 "relevanceRationale": {
@@ -188,6 +183,10 @@
                   ],
                   "default": "open"
                 },
+                "brandId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
                 "workflowName": {
                   "type": "string"
                 }
@@ -197,7 +196,6 @@
                 "outletUrl",
                 "outletDomain",
                 "campaignId",
-                "brandId",
                 "whyRelevant",
                 "whyNotRelevant",
                 "relevanceScore"
@@ -231,14 +229,95 @@
           "query"
         ]
       },
-      "DiscoverOutlets": {
+      "CreateCategory": {
         "type": "object",
         "properties": {
           "campaignId": {
             "type": "string",
             "format": "uuid"
           },
-          "brandId": {
+          "categoryName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "city",
+              "state_or_province",
+              "country",
+              "multi-country_region",
+              "international"
+            ]
+          },
+          "region": {
+            "type": "string"
+          },
+          "exampleOutlets": {
+            "type": "string"
+          },
+          "whyRelevant": {
+            "type": "string",
+            "default": ""
+          },
+          "whyNotRelevant": {
+            "type": "string",
+            "default": ""
+          },
+          "relevanceScore": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "default": 0
+          }
+        },
+        "required": [
+          "campaignId",
+          "categoryName"
+        ]
+      },
+      "UpdateCategory": {
+        "type": "object",
+        "properties": {
+          "categoryName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "city",
+              "state_or_province",
+              "country",
+              "multi-country_region",
+              "international"
+            ]
+          },
+          "region": {
+            "type": "string",
+            "nullable": true
+          },
+          "exampleOutlets": {
+            "type": "string",
+            "nullable": true
+          },
+          "whyRelevant": {
+            "type": "string"
+          },
+          "whyNotRelevant": {
+            "type": "string"
+          },
+          "relevanceScore": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          }
+        }
+      },
+      "DiscoverOutlets": {
+        "type": "object",
+        "properties": {
+          "campaignId": {
             "type": "string",
             "format": "uuid"
           },
@@ -265,14 +344,10 @@
             "items": {
               "type": "string"
             }
-          },
-          "workflowName": {
-            "type": "string"
           }
         },
         "required": [
           "campaignId",
-          "brandId",
           "brandName",
           "brandDescription",
           "industry"
@@ -369,6 +444,10 @@
           "outletDomain": {
             "type": "string"
           },
+          "status": {
+            "type": "string",
+            "nullable": true
+          },
           "createdAt": {
             "type": "string"
           },
@@ -381,6 +460,7 @@
           "outletName",
           "outletUrl",
           "outletDomain",
+          "status",
           "createdAt",
           "updatedAt"
         ]
@@ -401,6 +481,10 @@
           "outletDomain": {
             "type": "string"
           },
+          "status": {
+            "type": "string",
+            "nullable": true
+          },
           "createdAt": {
             "type": "string"
           },
@@ -408,10 +492,6 @@
             "type": "string"
           },
           "campaignId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "brandId": {
             "type": "string",
             "format": "uuid"
           },
@@ -432,7 +512,7 @@
               "denied"
             ]
           },
-          "overallRelevance": {
+          "overalRelevance": {
             "type": "string",
             "nullable": true
           },
@@ -446,15 +526,15 @@
           "outletName",
           "outletUrl",
           "outletDomain",
+          "status",
           "createdAt",
           "updatedAt",
           "campaignId",
-          "brandId",
           "whyRelevant",
           "whyNotRelevant",
           "relevanceScore",
           "outletStatus",
-          "overallRelevance",
+          "overalRelevance",
           "relevanceRationale"
         ]
       },
@@ -620,14 +700,7 @@
         },
         "responses": {
           "201": {
-            "description": "Outlet created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CampaignOutletResponse"
-                }
-              }
-            }
+            "description": "Outlet created"
           },
           "400": {
             "description": "Validation error",
@@ -686,14 +759,6 @@
           {
             "in": "query",
             "name": "campaignId",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "in": "query",
-            "name": "brandId",
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -790,14 +855,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Outlet found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OutletResponse"
-                }
-              }
-            }
+            "description": "Outlet found"
           },
           "404": {
             "description": "Outlet not found"
@@ -867,14 +925,7 @@
         },
         "responses": {
           "200": {
-            "description": "Outlet updated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OutletResponse"
-                }
-              }
-            }
+            "description": "Outlet updated"
           },
           "404": {
             "description": "Outlet not found"
@@ -1275,6 +1326,480 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/outlets/status": {
+      "get": {
+        "summary": "Outlets with targeting readiness status",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
+          },
+          {
+            "in": "query",
+            "name": "campaignId",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Outlet status list"
+          }
+        }
+      }
+    },
+    "/outlets/has-topics-articles": {
+      "get": {
+        "summary": "Outlets that need topic/article updates",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Outlets needing updates"
+          }
+        }
+      }
+    },
+    "/outlets/has-recent-articles": {
+      "get": {
+        "summary": "Outlets with recent articles to search",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Outlets with recent articles"
+          }
+        }
+      }
+    },
+    "/outlets/has-journalists": {
+      "get": {
+        "summary": "Outlets with journalist coverage status",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Outlets with journalist info"
+          }
+        }
+      }
+    },
+    "/categories": {
+      "post": {
+        "summary": "Create press category",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCategory"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Category created"
+          }
+        }
+      },
+      "get": {
+        "summary": "List categories by campaign",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
+          },
+          {
+            "in": "query",
+            "name": "campaignId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Category list"
+          }
+        }
+      }
+    },
+    "/categories/{id}": {
+      "patch": {
+        "summary": "Update category",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCategory"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Category updated"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/categories/{id}/status": {
+      "patch": {
+        "summary": "Update category status",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCategory"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Category status updated"
+          },
+          "404": {
+            "description": "Not found"
           }
         }
       }

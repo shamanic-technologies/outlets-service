@@ -2,6 +2,8 @@ import express from "express";
 import { apiKeyAuth } from "./middleware/auth";
 import { extractOrgContext } from "./middleware/org-context";
 import outletsRouter from "./routes/outlets";
+import categoriesRouter from "./routes/categories";
+import viewsRouter from "./routes/views";
 import internalRouter from "./routes/internal";
 import discoverRouter from "./routes/discover";
 import statsRouter from "./routes/stats";
@@ -30,6 +32,9 @@ export function createApp() {
     }
   });
 
+  // View routes (must be before /outlets/:id to avoid path conflicts)
+  app.use("/outlets", viewsRouter);
+
   // Stats route (must be before /outlets/:id to avoid path conflicts)
   app.use("/outlets", statsRouter);
 
@@ -38,6 +43,7 @@ export function createApp() {
 
   // CRUD routes
   app.use("/outlets", outletsRouter);
+  app.use("/categories", categoriesRouter);
 
   // Internal routes
   app.use("/internal", internalRouter);

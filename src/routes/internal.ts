@@ -20,9 +20,9 @@ router.get("/outlets/by-ids", async (req: Request, res: Response): Promise<void>
 
     const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
     const result = await pool.query(
-      `SELECT id, outlet_name, outlet_url, outlet_domain, created_at, updated_at
-       FROM outlets
-       WHERE id IN (${placeholders})`,
+      `SELECT po.id, po.outlet_name, po.outlet_url, po.outlet_domain, po.status, po.created_at, po.updated_at
+       FROM press_outlets po
+       WHERE po.id IN (${placeholders})`,
       ids
     );
 
@@ -32,6 +32,7 @@ router.get("/outlets/by-ids", async (req: Request, res: Response): Promise<void>
         outletName: r.outlet_name,
         outletUrl: r.outlet_url,
         outletDomain: r.outlet_domain,
+        status: r.status,
         createdAt: r.created_at,
         updatedAt: r.updated_at,
       })),
@@ -49,12 +50,12 @@ router.get("/outlets/by-campaign/:campaignId", async (req: Request, res: Respons
 
     const result = await pool.query(
       `SELECT
-        o.id, o.outlet_name, o.outlet_url, o.outlet_domain,
-        co.brand_id, co.why_relevant, co.why_not_relevant, co.relevance_score, co.status AS outlet_status,
-        co.overall_relevance, co.relevance_rationale,
-        o.created_at, o.updated_at
+        po.id, po.outlet_name, po.outlet_url, po.outlet_domain, po.status,
+        co.why_relevant, co.why_not_relevant, co.relevance_score, co.status AS outlet_status,
+        co.overal_relevance, co.relevance_rationale,
+        po.created_at, po.updated_at
        FROM campaign_outlets co
-       JOIN outlets o ON co.outlet_id = o.id
+       JOIN press_outlets po ON co.outlet_id = po.id
        WHERE co.campaign_id = $1
        ORDER BY co.relevance_score DESC`,
       [campaignId]
@@ -66,13 +67,13 @@ router.get("/outlets/by-campaign/:campaignId", async (req: Request, res: Respons
         outletName: r.outlet_name,
         outletUrl: r.outlet_url,
         outletDomain: r.outlet_domain,
+        status: r.status,
         campaignId,
-        brandId: r.brand_id,
         whyRelevant: r.why_relevant,
         whyNotRelevant: r.why_not_relevant,
         relevanceScore: Number(r.relevance_score),
         outletStatus: r.outlet_status,
-        overallRelevance: r.overall_relevance,
+        overalRelevance: r.overal_relevance,
         relevanceRationale: r.relevance_rationale,
         createdAt: r.created_at,
         updatedAt: r.updated_at,

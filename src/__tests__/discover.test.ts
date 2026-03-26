@@ -35,7 +35,6 @@ const ORG_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const USER_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 const RUN_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc";
 const CAMPAIGN_ID = "dddddddd-dddd-dddd-dddd-dddddddddddd";
-const BRAND_ID = "55555555-5555-5555-5555-555555555555";
 
 function withIdentity(req: request.Test): request.Test {
   return req.set("x-org-id", ORG_ID).set("x-user-id", USER_ID).set("x-run-id", RUN_ID);
@@ -43,7 +42,6 @@ function withIdentity(req: request.Test): request.Test {
 
 const validDiscoverBody = {
   campaignId: CAMPAIGN_ID,
-  brandId: BRAND_ID,
   brandName: "Acme Corp",
   brandDescription: "SaaS platform for HR automation",
   industry: "HR Tech",
@@ -139,11 +137,14 @@ beforeEach(() => {
 
 describe("POST /outlets/discover", () => {
   it("discovers outlets end-to-end", async () => {
+    // LLM call 1: generate queries
     mockChatComplete.mockResolvedValueOnce(llmQueriesResponse);
+    // Google search
     mockSearchBatch.mockResolvedValueOnce(googleBatchResponse);
+    // LLM call 2: score outlets
     mockChatComplete.mockResolvedValueOnce(llmScoringResponse);
 
-    // DB: BEGIN, (INSERT outlets + INSERT campaign_outlets) x2, COMMIT
+    // DB: BEGIN, (INSERT press_outlets + INSERT campaign_outlets) x2, COMMIT
     mockQuery
       .mockResolvedValueOnce({}) // BEGIN
       .mockResolvedValueOnce({
@@ -169,23 +170,12 @@ describe("POST /outlets/discover", () => {
     expect(res.body.searchQueries).toBe(2);
     expect(res.body.tokensUsed).toBeDefined();
 
+    // Verify chat-service was called twice
     expect(mockChatComplete).toHaveBeenCalledTimes(2);
+    // Verify google-service was called once (batch)
     expect(mockSearchBatch).toHaveBeenCalledTimes(1);
+    // Verify batch request contained 2 queries
     expect(mockSearchBatch.mock.calls[0][0].queries).toHaveLength(2);
-  });
-
-  it("returns 400 for missing brandId", async () => {
-    const res = await withIdentity(
-      request(app).post("/outlets/discover")
-    ).send({
-      campaignId: CAMPAIGN_ID,
-      brandName: "Acme",
-      brandDescription: "SaaS",
-      industry: "Tech",
-    });
-
-    expect(res.status).toBe(400);
-    expect(res.body.error).toBe("Validation error");
   });
 
   it("returns 400 for invalid body", async () => {
@@ -225,7 +215,7 @@ describe("POST /outlets/discover", () => {
 
   it("returns 502 when LLM returns invalid scoring format", async () => {
     mockChatComplete
-      .mockResolvedValueOnce(llmQueriesResponse)
+      .mockResolvedValueOnce(llmQueriesResponse) // valid queries
       .mockResolvedValueOnce({
         content: "bad scoring",
         json: { invalid: "scoring" },
@@ -306,6 +296,7 @@ describe("POST /outlets/discover", () => {
       request(app).post("/outlets/discover")
     ).send(validDiscoverBody);
 
+    // Check headers passed to chatComplete
     const firstCallHeaders = mockChatComplete.mock.calls[0][1];
     expect(firstCallHeaders).toEqual({
       orgId: ORG_ID,
@@ -331,9 +322,11 @@ describe("POST /outlets/discover", () => {
       .set("x-feature-slug", "discover-feature")
       .send(validDiscoverBody);
 
+    // Check feature slug passed to chatComplete
     const chatHeaders = mockChatComplete.mock.calls[0][1];
     expect(chatHeaders.featureSlug).toBe("discover-feature");
 
+    // Check feature slug passed to searchBatch
     const googleHeaders = mockSearchBatch.mock.calls[0][1];
     expect(googleHeaders.featureSlug).toBe("discover-feature");
   });

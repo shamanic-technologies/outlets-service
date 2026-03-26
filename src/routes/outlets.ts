@@ -8,6 +8,7 @@ import {
   listOutletsQuerySchema,
   bulkCreateOutletsSchema,
   searchOutletsSchema,
+  byIdsQuerySchema,
 } from "../schemas";
 
 const router = Router();
@@ -35,27 +36,29 @@ router.post(
       try {
         await client.query("BEGIN");
 
+        // Upsert press_outlets by outlet_url
         const outletResult = await client.query(
-          `INSERT INTO outlets (outlet_name, outlet_url, outlet_domain)
+          `INSERT INTO press_outlets (outlet_name, outlet_url, outlet_domain)
            VALUES ($1, $2, $3)
            ON CONFLICT (outlet_url)
            DO UPDATE SET outlet_name = EXCLUDED.outlet_name, outlet_domain = EXCLUDED.outlet_domain, updated_at = CURRENT_TIMESTAMP
-           RETURNING id, outlet_name, outlet_url, outlet_domain, created_at, updated_at`,
+           RETURNING id, outlet_name, outlet_url, outlet_domain, status, created_at, updated_at`,
           [b.outletName, b.outletUrl, domain]
         );
         const outlet = outletResult.rows[0];
 
+        // Upsert campaign_outlets
         await client.query(
-          `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_id, feature_slug, workflow_name, why_relevant, why_not_relevant, relevance_score, status, overall_relevance, relevance_rationale)
+          `INSERT INTO campaign_outlets (campaign_id, outlet_id, why_relevant, why_not_relevant, relevance_score, status, overal_relevance, relevance_rationale, feature_slug, org_id, brand_id, workflow_name)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
            ON CONFLICT (campaign_id, outlet_id)
            DO UPDATE SET why_relevant = EXCLUDED.why_relevant, why_not_relevant = EXCLUDED.why_not_relevant,
              relevance_score = EXCLUDED.relevance_score, status = EXCLUDED.status,
-             overall_relevance = EXCLUDED.overall_relevance, relevance_rationale = EXCLUDED.relevance_rationale,
+             overal_relevance = EXCLUDED.overal_relevance, relevance_rationale = EXCLUDED.relevance_rationale,
              feature_slug = EXCLUDED.feature_slug, org_id = EXCLUDED.org_id,
              brand_id = EXCLUDED.brand_id, workflow_name = EXCLUDED.workflow_name,
              updated_at = CURRENT_TIMESTAMP`,
-          [b.campaignId, outlet.id, orgId, b.brandId, featureSlug, b.workflowName || null, b.whyRelevant, b.whyNotRelevant, b.relevanceScore, b.status || "open", b.overallRelevance || null, b.relevanceRationale || null]
+          [b.campaignId, outlet.id, b.whyRelevant, b.whyNotRelevant, b.relevanceScore, b.status || "open", b.overalRelevance || null, b.relevanceRationale || null, featureSlug, orgId, b.brandId || null, b.workflowName || null]
         );
 
         await client.query("COMMIT");
@@ -65,13 +68,13 @@ router.post(
           outletName: outlet.outlet_name,
           outletUrl: outlet.outlet_url,
           outletDomain: outlet.outlet_domain,
+          status: outlet.status,
           campaignId: b.campaignId,
-          brandId: b.brandId,
           whyRelevant: b.whyRelevant,
           whyNotRelevant: b.whyNotRelevant,
           relevanceScore: Number(b.relevanceScore),
           outletStatus: b.status || "open",
-          overallRelevance: b.overallRelevance || null,
+          overalRelevance: b.overalRelevance || null,
           relevanceRationale: b.relevanceRationale || null,
           createdAt: outlet.created_at,
           updatedAt: outlet.updated_at,
@@ -104,10 +107,6 @@ router.get(
         conditions.push(`co.campaign_id = $${paramIdx++}`);
         params.push(q.campaignId);
       }
-      if (q.brandId) {
-        conditions.push(`co.brand_id = $${paramIdx++}`);
-        params.push(q.brandId);
-      }
       if (q.status) {
         conditions.push(`co.status = $${paramIdx++}`);
         params.push(q.status);
@@ -116,14 +115,14 @@ router.get(
       const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
       const result = await pool.query(
-        `SELECT o.id, o.outlet_name, o.outlet_url, o.outlet_domain,
-                co.campaign_id, co.brand_id, co.why_relevant, co.why_not_relevant, co.relevance_score,
-                co.status AS outlet_status, co.overall_relevance, co.relevance_rationale,
-                o.created_at, o.updated_at
-         FROM outlets o
-         JOIN campaign_outlets co ON o.id = co.outlet_id
+        `SELECT po.id, po.outlet_name, po.outlet_url, po.outlet_domain, po.status,
+                co.campaign_id, co.why_relevant, co.why_not_relevant, co.relevance_score,
+                co.status AS outlet_status, co.overal_relevance, co.relevance_rationale,
+                po.created_at, po.updated_at
+         FROM press_outlets po
+         JOIN campaign_outlets co ON po.id = co.outlet_id
          ${where}
-         ORDER BY o.created_at DESC
+         ORDER BY po.created_at DESC
          LIMIT $${paramIdx++} OFFSET $${paramIdx}`,
         [...params, q.limit, q.offset]
       );
@@ -134,13 +133,13 @@ router.get(
           outletName: r.outlet_name,
           outletUrl: r.outlet_url,
           outletDomain: r.outlet_domain,
+          status: r.status,
           campaignId: r.campaign_id,
-          brandId: r.brand_id,
           whyRelevant: r.why_relevant,
           whyNotRelevant: r.why_not_relevant,
           relevanceScore: Number(r.relevance_score),
           outletStatus: r.outlet_status,
-          overallRelevance: r.overall_relevance,
+          overalRelevance: r.overal_relevance,
           relevanceRationale: r.relevance_rationale,
           createdAt: r.created_at,
           updatedAt: r.updated_at,
@@ -158,8 +157,8 @@ router.get(
 router.get("/:id", async (req: Request, res: Response): Promise<void> => {
   try {
     const result = await pool.query(
-      `SELECT id, outlet_name, outlet_url, outlet_domain, created_at, updated_at
-       FROM outlets WHERE id = $1`,
+      `SELECT po.id, po.outlet_name, po.outlet_url, po.outlet_domain, po.status, po.created_at, po.updated_at
+       FROM press_outlets po WHERE po.id = $1`,
       [req.params.id]
     );
 
@@ -174,6 +173,7 @@ router.get("/:id", async (req: Request, res: Response): Promise<void> => {
       outletName: r.outlet_name,
       outletUrl: r.outlet_url,
       outletDomain: r.outlet_domain,
+      status: r.status,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     });
@@ -202,8 +202,8 @@ router.patch(
       params.push(req.params.id);
 
       const result = await pool.query(
-        `UPDATE outlets SET ${sets.join(", ")} WHERE id = $${idx}
-         RETURNING id, outlet_name, outlet_url, outlet_domain, created_at, updated_at`,
+        `UPDATE press_outlets SET ${sets.join(", ")} WHERE id = $${idx}
+         RETURNING id, outlet_name, outlet_url, outlet_domain, status, created_at, updated_at`,
         params
       );
 
@@ -218,6 +218,7 @@ router.patch(
         outletName: r.outlet_name,
         outletUrl: r.outlet_url,
         outletDomain: r.outlet_domain,
+        status: r.status,
         createdAt: r.created_at,
         updatedAt: r.updated_at,
       });
@@ -235,12 +236,14 @@ router.patch(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const { status, reason } = req.body;
+      // We need campaignId to update the campaign_outlet status
       const campaignId = req.query.campaignId as string;
       if (!campaignId) {
         res.status(400).json({ error: "campaignId query parameter required" });
         return;
       }
 
+      const endedAt = status === "ended" ? "CURRENT_TIMESTAMP" : "NULL";
       const result = await pool.query(
         `UPDATE campaign_outlets
          SET status = $1, relevance_rationale = COALESCE($2, relevance_rationale),
@@ -290,7 +293,7 @@ router.post(
           const domain = b.outletDomain || extractDomain(b.outletUrl);
 
           const outletResult = await client.query(
-            `INSERT INTO outlets (outlet_name, outlet_url, outlet_domain)
+            `INSERT INTO press_outlets (outlet_name, outlet_url, outlet_domain)
              VALUES ($1, $2, $3)
              ON CONFLICT (outlet_url)
              DO UPDATE SET outlet_name = EXCLUDED.outlet_name, outlet_domain = EXCLUDED.outlet_domain, updated_at = CURRENT_TIMESTAMP
@@ -300,16 +303,16 @@ router.post(
           const outlet = outletResult.rows[0];
 
           await client.query(
-            `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_id, feature_slug, workflow_name, why_relevant, why_not_relevant, relevance_score, status, overall_relevance, relevance_rationale)
+            `INSERT INTO campaign_outlets (campaign_id, outlet_id, why_relevant, why_not_relevant, relevance_score, status, overal_relevance, relevance_rationale, feature_slug, org_id, brand_id, workflow_name)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
              ON CONFLICT (campaign_id, outlet_id)
              DO UPDATE SET why_relevant = EXCLUDED.why_relevant, why_not_relevant = EXCLUDED.why_not_relevant,
                relevance_score = EXCLUDED.relevance_score, status = EXCLUDED.status,
-               overall_relevance = EXCLUDED.overall_relevance, relevance_rationale = EXCLUDED.relevance_rationale,
+               overal_relevance = EXCLUDED.overal_relevance, relevance_rationale = EXCLUDED.relevance_rationale,
                feature_slug = EXCLUDED.feature_slug, org_id = EXCLUDED.org_id,
                brand_id = EXCLUDED.brand_id, workflow_name = EXCLUDED.workflow_name,
                updated_at = CURRENT_TIMESTAMP`,
-            [b.campaignId, outlet.id, orgId, b.brandId, featureSlug, b.workflowName || null, b.whyRelevant, b.whyNotRelevant, b.relevanceScore, b.status || "open", b.overallRelevance || null, b.relevanceRationale || null]
+            [b.campaignId, outlet.id, b.whyRelevant, b.whyNotRelevant, b.relevanceScore, b.status || "open", b.overalRelevance || null, b.relevanceRationale || null, featureSlug, orgId, b.brandId || null, b.workflowName || null]
           );
 
           results.push({
@@ -354,11 +357,11 @@ router.post(
       params.push(limit);
 
       const result = await pool.query(
-        `SELECT DISTINCT o.id, o.outlet_name, o.outlet_url, o.outlet_domain, o.created_at, o.updated_at
-         FROM outlets o
-         LEFT JOIN campaign_outlets co ON o.id = co.outlet_id
-         WHERE (o.outlet_name ILIKE $1 OR o.outlet_url ILIKE $2) ${campaignFilter}
-         ORDER BY o.outlet_name
+        `SELECT DISTINCT po.id, po.outlet_name, po.outlet_url, po.outlet_domain, po.status, po.created_at, po.updated_at
+         FROM press_outlets po
+         LEFT JOIN campaign_outlets co ON po.id = co.outlet_id
+         WHERE (po.outlet_name ILIKE $1 OR po.outlet_url ILIKE $2) ${campaignFilter}
+         ORDER BY po.outlet_name
          LIMIT $${paramIdx - (campaignId ? 0 : 1)}`,
         params
       );
@@ -369,6 +372,7 @@ router.post(
           outletName: r.outlet_name,
           outletUrl: r.outlet_url,
           outletDomain: r.outlet_domain,
+          status: r.status,
           createdAt: r.created_at,
           updatedAt: r.updated_at,
         })),

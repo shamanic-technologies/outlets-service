@@ -6,6 +6,8 @@ import {
   updateOutletStatusSchema,
   bulkCreateOutletsSchema,
   searchOutletsSchema,
+  createCategorySchema,
+  updateCategorySchema,
   discoverOutletsSchema,
   discoverOutletsResponseSchema,
   healthResponseSchema,
@@ -32,8 +34,8 @@ const spec = {
   openapi: "3.0.0",
   info: {
     title: "Outlets Service",
-    description: "Manages press outlets (publications) and their campaign relevance data. Scoped by org × brand × feature × campaign × workflow.",
-    version: "2.0.0",
+    description: "Manages press outlets (publications) and their campaign relevance data. Domain rating data is managed by the ahref-service.",
+    version: "1.0.0",
   },
   servers: [{ url: "http://localhost:3000" }],
   security: [{ apiKey: [] }],
@@ -44,6 +46,8 @@ const spec = {
       UpdateOutletStatus: zodToJsonSchema(updateOutletStatusSchema),
       BulkCreateOutlets: zodToJsonSchema(bulkCreateOutletsSchema),
       SearchOutlets: zodToJsonSchema(searchOutletsSchema),
+      CreateCategory: zodToJsonSchema(createCategorySchema),
+      UpdateCategory: zodToJsonSchema(updateCategorySchema),
       DiscoverOutlets: zodToJsonSchema(discoverOutletsSchema),
       DiscoverOutletsResponse: zodToJsonSchema(discoverOutletsResponseSchema),
       OutletResponse: zodToJsonSchema(outletResponseSchema),
@@ -77,7 +81,7 @@ const spec = {
         parameters: [...orgContextHeaders],
         requestBody: { content: { "application/json": { schema: ref("CreateOutlet") } } },
         responses: {
-          "201": { description: "Outlet created", content: { "application/json": { schema: ref("CampaignOutletResponse") } } },
+          "201": { description: "Outlet created" },
           "400": { description: "Validation error", content: { "application/json": { schema: ref("ErrorResponse") } } },
         },
       },
@@ -86,7 +90,6 @@ const spec = {
         parameters: [
           ...orgContextHeaders,
           { in: "query", name: "campaignId", schema: { type: "string", format: "uuid" } },
-          { in: "query", name: "brandId", schema: { type: "string", format: "uuid" } },
           { in: "query", name: "status", schema: { type: "string", enum: ["open", "ended", "denied"] } },
           { in: "query", name: "limit", schema: { type: "integer", default: 100 } },
           { in: "query", name: "offset", schema: { type: "integer", default: 0 } },
@@ -101,7 +104,7 @@ const spec = {
         summary: "Get outlet by ID",
         parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }, ...orgContextHeaders],
         responses: {
-          "200": { description: "Outlet found", content: { "application/json": { schema: ref("OutletResponse") } } },
+          "200": { description: "Outlet found" },
           "404": { description: "Outlet not found" },
         },
       },
@@ -110,7 +113,7 @@ const spec = {
         parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }, ...orgContextHeaders],
         requestBody: { content: { "application/json": { schema: ref("UpdateOutlet") } } },
         responses: {
-          "200": { description: "Outlet updated", content: { "application/json": { schema: ref("OutletResponse") } } },
+          "200": { description: "Outlet updated" },
           "404": { description: "Outlet not found" },
         },
       },
@@ -186,6 +189,73 @@ const spec = {
           "200": { description: "No outlets found (empty results)" },
           "400": { description: "Validation error", content: { "application/json": { schema: ref("ErrorResponse") } } },
           "502": { description: "Upstream service error (chat-service or google-service)", content: { "application/json": { schema: ref("ErrorResponse") } } },
+        },
+      },
+    },
+    "/outlets/status": {
+      get: {
+        summary: "Outlets with targeting readiness status",
+        parameters: [...orgContextHeaders, { in: "query", name: "campaignId", schema: { type: "string", format: "uuid" } }],
+        responses: { "200": { description: "Outlet status list" } },
+      },
+    },
+    "/outlets/has-topics-articles": {
+      get: {
+        summary: "Outlets that need topic/article updates",
+        parameters: [...orgContextHeaders],
+        responses: { "200": { description: "Outlets needing updates" } },
+      },
+    },
+    "/outlets/has-recent-articles": {
+      get: {
+        summary: "Outlets with recent articles to search",
+        parameters: [...orgContextHeaders],
+        responses: { "200": { description: "Outlets with recent articles" } },
+      },
+    },
+    "/outlets/has-journalists": {
+      get: {
+        summary: "Outlets with journalist coverage status",
+        parameters: [...orgContextHeaders],
+        responses: { "200": { description: "Outlets with journalist info" } },
+      },
+    },
+    "/categories": {
+      post: {
+        summary: "Create press category",
+        parameters: [...orgContextHeaders],
+        requestBody: { content: { "application/json": { schema: ref("CreateCategory") } } },
+        responses: {
+          "201": { description: "Category created" },
+        },
+      },
+      get: {
+        summary: "List categories by campaign",
+        parameters: [...orgContextHeaders, { in: "query", name: "campaignId", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: {
+          "200": { description: "Category list" },
+        },
+      },
+    },
+    "/categories/{id}": {
+      patch: {
+        summary: "Update category",
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }, ...orgContextHeaders],
+        requestBody: { content: { "application/json": { schema: ref("UpdateCategory") } } },
+        responses: {
+          "200": { description: "Category updated" },
+          "404": { description: "Not found" },
+        },
+      },
+    },
+    "/categories/{id}/status": {
+      patch: {
+        summary: "Update category status",
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }, ...orgContextHeaders],
+        requestBody: { content: { "application/json": { schema: ref("UpdateCategory") } } },
+        responses: {
+          "200": { description: "Category status updated" },
+          "404": { description: "Not found" },
         },
       },
     },
