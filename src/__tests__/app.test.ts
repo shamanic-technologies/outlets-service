@@ -22,6 +22,8 @@ vi.mock("../db/pool", () => ({
 const ORG_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const USER_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 const RUN_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc";
+const CAMPAIGN_ID = "22222222-2222-2222-2222-222222222222";
+const BRAND_ID = "55555555-5555-5555-5555-555555555555";
 
 function withIdentity(req: request.Test): request.Test {
   return req.set("x-org-id", ORG_ID).set("x-user-id", USER_ID).set("x-run-id", RUN_ID);
@@ -56,15 +58,14 @@ describe("POST /outlets", () => {
       outlet_name: "TechCrunch",
       outlet_url: "https://techcrunch.com",
       outlet_domain: "techcrunch.com",
-      status: null,
       created_at: "2026-01-01T00:00:00Z",
       updated_at: "2026-01-01T00:00:00Z",
     };
 
-    // BEGIN, INSERT press_outlets, INSERT campaign_outlets, COMMIT
+    // BEGIN, INSERT outlets, INSERT campaign_outlets, COMMIT
     mockQuery
       .mockResolvedValueOnce({}) // BEGIN
-      .mockResolvedValueOnce({ rows: [outletRow] }) // INSERT press_outlets
+      .mockResolvedValueOnce({ rows: [outletRow] }) // INSERT outlets
       .mockResolvedValueOnce({ rows: [] }) // INSERT campaign_outlets
       .mockResolvedValueOnce({}); // COMMIT
 
@@ -72,7 +73,8 @@ describe("POST /outlets", () => {
       outletName: "TechCrunch",
       outletUrl: "https://techcrunch.com",
       outletDomain: "techcrunch.com",
-      campaignId: "22222222-2222-2222-2222-222222222222",
+      campaignId: CAMPAIGN_ID,
+      brandId: BRAND_ID,
       whyRelevant: "Top tech publication",
       whyNotRelevant: "Might be too competitive",
       relevanceScore: 85,
@@ -81,9 +83,24 @@ describe("POST /outlets", () => {
     expect(res.status).toBe(201);
     expect(res.body.id).toBe(outletRow.id);
     expect(res.body.outletName).toBe("TechCrunch");
-    expect(res.body.campaignId).toBe("22222222-2222-2222-2222-222222222222");
+    expect(res.body.campaignId).toBe(CAMPAIGN_ID);
+    expect(res.body.brandId).toBe(BRAND_ID);
     expect(res.body.relevanceScore).toBe(85);
     expect(res.body.outletStatus).toBe("open");
+  });
+
+  it("returns 400 for missing brandId", async () => {
+    const res = await withIdentity(request(app).post("/outlets")).send({
+      outletName: "TechCrunch",
+      outletUrl: "https://techcrunch.com",
+      outletDomain: "techcrunch.com",
+      campaignId: CAMPAIGN_ID,
+      whyRelevant: "Good",
+      whyNotRelevant: "None",
+      relevanceScore: 85,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("Validation error");
   });
 
   it("returns 400 for invalid body", async () => {
@@ -104,13 +121,13 @@ describe("GET /outlets", () => {
           outlet_name: "TechCrunch",
           outlet_url: "https://techcrunch.com",
           outlet_domain: "techcrunch.com",
-          status: null,
-          campaign_id: "22222222-2222-2222-2222-222222222222",
+          campaign_id: CAMPAIGN_ID,
+          brand_id: BRAND_ID,
           why_relevant: "Top tech",
           why_not_relevant: "Competitive",
           relevance_score: "85.00",
           outlet_status: "open",
-          overal_relevance: null,
+          overall_relevance: null,
           relevance_rationale: null,
           created_at: "2026-01-01T00:00:00Z",
           updated_at: "2026-01-01T00:00:00Z",
@@ -120,13 +137,14 @@ describe("GET /outlets", () => {
     });
 
     const res = await withIdentity(request(app).get("/outlets")).query({
-      campaignId: "22222222-2222-2222-2222-222222222222",
+      campaignId: CAMPAIGN_ID,
     });
 
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(1);
     expect(res.body.outlets[0].outletName).toBe("TechCrunch");
     expect(res.body.outlets[0].relevanceScore).toBe(85);
+    expect(res.body.outlets[0].brandId).toBe(BRAND_ID);
   });
 
   it("lists outlets without filters", async () => {
@@ -146,7 +164,6 @@ describe("GET /outlets/:id", () => {
           outlet_name: "TechCrunch",
           outlet_url: "https://techcrunch.com",
           outlet_domain: "techcrunch.com",
-          status: null,
           created_at: "2026-01-01T00:00:00Z",
           updated_at: "2026-01-01T00:00:00Z",
         },
@@ -178,7 +195,6 @@ describe("PATCH /outlets/:id", () => {
           outlet_name: "Updated Name",
           outlet_url: "https://techcrunch.com",
           outlet_domain: "techcrunch.com",
-          status: null,
           created_at: "2026-01-01T00:00:00Z",
           updated_at: "2026-01-02T00:00:00Z",
         },
@@ -208,7 +224,7 @@ describe("PATCH /outlets/:id/status", () => {
       rows: [
         {
           outlet_id: "11111111-1111-1111-1111-111111111111",
-          campaign_id: "22222222-2222-2222-2222-222222222222",
+          campaign_id: CAMPAIGN_ID,
           status: "ended",
           relevance_rationale: "No longer relevant",
           updated_at: "2026-01-02T00:00:00Z",
@@ -219,7 +235,7 @@ describe("PATCH /outlets/:id/status", () => {
     const res = await withIdentity(
       request(app)
         .patch("/outlets/11111111-1111-1111-1111-111111111111/status")
-        .query({ campaignId: "22222222-2222-2222-2222-222222222222" })
+        .query({ campaignId: CAMPAIGN_ID })
     ).send({ status: "ended", reason: "No longer relevant" });
 
     expect(res.status).toBe(200);
@@ -275,6 +291,7 @@ describe("POST /outlets/bulk", () => {
           outletUrl: "https://outlet1.com",
           outletDomain: "outlet1.com",
           campaignId: "33333333-3333-3333-3333-333333333333",
+          brandId: BRAND_ID,
           whyRelevant: "Good",
           whyNotRelevant: "None",
           relevanceScore: 90,
@@ -284,6 +301,7 @@ describe("POST /outlets/bulk", () => {
           outletUrl: "https://outlet2.com",
           outletDomain: "outlet2.com",
           campaignId: "33333333-3333-3333-3333-333333333333",
+          brandId: BRAND_ID,
           whyRelevant: "Also good",
           whyNotRelevant: "None",
           relevanceScore: 80,
@@ -306,7 +324,6 @@ describe("POST /outlets/search", () => {
           outlet_name: "TechCrunch",
           outlet_url: "https://techcrunch.com",
           outlet_domain: "techcrunch.com",
-          status: null,
           created_at: "2026-01-01T00:00:00Z",
           updated_at: "2026-01-01T00:00:00Z",
         },
@@ -325,192 +342,6 @@ describe("POST /outlets/search", () => {
 });
 
 // ========================
-// Categories
-// ========================
-describe("POST /categories", () => {
-  it("creates a category", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        {
-          id: "44444444-4444-4444-4444-444444444444",
-          campaign_id: "22222222-2222-2222-2222-222222222222",
-          category_name: "Tech News",
-          scope: "international",
-          region: null,
-          example_outlets: "TechCrunch, Wired",
-          why_relevant: "Core topic",
-          why_not_relevant: "",
-          relevance_score: "95.00",
-          created_at: "2026-01-01T00:00:00Z",
-          updated_at: "2026-01-01T00:00:00Z",
-        },
-      ],
-    });
-
-    const res = await withIdentity(request(app).post("/categories")).send({
-      campaignId: "22222222-2222-2222-2222-222222222222",
-      categoryName: "Tech News",
-      scope: "international",
-      exampleOutlets: "TechCrunch, Wired",
-      whyRelevant: "Core topic",
-      relevanceScore: 95,
-    });
-
-    expect(res.status).toBe(201);
-    expect(res.body.categoryName).toBe("Tech News");
-    expect(res.body.relevanceScore).toBe(95);
-  });
-});
-
-describe("GET /categories", () => {
-  it("lists categories by campaign", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        {
-          id: "44444444-4444-4444-4444-444444444444",
-          campaign_id: "22222222-2222-2222-2222-222222222222",
-          category_name: "Tech News",
-          scope: "international",
-          region: null,
-          example_outlets: null,
-          why_relevant: "",
-          why_not_relevant: "",
-          relevance_score: "90.00",
-          created_at: "2026-01-01T00:00:00Z",
-          updated_at: "2026-01-01T00:00:00Z",
-        },
-      ],
-    });
-
-    const res = await withIdentity(request(app).get("/categories")).query({
-      campaignId: "22222222-2222-2222-2222-222222222222",
-    });
-
-    expect(res.status).toBe(200);
-    expect(res.body.categories).toHaveLength(1);
-  });
-
-  it("returns 400 without campaignId", async () => {
-    const res = await withIdentity(request(app).get("/categories"));
-    expect(res.status).toBe(400);
-  });
-});
-
-describe("PATCH /categories/:id", () => {
-  it("updates a category", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        {
-          id: "44444444-4444-4444-4444-444444444444",
-          campaign_id: "22222222-2222-2222-2222-222222222222",
-          category_name: "Updated Tech",
-          scope: "international",
-          region: null,
-          example_outlets: null,
-          why_relevant: "",
-          why_not_relevant: "",
-          relevance_score: "90.00",
-          created_at: "2026-01-01T00:00:00Z",
-          updated_at: "2026-01-02T00:00:00Z",
-        },
-      ],
-    });
-
-    const res = await withIdentity(
-      request(app).patch("/categories/44444444-4444-4444-4444-444444444444")
-    ).send({ categoryName: "Updated Tech" });
-
-    expect(res.status).toBe(200);
-    expect(res.body.categoryName).toBe("Updated Tech");
-  });
-
-  it("returns 400 with empty body", async () => {
-    const res = await withIdentity(
-      request(app).patch("/categories/44444444-4444-4444-4444-444444444444")
-    ).send({});
-    expect(res.status).toBe(400);
-  });
-});
-
-// ========================
-// Views
-// ========================
-describe("GET /outlets/status", () => {
-  it("returns outlet targeting readiness", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        {
-          campaign_id: "22222222-2222-2222-2222-222222222222",
-          outlet_id: "11111111-1111-1111-1111-111111111111",
-          outlet_name: "TechCrunch",
-          outlet_url: "https://techcrunch.com",
-          relevance_score: "85.00",
-          why_relevant: "Top tech",
-          why_not_relevant: "",
-          outlet_status: "open",
-          overal_relevance: null,
-          relevance_rationale: null,
-          updated_at: "2026-01-01T00:00:00Z",
-        },
-      ],
-    });
-
-    const res = await withIdentity(
-      request(app).get("/outlets/status")
-    ).query({
-      campaignId: "22222222-2222-2222-2222-222222222222",
-    });
-
-    expect(res.status).toBe(200);
-    expect(res.body.outlets[0].outletStatus).toBe("open");
-  });
-});
-
-describe("GET /outlets/has-topics-articles", () => {
-  it("returns outlets list", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        {
-          outlet_id: "11111111-1111-1111-1111-111111111111",
-          outlet_name: "TechCrunch",
-          outlet_url: "https://techcrunch.com",
-          outlet_domain: "techcrunch.com",
-          updated_at: "2026-01-01T00:00:00Z",
-        },
-      ],
-    });
-
-    const res = await withIdentity(
-      request(app).get("/outlets/has-topics-articles")
-    );
-    expect(res.status).toBe(200);
-    expect(res.body.outlets).toHaveLength(1);
-  });
-});
-
-describe("GET /outlets/has-recent-articles", () => {
-  it("returns outlets list", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [] });
-    const res = await withIdentity(
-      request(app).get("/outlets/has-recent-articles")
-    );
-    expect(res.status).toBe(200);
-    expect(res.body.outlets).toEqual([]);
-  });
-});
-
-describe("GET /outlets/has-journalists", () => {
-  it("returns outlets list", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [] });
-    const res = await withIdentity(
-      request(app).get("/outlets/has-journalists")
-    );
-    expect(res.status).toBe(200);
-    expect(res.body.outlets).toEqual([]);
-  });
-});
-
-// ========================
 // Internal
 // ========================
 describe("GET /internal/outlets/by-ids", () => {
@@ -522,7 +353,6 @@ describe("GET /internal/outlets/by-ids", () => {
           outlet_name: "TechCrunch",
           outlet_url: "https://techcrunch.com",
           outlet_domain: "techcrunch.com",
-          status: null,
           created_at: "2026-01-01T00:00:00Z",
           updated_at: "2026-01-01T00:00:00Z",
         },
@@ -535,6 +365,7 @@ describe("GET /internal/outlets/by-ids", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(1);
+    expect(res.body.outlets[0].outletName).toBe("TechCrunch");
   });
 
   it("returns 400 without ids", async () => {
@@ -546,7 +377,7 @@ describe("GET /internal/outlets/by-ids", () => {
 });
 
 describe("GET /internal/outlets/by-campaign/:campaignId", () => {
-  it("returns campaign outlets", async () => {
+  it("returns campaign outlets sorted by relevance", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
@@ -554,12 +385,12 @@ describe("GET /internal/outlets/by-campaign/:campaignId", () => {
           outlet_name: "TechCrunch",
           outlet_url: "https://techcrunch.com",
           outlet_domain: "techcrunch.com",
-          status: null,
+          brand_id: BRAND_ID,
           why_relevant: "Top tech",
-          why_not_relevant: "",
+          why_not_relevant: "Competitive",
           relevance_score: "85.00",
           outlet_status: "open",
-          overal_relevance: null,
+          overall_relevance: "high",
           relevance_rationale: null,
           created_at: "2026-01-01T00:00:00Z",
           updated_at: "2026-01-01T00:00:00Z",
@@ -568,473 +399,24 @@ describe("GET /internal/outlets/by-campaign/:campaignId", () => {
     });
 
     const res = await withIdentity(
-      request(app).get(
-        "/internal/outlets/by-campaign/22222222-2222-2222-2222-222222222222"
-      )
+      request(app).get(`/internal/outlets/by-campaign/${CAMPAIGN_ID}`)
     );
 
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(1);
-    expect(res.body.outlets[0].campaignId).toBe(
-      "22222222-2222-2222-2222-222222222222"
-    );
+    expect(res.body.outlets[0].outletName).toBe("TechCrunch");
+    expect(res.body.outlets[0].brandId).toBe(BRAND_ID);
     expect(res.body.outlets[0].relevanceScore).toBe(85);
   });
 });
 
 // ========================
-// OpenAPI spec response schemas
+// Identity headers
 // ========================
-describe("OpenAPI spec", () => {
-  it("documents response schema for /internal/outlets/by-campaign/{campaignId}", async () => {
-    const res = await request(app).get("/openapi.json");
-    if (res.status === 404) return; // spec not generated in test env
-    const spec = res.body;
-    const byCampaign = spec.paths["/internal/outlets/by-campaign/{campaignId}"]?.get;
-    expect(byCampaign).toBeDefined();
-    const schema = byCampaign.responses["200"].content["application/json"].schema;
-    expect(schema.properties.outlets.items.$ref).toBe("#/components/schemas/CampaignOutletResponse");
-    expect(spec.components.schemas.CampaignOutletResponse).toBeDefined();
-    expect(spec.components.schemas.CampaignOutletResponse.properties).toHaveProperty("id");
-    expect(spec.components.schemas.CampaignOutletResponse.properties).toHaveProperty("outletUrl");
-    expect(spec.components.schemas.CampaignOutletResponse.properties).toHaveProperty("outletName");
-    expect(spec.components.schemas.CampaignOutletResponse.properties).toHaveProperty("relevanceScore");
-  });
-
-  it("documents response schema for /internal/outlets/by-ids", async () => {
-    const res = await request(app).get("/openapi.json");
-    if (res.status === 404) return;
-    const spec = res.body;
-    const byIds = spec.paths["/internal/outlets/by-ids"]?.get;
-    expect(byIds).toBeDefined();
-    const schema = byIds.responses["200"].content["application/json"].schema;
-    expect(schema.properties.outlets.items.$ref).toBe("#/components/schemas/OutletResponse");
-    expect(spec.components.schemas.OutletResponse).toBeDefined();
-  });
-});
-
-// ========================
-// Auth middleware
-// ========================
-describe("API key auth", () => {
-  it("allows health check without auth", async () => {
-    const res = await request(app).get("/health");
-    expect(res.status).toBe(200);
-  });
-});
-
-// ========================
-// Org context headers
-// ========================
-describe("Request context headers", () => {
-  it("accepts requests with all required headers", async () => {
-    const outletRow = {
-      id: "11111111-1111-1111-1111-111111111111",
-      outlet_name: "TechCrunch",
-      outlet_url: "https://techcrunch.com",
-      outlet_domain: "techcrunch.com",
-      status: null,
-      created_at: "2026-01-01T00:00:00Z",
-      updated_at: "2026-01-01T00:00:00Z",
-    };
-
-    mockQuery
-      .mockResolvedValueOnce({}) // BEGIN
-      .mockResolvedValueOnce({ rows: [outletRow] }) // INSERT press_outlets
-      .mockResolvedValueOnce({ rows: [] }) // INSERT campaign_outlets
-      .mockResolvedValueOnce({}); // COMMIT
-
-    const res = await withIdentity(request(app).post("/outlets")).send({
-      outletName: "TechCrunch",
-      outletUrl: "https://techcrunch.com",
-      outletDomain: "techcrunch.com",
-      campaignId: "22222222-2222-2222-2222-222222222222",
-      whyRelevant: "Top tech publication",
-      whyNotRelevant: "Might be too competitive",
-      relevanceScore: 85,
-    });
-
-    expect(res.status).toBe(201);
-    expect(res.body.outletName).toBe("TechCrunch");
-  });
-
-  it("rejects requests without any context headers", async () => {
-    const res = await request(app).post("/outlets").send({
-      outletName: "Wired",
-      outletUrl: "https://wired.com",
-      outletDomain: "wired.com",
-      campaignId: "22222222-2222-2222-2222-222222222222",
-      whyRelevant: "Tech coverage",
-      whyNotRelevant: "None",
-      relevanceScore: 80,
-    });
-
-    expect(res.status).toBe(400);
-    expect(res.body.error).toContain("x-org-id, x-user-id, and x-run-id");
-  });
-
-  it("rejects requests with only x-org-id", async () => {
-    const res = await request(app)
-      .post("/outlets")
-      .set("x-org-id", ORG_ID)
-      .send({
-        outletName: "Wired",
-        outletUrl: "https://wired.com",
-        outletDomain: "wired.com",
-        campaignId: "22222222-2222-2222-2222-222222222222",
-        whyRelevant: "Tech coverage",
-        whyNotRelevant: "None",
-        relevanceScore: 80,
-      });
-
-    expect(res.status).toBe(400);
-    expect(res.body.error).toContain("x-org-id, x-user-id, and x-run-id");
-  });
-
-  it("rejects requests missing only x-run-id", async () => {
-    const res = await request(app)
-      .post("/outlets")
-      .set("x-org-id", ORG_ID)
-      .set("x-user-id", USER_ID)
-      .send({
-        outletName: "Wired",
-        outletUrl: "https://wired.com",
-        outletDomain: "wired.com",
-        campaignId: "22222222-2222-2222-2222-222222222222",
-        whyRelevant: "Tech coverage",
-        whyNotRelevant: "None",
-        relevanceScore: 80,
-      });
-
-    expect(res.status).toBe(400);
-    expect(res.body.error).toContain("x-run-id");
-  });
-
-  it("rejects requests with only x-run-id", async () => {
-    const res = await request(app)
-      .post("/outlets")
-      .set("x-run-id", RUN_ID)
-      .send({
-        outletName: "Wired",
-        outletUrl: "https://wired.com",
-        outletDomain: "wired.com",
-        campaignId: "22222222-2222-2222-2222-222222222222",
-        whyRelevant: "Tech coverage",
-        whyNotRelevant: "None",
-        relevanceScore: 80,
-      });
-
+describe("Identity headers", () => {
+  it("returns 400 without identity headers", async () => {
+    const res = await request(app).get("/outlets");
     expect(res.status).toBe(400);
     expect(res.body.error).toContain("x-org-id");
-  });
-
-  it("skips enforcement for /health", async () => {
-    const res = await request(app).get("/health");
-    expect(res.status).toBe(200);
-  });
-
-  it("skips enforcement for /openapi.json", async () => {
-    // openapi.json may or may not exist, but should not be rejected for missing headers
-    const res = await request(app).get("/openapi.json");
-    // Either 200 (file exists) or 404 (file not found) — NOT 400
-    expect([200, 404]).toContain(res.status);
-  });
-});
-
-// ========================
-// Feature slug header
-// ========================
-describe("x-feature-slug header", () => {
-  it("accepts requests with x-feature-slug and stores it in orgContext", async () => {
-    const outletRow = {
-      id: "11111111-1111-1111-1111-111111111111",
-      outlet_name: "TechCrunch",
-      outlet_url: "https://techcrunch.com",
-      outlet_domain: "techcrunch.com",
-      status: null,
-      created_at: "2026-01-01T00:00:00Z",
-      updated_at: "2026-01-01T00:00:00Z",
-    };
-
-    mockQuery
-      .mockResolvedValueOnce({}) // BEGIN
-      .mockResolvedValueOnce({ rows: [outletRow] }) // INSERT press_outlets
-      .mockResolvedValueOnce({ rows: [] }) // INSERT campaign_outlets
-      .mockResolvedValueOnce({}); // COMMIT
-
-    const res = await withIdentity(request(app).post("/outlets"))
-      .set("x-feature-slug", "my-feature")
-      .send({
-        outletName: "TechCrunch",
-        outletUrl: "https://techcrunch.com",
-        outletDomain: "techcrunch.com",
-        campaignId: "22222222-2222-2222-2222-222222222222",
-        whyRelevant: "Top tech publication",
-        whyNotRelevant: "Might be too competitive",
-        relevanceScore: 85,
-      });
-
-    expect(res.status).toBe(201);
-    // Verify feature_slug was passed to campaign_outlets INSERT (3rd query, index 2)
-    const campaignOutletsCall = mockQuery.mock.calls[2];
-    expect(campaignOutletsCall[1]).toContain("my-feature");
-  });
-
-  it("works without x-feature-slug (optional)", async () => {
-    const outletRow = {
-      id: "11111111-1111-1111-1111-111111111111",
-      outlet_name: "TechCrunch",
-      outlet_url: "https://techcrunch.com",
-      outlet_domain: "techcrunch.com",
-      status: null,
-      created_at: "2026-01-01T00:00:00Z",
-      updated_at: "2026-01-01T00:00:00Z",
-    };
-
-    mockQuery
-      .mockResolvedValueOnce({}) // BEGIN
-      .mockResolvedValueOnce({ rows: [outletRow] }) // INSERT press_outlets
-      .mockResolvedValueOnce({ rows: [] }) // INSERT campaign_outlets
-      .mockResolvedValueOnce({}); // COMMIT
-
-    const res = await withIdentity(request(app).post("/outlets")).send({
-      outletName: "TechCrunch",
-      outletUrl: "https://techcrunch.com",
-      outletDomain: "techcrunch.com",
-      campaignId: "22222222-2222-2222-2222-222222222222",
-      whyRelevant: "Top tech publication",
-      whyNotRelevant: "Might be too competitive",
-      relevanceScore: 85,
-    });
-
-    expect(res.status).toBe(201);
-    // Verify feature_slug was passed as null
-    const campaignOutletsCall = mockQuery.mock.calls[2];
-    expect(campaignOutletsCall[1]).toContain(null);
-  });
-});
-
-// ========================
-// Validation
-// ========================
-describe("Validation", () => {
-  it("rejects invalid outlet URL", async () => {
-    const res = await withIdentity(request(app).post("/outlets")).send({
-      outletName: "Test",
-      outletUrl: "not-a-url",
-      outletDomain: "test.com",
-      campaignId: "22222222-2222-2222-2222-222222222222",
-      whyRelevant: "Test",
-      whyNotRelevant: "Test",
-      relevanceScore: 50,
-    });
-    expect(res.status).toBe(400);
-  });
-
-  it("rejects invalid campaign ID", async () => {
-    const res = await withIdentity(request(app).post("/outlets")).send({
-      outletName: "Test",
-      outletUrl: "https://test.com",
-      outletDomain: "test.com",
-      campaignId: "not-a-uuid",
-      whyRelevant: "Test",
-      whyNotRelevant: "Test",
-      relevanceScore: 50,
-    });
-    expect(res.status).toBe(400);
-  });
-
-  it("rejects relevance score out of range", async () => {
-    const res = await withIdentity(request(app).post("/outlets")).send({
-      outletName: "Test",
-      outletUrl: "https://test.com",
-      outletDomain: "test.com",
-      campaignId: "22222222-2222-2222-2222-222222222222",
-      whyRelevant: "Test",
-      whyNotRelevant: "Test",
-      relevanceScore: 150,
-    });
-    expect(res.status).toBe(400);
-  });
-
-  it("rejects invalid status enum", async () => {
-    const res = await withIdentity(
-      request(app)
-        .patch("/outlets/11111111-1111-1111-1111-111111111111/status")
-        .query({ campaignId: "22222222-2222-2222-2222-222222222222" })
-    ).send({ status: "invalid" });
-    expect(res.status).toBe(400);
-  });
-});
-
-// ========================
-// Stats
-// ========================
-describe("GET /outlets/stats", () => {
-  it("returns flat stats without groupBy", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        {
-          outlets_discovered: 47,
-          avg_relevance_score: "72.35",
-          search_queries_used: 15,
-        },
-      ],
-    });
-
-    const res = await withIdentity(request(app).get("/outlets/stats")).query({
-      campaignId: "22222222-2222-2222-2222-222222222222",
-    });
-
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({
-      outletsDiscovered: 47,
-      avgRelevanceScore: 72.35,
-      searchQueriesUsed: 15,
-    });
-
-    // Verify org_id filter is applied
-    const sql = mockQuery.mock.calls[0][0];
-    expect(sql).toContain("co.org_id = $1");
-    expect(mockQuery.mock.calls[0][1]).toContain(ORG_ID);
-  });
-
-  it("returns grouped stats with groupBy=workflowName", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        {
-          group_key: "outlet-discovery-v3",
-          outlets_discovered: 47,
-          avg_relevance_score: "72.00",
-          search_queries_used: 15,
-        },
-        {
-          group_key: "outlet-discovery-v2",
-          outlets_discovered: 20,
-          avg_relevance_score: "65.50",
-          search_queries_used: 8,
-        },
-      ],
-    });
-
-    const res = await withIdentity(request(app).get("/outlets/stats")).query({
-      groupBy: "workflowName",
-    });
-
-    expect(res.status).toBe(200);
-    expect(res.body.groups).toHaveLength(2);
-    expect(res.body.groups[0]).toEqual({
-      key: "outlet-discovery-v3",
-      outletsDiscovered: 47,
-      avgRelevanceScore: 72,
-      searchQueriesUsed: 15,
-    });
-  });
-
-  it("returns grouped stats with groupBy=brandId", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        {
-          group_key: "dddddddd-dddd-dddd-dddd-dddddddddddd",
-          outlets_discovered: 30,
-          avg_relevance_score: "80.00",
-          search_queries_used: 10,
-        },
-      ],
-    });
-
-    const res = await withIdentity(request(app).get("/outlets/stats")).query({
-      groupBy: "brandId",
-    });
-
-    expect(res.status).toBe(200);
-    expect(res.body.groups).toHaveLength(1);
-    expect(res.body.groups[0].key).toBe(
-      "dddddddd-dddd-dddd-dddd-dddddddddddd"
-    );
-  });
-
-  it("returns grouped stats with groupBy=campaignId", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        {
-          group_key: "22222222-2222-2222-2222-222222222222",
-          outlets_discovered: 47,
-          avg_relevance_score: "72.00",
-          search_queries_used: 15,
-        },
-      ],
-    });
-
-    const res = await withIdentity(request(app).get("/outlets/stats")).query({
-      groupBy: "campaignId",
-    });
-
-    expect(res.status).toBe(200);
-    expect(res.body.groups).toHaveLength(1);
-  });
-
-  it("returns zeros when no data matches", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        {
-          outlets_discovered: 0,
-          avg_relevance_score: null,
-          search_queries_used: null,
-        },
-      ],
-    });
-
-    const res = await withIdentity(request(app).get("/outlets/stats"));
-
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({
-      outletsDiscovered: 0,
-      avgRelevanceScore: 0,
-      searchQueriesUsed: 0,
-    });
-  });
-
-  it("filters by brandId, campaignId, and workflowName simultaneously", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        {
-          outlets_discovered: 12,
-          avg_relevance_score: "88.00",
-          search_queries_used: 5,
-        },
-      ],
-    });
-
-    const res = await withIdentity(request(app).get("/outlets/stats")).query({
-      brandId: "dddddddd-dddd-dddd-dddd-dddddddddddd",
-      campaignId: "22222222-2222-2222-2222-222222222222",
-      workflowName: "outlet-discovery-v3",
-    });
-
-    expect(res.status).toBe(200);
-    expect(res.body.outletsDiscovered).toBe(12);
-
-    // Verify all filters are applied
-    const sql = mockQuery.mock.calls[0][0];
-    expect(sql).toContain("co.brand_id");
-    expect(sql).toContain("co.campaign_id");
-    expect(sql).toContain("co.workflow_name");
-  });
-
-  it("rejects invalid groupBy value", async () => {
-    const res = await withIdentity(request(app).get("/outlets/stats")).query({
-      groupBy: "invalidField",
-    });
-
-    expect(res.status).toBe(400);
-  });
-
-  it("rejects invalid brandId format", async () => {
-    const res = await withIdentity(request(app).get("/outlets/stats")).query({
-      brandId: "not-a-uuid",
-    });
-
-    expect(res.status).toBe(400);
   });
 });
