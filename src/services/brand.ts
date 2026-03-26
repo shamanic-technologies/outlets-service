@@ -1,5 +1,6 @@
 import { config } from "../config";
 import type { OrgContext } from "../middleware/org-context";
+import { buildServiceHeaders } from "./headers";
 
 export interface Brand {
   id: string;
@@ -27,24 +28,9 @@ export interface FieldRequest {
   description: string;
 }
 
-function buildHeaders(ctx: OrgContext): Record<string, string> {
-  const h: Record<string, string> = {
-    "Content-Type": "application/json",
-    "x-api-key": config.brandServiceApiKey,
-    "x-org-id": ctx.orgId,
-    "x-user-id": ctx.userId,
-    "x-run-id": ctx.runId,
-  };
-  if (ctx.featureSlug) h["x-feature-slug"] = ctx.featureSlug;
-  if (ctx.campaignId) h["x-campaign-id"] = ctx.campaignId;
-  if (ctx.brandId) h["x-brand-id"] = ctx.brandId;
-  if (ctx.workflowName) h["x-workflow-name"] = ctx.workflowName;
-  return h;
-}
-
 export async function getBrand(brandId: string, ctx: OrgContext): Promise<Brand> {
   const res = await fetch(`${config.brandServiceUrl}/brands/${brandId}`, {
-    headers: buildHeaders(ctx),
+    headers: buildServiceHeaders(config.brandServiceApiKey, ctx),
   });
   if (!res.ok) {
     const body = await res.text();
@@ -61,7 +47,7 @@ export async function extractFields(
 ): Promise<ExtractFieldResult[]> {
   const res = await fetch(`${config.brandServiceUrl}/brands/${brandId}/extract-fields`, {
     method: "POST",
-    headers: buildHeaders(ctx),
+    headers: buildServiceHeaders(config.brandServiceApiKey, ctx),
     body: JSON.stringify({ fields }),
   });
   if (!res.ok) {
