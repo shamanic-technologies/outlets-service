@@ -9,15 +9,12 @@ export const createOutletSchema = z.object({
   outletName: z.string().min(1),
   outletUrl: z.string().url(),
   outletDomain: z.string().min(1),
-  campaignId: z.string().uuid(),
-  brandId: z.string().uuid(),
   whyRelevant: z.string(),
   whyNotRelevant: z.string(),
   relevanceScore: z.number().min(0).max(100),
   overallRelevance: z.string().optional(),
   relevanceRationale: z.string().optional(),
   status: outletStatusEnum.optional().default("open"),
-  workflowName: z.string().optional(),
 });
 
 export const updateOutletSchema = z.object({
@@ -116,15 +113,7 @@ export const statsGroupedResponseSchema = z.object({
 // --- Discover ---
 
 export const discoverOutletsSchema = z.object({
-  campaignId: z.string().uuid(),
-  brandId: z.string().uuid(),
-  brandName: z.string().min(1),
-  brandDescription: z.string().min(1),
-  industry: z.string().min(1),
-  targetGeo: z.string().optional(),
-  targetAudience: z.string().optional(),
-  angles: z.array(z.string()).optional(),
-  workflowName: z.string().optional(),
+  featureInput: z.record(z.unknown()).optional(),
 });
 
 export const discoverOutletsResponseSchema = z.object({

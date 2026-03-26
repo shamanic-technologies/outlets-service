@@ -4,11 +4,13 @@ import { validateBody } from "../middleware/validate";
 import { pool } from "../db/pool";
 import { chatComplete } from "../services/chat";
 import { searchBatch } from "../services/google";
+import { getBrand, getExtractedFields, findField } from "../services/brand";
 import {
   GENERATE_QUERIES_SYSTEM_PROMPT,
   SCORE_OUTLETS_SYSTEM_PROMPT,
   buildQueryGenerationMessage,
   buildScoringMessage,
+  type BrandPromptContext,
 } from "../prompts";
 import { discoverOutletsSchema } from "../schemas";
 
@@ -54,13 +56,38 @@ router.post(
   validateBody(discoverOutletsSchema),
   async (req: Request, res: Response): Promise<void> => {
     const ctx = req.orgContext!;
+
+    if (!ctx.campaignId || !ctx.brandId) {
+      res.status(400).json({ error: "x-campaign-id and x-brand-id headers are required" });
+      return;
+    }
+
     const body = req.body as DiscoverRequest;
+    const featureInput = body.featureInput;
 
     try {
+      // Step 0: Fetch brand data from brand-service
+      const [brand, extractedFields] = await Promise.all([
+        getBrand(ctx.brandId, ctx),
+        getExtractedFields(ctx.brandId, ctx),
+      ]);
+
+      const brandContext: BrandPromptContext = {
+        brandName: brand.name || brand.domain || "Unknown",
+        brandDescription: findField(extractedFields, "elevator_pitch") || brand.elevatorPitch || brand.bio || "No description available",
+        industry: findField(extractedFields, "categories") || brand.categories || "General",
+        targetGeo: findField(extractedFields, "target_geo") || brand.location || undefined,
+        targetAudience: findField(extractedFields, "target_audience") || undefined,
+        angles: (() => {
+          const raw = findField(extractedFields, "angles");
+          return raw ? raw.split(", ") : undefined;
+        })(),
+      };
+
       // Step 1: Generate search queries via LLM
       const queryGenResponse = await chatComplete(
         {
-          message: buildQueryGenerationMessage(body),
+          message: buildQueryGenerationMessage(brandContext, featureInput),
           systemPrompt: GENERATE_QUERIES_SYSTEM_PROMPT,
           responseFormat: "json",
           temperature: 0.7,
@@ -92,13 +119,7 @@ router.post(
       const scoringResponse = await chatComplete(
         {
           message: buildScoringMessage(
-            {
-              brandName: body.brandName,
-              brandDescription: body.brandDescription,
-              industry: body.industry,
-              targetGeo: body.targetGeo,
-              targetAudience: body.targetAudience,
-            },
+            brandContext,
             searchResponse.results.map((r) => ({
               query: r.query,
               results: r.results.map((sr) => ({
@@ -107,7 +128,8 @@ router.post(
                 snippet: sr.snippet,
                 domain: sr.domain,
               })),
-            }))
+            })),
+            featureInput
           ),
           systemPrompt: SCORE_OUTLETS_SYSTEM_PROMPT,
           responseFormat: "json",
@@ -173,7 +195,7 @@ router.post(
                brand_id = EXCLUDED.brand_id, workflow_name = EXCLUDED.workflow_name,
                search_queries_used = EXCLUDED.search_queries_used,
                updated_at = CURRENT_TIMESTAMP`,
-            [body.campaignId, outlet.id, ctx.orgId, body.brandId, featureSlug, body.workflowName || null, o.whyRelevant, o.whyNotRelevant, o.relevanceScore, o.overallRelevance, i === 0 ? searchQueryCount : 0]
+            [ctx.campaignId, outlet.id, ctx.orgId, ctx.brandId, featureSlug, ctx.workflowName || null, o.whyRelevant, o.whyNotRelevant, o.relevanceScore, o.overallRelevance, i === 0 ? searchQueryCount : 0]
           );
 
           saved.push({

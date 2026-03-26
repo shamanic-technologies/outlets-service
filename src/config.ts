@@ -6,4 +6,6 @@ export const config = {
   chatServiceApiKey: process.env.CHAT_SERVICE_API_KEY || "",
   googleServiceUrl: process.env.GOOGLE_SERVICE_URL || "",
   googleServiceApiKey: process.env.GOOGLE_SERVICE_API_KEY || "",
+  brandServiceUrl: process.env.BRAND_SERVICE_URL || "",
+  brandServiceApiKey: process.env.BRAND_SERVICE_API_KEY || "",
 };

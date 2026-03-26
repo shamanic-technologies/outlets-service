@@ -2,8 +2,8 @@
   "openapi": "3.0.0",
   "info": {
     "title": "Outlets Service",
-    "description": "Manages press outlets (publications) and their campaign relevance data. Scoped by org × brand × feature × campaign × workflow.",
-    "version": "2.0.0"
+    "description": "Manages press outlets (publications) and their campaign relevance data. Scoped by org × brand × feature × campaign × workflow. Brand fields (brandName, industry, etc.) are fetched from brand-service — callers provide brandId via x-brand-id header and optionally pass featureInput as opaque context for LLM calls.",
+    "version": "3.0.0"
   },
   "servers": [
     {
@@ -32,14 +32,6 @@
             "type": "string",
             "minLength": 1
           },
-          "campaignId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "brandId": {
-            "type": "string",
-            "format": "uuid"
-          },
           "whyRelevant": {
             "type": "string"
           },
@@ -65,17 +57,12 @@
               "denied"
             ],
             "default": "open"
-          },
-          "workflowName": {
-            "type": "string"
           }
         },
         "required": [
           "outletName",
           "outletUrl",
           "outletDomain",
-          "campaignId",
-          "brandId",
           "whyRelevant",
           "whyNotRelevant",
           "relevanceScore"
@@ -154,14 +141,6 @@
                   "type": "string",
                   "minLength": 1
                 },
-                "campaignId": {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                "brandId": {
-                  "type": "string",
-                  "format": "uuid"
-                },
                 "whyRelevant": {
                   "type": "string"
                 },
@@ -187,17 +166,12 @@
                     "denied"
                   ],
                   "default": "open"
-                },
-                "workflowName": {
-                  "type": "string"
                 }
               },
               "required": [
                 "outletName",
                 "outletUrl",
                 "outletDomain",
-                "campaignId",
-                "brandId",
                 "whyRelevant",
                 "whyNotRelevant",
                 "relevanceScore"
@@ -234,49 +208,11 @@
       "DiscoverOutlets": {
         "type": "object",
         "properties": {
-          "campaignId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "brandId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "brandName": {
-            "type": "string",
-            "minLength": 1
-          },
-          "brandDescription": {
-            "type": "string",
-            "minLength": 1
-          },
-          "industry": {
-            "type": "string",
-            "minLength": 1
-          },
-          "targetGeo": {
-            "type": "string"
-          },
-          "targetAudience": {
-            "type": "string"
-          },
-          "angles": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "workflowName": {
-            "type": "string"
+          "featureInput": {
+            "type": "object",
+            "additionalProperties": true
           }
-        },
-        "required": [
-          "campaignId",
-          "brandId",
-          "brandName",
-          "brandDescription",
-          "industry"
-        ]
+        }
       },
       "DiscoverOutletsResponse": {
         "type": "object",
@@ -568,6 +504,7 @@
     "/outlets": {
       "post": {
         "summary": "Create outlet (upsert by outlet_url)",
+        "description": "Requires x-campaign-id and x-brand-id headers.",
         "parameters": [
           {
             "in": "header",
@@ -607,6 +544,35 @@
               "type": "string"
             },
             "description": "Feature slug for tracking (propagated downstream)"
+          },
+          {
+            "in": "header",
+            "name": "x-campaign-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Campaign ID (required for mutating endpoints)"
+          },
+          {
+            "in": "header",
+            "name": "x-brand-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Brand ID (required for mutating endpoints)"
+          },
+          {
+            "in": "header",
+            "name": "x-workflow-name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workflow name for tracking (propagated downstream)"
           }
         ],
         "requestBody": {
@@ -630,7 +596,7 @@
             }
           },
           "400": {
-            "description": "Validation error",
+            "description": "Validation error or missing headers",
             "content": {
               "application/json": {
                 "schema": {
@@ -682,6 +648,35 @@
               "type": "string"
             },
             "description": "Feature slug for tracking (propagated downstream)"
+          },
+          {
+            "in": "header",
+            "name": "x-campaign-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Campaign ID (required for mutating endpoints)"
+          },
+          {
+            "in": "header",
+            "name": "x-brand-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Brand ID (required for mutating endpoints)"
+          },
+          {
+            "in": "header",
+            "name": "x-workflow-name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workflow name for tracking (propagated downstream)"
           },
           {
             "in": "query",
@@ -786,6 +781,35 @@
               "type": "string"
             },
             "description": "Feature slug for tracking (propagated downstream)"
+          },
+          {
+            "in": "header",
+            "name": "x-campaign-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Campaign ID (required for mutating endpoints)"
+          },
+          {
+            "in": "header",
+            "name": "x-brand-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Brand ID (required for mutating endpoints)"
+          },
+          {
+            "in": "header",
+            "name": "x-workflow-name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workflow name for tracking (propagated downstream)"
           }
         ],
         "responses": {
@@ -854,6 +878,35 @@
               "type": "string"
             },
             "description": "Feature slug for tracking (propagated downstream)"
+          },
+          {
+            "in": "header",
+            "name": "x-campaign-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Campaign ID (required for mutating endpoints)"
+          },
+          {
+            "in": "header",
+            "name": "x-brand-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Brand ID (required for mutating endpoints)"
+          },
+          {
+            "in": "header",
+            "name": "x-workflow-name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workflow name for tracking (propagated downstream)"
           }
         ],
         "requestBody": {
@@ -885,19 +938,11 @@
     "/outlets/{id}/status": {
       "patch": {
         "summary": "Update outlet status",
+        "description": "Requires x-campaign-id header to identify the campaign_outlets row.",
         "parameters": [
           {
             "in": "path",
             "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "in": "query",
-            "name": "campaignId",
             "required": true,
             "schema": {
               "type": "string",
@@ -942,6 +987,35 @@
               "type": "string"
             },
             "description": "Feature slug for tracking (propagated downstream)"
+          },
+          {
+            "in": "header",
+            "name": "x-campaign-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Campaign ID (required for mutating endpoints)"
+          },
+          {
+            "in": "header",
+            "name": "x-brand-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Brand ID (required for mutating endpoints)"
+          },
+          {
+            "in": "header",
+            "name": "x-workflow-name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workflow name for tracking (propagated downstream)"
           }
         ],
         "requestBody": {
@@ -957,6 +1031,9 @@
           "200": {
             "description": "Status updated"
           },
+          "400": {
+            "description": "Missing x-campaign-id header"
+          },
           "404": {
             "description": "Not found"
           }
@@ -966,6 +1043,7 @@
     "/outlets/bulk": {
       "post": {
         "summary": "Bulk upsert outlets",
+        "description": "Requires x-campaign-id and x-brand-id headers. All outlets in the batch share the same campaign and brand.",
         "parameters": [
           {
             "in": "header",
@@ -1005,6 +1083,35 @@
               "type": "string"
             },
             "description": "Feature slug for tracking (propagated downstream)"
+          },
+          {
+            "in": "header",
+            "name": "x-campaign-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Campaign ID (required for mutating endpoints)"
+          },
+          {
+            "in": "header",
+            "name": "x-brand-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Brand ID (required for mutating endpoints)"
+          },
+          {
+            "in": "header",
+            "name": "x-workflow-name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workflow name for tracking (propagated downstream)"
           }
         ],
         "requestBody": {
@@ -1019,6 +1126,9 @@
         "responses": {
           "201": {
             "description": "Outlets created"
+          },
+          "400": {
+            "description": "Validation error or missing headers"
           }
         }
       }
@@ -1065,6 +1175,35 @@
               "type": "string"
             },
             "description": "Feature slug for tracking (propagated downstream)"
+          },
+          {
+            "in": "header",
+            "name": "x-campaign-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Campaign ID (required for mutating endpoints)"
+          },
+          {
+            "in": "header",
+            "name": "x-brand-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Brand ID (required for mutating endpoints)"
+          },
+          {
+            "in": "header",
+            "name": "x-workflow-name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workflow name for tracking (propagated downstream)"
           }
         ],
         "requestBody": {
@@ -1126,6 +1265,35 @@
               "type": "string"
             },
             "description": "Feature slug for tracking (propagated downstream)"
+          },
+          {
+            "in": "header",
+            "name": "x-campaign-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Campaign ID (required for mutating endpoints)"
+          },
+          {
+            "in": "header",
+            "name": "x-brand-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Brand ID (required for mutating endpoints)"
+          },
+          {
+            "in": "header",
+            "name": "x-workflow-name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workflow name for tracking (propagated downstream)"
           },
           {
             "in": "query",
@@ -1191,7 +1359,7 @@
     "/outlets/discover": {
       "post": {
         "summary": "Discover relevant outlets via Google search + LLM scoring",
-        "description": "Takes a brand brief, generates search queries via LLM, searches Google via google-service, scores results for relevance via LLM, and bulk upserts discovered outlets into the database.",
+        "description": "Requires x-campaign-id and x-brand-id headers. Fetches brand data from brand-service, generates search queries via LLM, searches Google via google-service, scores results for relevance via LLM, and bulk upserts discovered outlets. Pass featureInput as opaque context forwarded to LLM calls.",
         "parameters": [
           {
             "in": "header",
@@ -1231,6 +1399,35 @@
               "type": "string"
             },
             "description": "Feature slug for tracking (propagated downstream)"
+          },
+          {
+            "in": "header",
+            "name": "x-campaign-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Campaign ID (required for mutating endpoints)"
+          },
+          {
+            "in": "header",
+            "name": "x-brand-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Brand ID (required for mutating endpoints)"
+          },
+          {
+            "in": "header",
+            "name": "x-workflow-name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workflow name for tracking (propagated downstream)"
           }
         ],
         "requestBody": {
@@ -1257,7 +1454,7 @@
             }
           },
           "400": {
-            "description": "Validation error",
+            "description": "Validation error or missing headers",
             "content": {
               "application/json": {
                 "schema": {
@@ -1267,7 +1464,7 @@
             }
           },
           "502": {
-            "description": "Upstream service error (chat-service or google-service)",
+            "description": "Upstream service error (brand-service, chat-service, or google-service)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1321,6 +1518,35 @@
               "type": "string"
             },
             "description": "Feature slug for tracking (propagated downstream)"
+          },
+          {
+            "in": "header",
+            "name": "x-campaign-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Campaign ID (required for mutating endpoints)"
+          },
+          {
+            "in": "header",
+            "name": "x-brand-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Brand ID (required for mutating endpoints)"
+          },
+          {
+            "in": "header",
+            "name": "x-workflow-name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workflow name for tracking (propagated downstream)"
           },
           {
             "in": "query",
@@ -1399,6 +1625,35 @@
               "type": "string"
             },
             "description": "Feature slug for tracking (propagated downstream)"
+          },
+          {
+            "in": "header",
+            "name": "x-campaign-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Campaign ID (required for mutating endpoints)"
+          },
+          {
+            "in": "header",
+            "name": "x-brand-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Brand ID (required for mutating endpoints)"
+          },
+          {
+            "in": "header",
+            "name": "x-workflow-name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workflow name for tracking (propagated downstream)"
           },
           {
             "in": "path",

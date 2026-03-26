@@ -1,4 +1,5 @@
 import { config } from "../config";
+import type { OrgContext } from "../middleware/org-context";
 
 export interface SearchResult {
   title: string;
@@ -32,30 +33,31 @@ export interface BatchSearchResponse {
   }>;
 }
 
-function buildHeaders(headers: { orgId: string; userId: string; runId: string; featureSlug?: string }): Record<string, string> {
+function buildHeaders(ctx: OrgContext): Record<string, string> {
   const h: Record<string, string> = {
     "Content-Type": "application/json",
     "x-api-key": config.googleServiceApiKey,
-    "x-org-id": headers.orgId,
-    "x-user-id": headers.userId,
-    "x-run-id": headers.runId,
+    "x-org-id": ctx.orgId,
+    "x-user-id": ctx.userId,
+    "x-run-id": ctx.runId,
   };
-  if (headers.featureSlug) {
-    h["x-feature-slug"] = headers.featureSlug;
-  }
+  if (ctx.featureSlug) h["x-feature-slug"] = ctx.featureSlug;
+  if (ctx.campaignId) h["x-campaign-id"] = ctx.campaignId;
+  if (ctx.brandId) h["x-brand-id"] = ctx.brandId;
+  if (ctx.workflowName) h["x-workflow-name"] = ctx.workflowName;
   return h;
 }
 
 async function searchSingle(
   query: string,
   type: "web" | "news",
-  headers: { orgId: string; userId: string; runId: string; featureSlug?: string },
+  ctx: OrgContext,
   options?: { num?: number; gl?: string; hl?: string }
 ): Promise<SearchResponse> {
   const endpoint = type === "news" ? "/search/news" : "/search/web";
   const res = await fetch(`${config.googleServiceUrl}${endpoint}`, {
     method: "POST",
-    headers: buildHeaders(headers),
+    headers: buildHeaders(ctx),
     body: JSON.stringify({
       query,
       type,
@@ -75,11 +77,11 @@ async function searchSingle(
 
 export async function searchBatch(
   req: BatchSearchRequest,
-  headers: { orgId: string; userId: string; runId: string; featureSlug?: string }
+  ctx: OrgContext
 ): Promise<BatchSearchResponse> {
   const res = await fetch(`${config.googleServiceUrl}/search/batch`, {
     method: "POST",
-    headers: buildHeaders(headers),
+    headers: buildHeaders(ctx),
     body: JSON.stringify(req),
   });
 
