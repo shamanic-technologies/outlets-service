@@ -49,14 +49,18 @@ CREATE INDEX IF NOT EXISTS idx_outlets_url ON outlets(outlet_url);
 CREATE INDEX IF NOT EXISTS idx_outlets_domain ON outlets(outlet_domain);
 `;
 
-async function migrate() {
+export async function runMigration(): Promise<void> {
   console.log("Running migration...");
   await pool.query(migration);
   console.log("Migration complete.");
-  await pool.end();
 }
 
-migrate().catch((err) => {
-  console.error("Migration failed:", err);
-  process.exit(1);
-});
+// Allow running as standalone script
+if (require.main === module || process.argv[1]?.endsWith("migrate")) {
+  runMigration()
+    .then(() => pool.end())
+    .catch((err) => {
+      console.error("Migration failed:", err);
+      process.exit(1);
+    });
+}
