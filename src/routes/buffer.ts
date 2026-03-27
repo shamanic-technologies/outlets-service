@@ -18,7 +18,7 @@ import type { OrgContext } from "../middleware/org-context";
 
 const MINI_DISCOVER_QUERY_COUNT = 3;
 const MINI_DISCOVER_RESULTS_PER_QUERY = 5;
-const MAX_CLAIM_ITERATIONS = 10;
+const MAX_CLAIM_ITERATIONS = 50;
 const IDEMPOTENCY_TTL_DAYS = 60;
 
 const querySchema = z.object({
@@ -307,7 +307,7 @@ async function miniDiscover(ctx: OrgContext): Promise<number> {
 
 const router = Router();
 
-// POST /buffer/next — pull the next best outlet from the buffer
+// POST /buffer/next — pull the next best outlet(s) from the buffer
 router.post(
   "/next",
   validateBody(bufferNextSchema),
@@ -319,7 +319,7 @@ router.post(
       return;
     }
 
-    const { idempotencyKey } = req.body;
+    const { count, idempotencyKey } = req.body as { count: number; idempotencyKey?: string };
 
     try {
       // Check idempotency cache
@@ -334,34 +334,20 @@ router.post(
         }
       }
 
+      const collected: ClaimedOutlet[] = [];
       let didRefill = false;
 
-      for (let i = 0; i < MAX_CLAIM_ITERATIONS; i++) {
+      for (let i = 0; i < MAX_CLAIM_ITERATIONS && collected.length < count; i++) {
         const claimed = await claimNext(ctx.campaignId);
 
         if (!claimed) {
           // Buffer empty — try mini-discover once
-          if (didRefill) {
-            // Already refilled and still empty → nothing found
-            const response = { found: false as const };
-            if (idempotencyKey) {
-              await saveIdempotencyCache(idempotencyKey, response);
-            }
-            res.json(response);
-            return;
-          }
+          if (didRefill) break;
 
           const filled = await miniDiscover(ctx);
           didRefill = true;
 
-          if (filled === 0) {
-            const response = { found: false as const };
-            if (idempotencyKey) {
-              await saveIdempotencyCache(idempotencyKey, response);
-            }
-            res.json(response);
-            return;
-          }
+          if (filled === 0) break;
           continue; // retry claim from freshly filled buffer
         }
 
@@ -372,18 +358,10 @@ router.post(
           continue; // try next outlet
         }
 
-        // Success — return the outlet
-        const response = { found: true as const, outlet: claimed };
-        if (idempotencyKey) {
-          await saveIdempotencyCache(idempotencyKey, response);
-        }
-        res.json(response);
-        return;
+        collected.push(claimed);
       }
 
-      // Exhausted max iterations
-      console.warn(`[outlets-service] buffer/next: exhausted ${MAX_CLAIM_ITERATIONS} iterations for campaign ${ctx.campaignId}`);
-      const response = { found: false as const };
+      const response = { outlets: collected };
       if (idempotencyKey) {
         await saveIdempotencyCache(idempotencyKey, response);
       }

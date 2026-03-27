@@ -3,7 +3,6 @@ import { apiKeyAuth } from "./middleware/auth";
 import { extractOrgContext } from "./middleware/org-context";
 import outletsRouter from "./routes/outlets";
 import internalRouter from "./routes/internal";
-import discoverRouter from "./routes/discover";
 import bufferRouter from "./routes/buffer";
 import statsRouter from "./routes/stats";
 import path from "path";
@@ -33,9 +32,6 @@ export function createApp() {
 
   // Stats route (must be before /outlets/:id to avoid path conflicts)
   app.use("/outlets", statsRouter);
-
-  // Discovery route (must be before /outlets/:id to avoid path conflicts)
-  app.use("/outlets", discoverRouter);
 
   // Buffer route
   app.use("/buffer", bufferRouter);

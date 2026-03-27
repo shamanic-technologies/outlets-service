@@ -113,13 +113,13 @@ export const statsGroupedResponseSchema = z.object({
 // --- Buffer Next ---
 
 export const bufferNextSchema = z.object({
+  count: z.number().int().min(1).max(50).optional().default(1),
   idempotencyKey: z.string().min(1).optional(),
 });
 
 export const bufferNextResponseSchema = z.object({
-  found: z.boolean(),
-  outlet: z
-    .object({
+  outlets: z.array(
+    z.object({
       outletId: z.string().uuid(),
       outletName: z.string(),
       outletUrl: z.string(),
@@ -131,35 +131,10 @@ export const bufferNextResponseSchema = z.object({
       whyNotRelevant: z.string(),
       overallRelevance: z.string().nullable(),
     })
-    .optional(),
+  ),
 });
 
 export type BufferNext = z.infer<typeof bufferNextSchema>;
-
-// --- Discover ---
-
-export const discoverOutletsSchema = z.object({});
-
-export const discoverOutletsResponseSchema = z.object({
-  discoveredCount: z.number(),
-  outlets: z.array(
-    z.object({
-      id: z.string().uuid(),
-      outletName: z.string(),
-      outletUrl: z.string(),
-      outletDomain: z.string(),
-      relevanceScore: z.number(),
-      whyRelevant: z.string(),
-      whyNotRelevant: z.string(),
-      overallRelevance: z.string(),
-    })
-  ),
-  searchQueries: z.number(),
-  tokensUsed: z.object({
-    queryGeneration: z.number(),
-    scoring: z.number(),
-  }),
-});
 
 // Type exports
 export type CreateOutlet = z.infer<typeof createOutletSchema>;
