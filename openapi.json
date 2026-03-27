@@ -211,22 +211,30 @@
           "query"
         ]
       },
-      "DiscoverOutlets": {
-        "type": "object",
-        "properties": {}
-      },
-      "DiscoverOutletsResponse": {
+      "BufferNext": {
         "type": "object",
         "properties": {
-          "discoveredCount": {
-            "type": "number"
+          "count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 1
           },
+          "idempotencyKey": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "BufferNextResponse": {
+        "type": "object",
+        "properties": {
           "outlets": {
             "type": "array",
             "items": {
               "type": "object",
               "properties": {
-                "id": {
+                "outletId": {
                   "type": "string",
                   "format": "uuid"
                 },
@@ -239,6 +247,14 @@
                 "outletDomain": {
                   "type": "string"
                 },
+                "campaignId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "brandId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
                 "relevanceScore": {
                   "type": "number"
                 },
@@ -249,116 +265,27 @@
                   "type": "string"
                 },
                 "overallRelevance": {
-                  "type": "string"
+                  "type": "string",
+                  "nullable": true
                 }
               },
               "required": [
-                "id",
+                "outletId",
                 "outletName",
                 "outletUrl",
                 "outletDomain",
+                "campaignId",
+                "brandId",
                 "relevanceScore",
                 "whyRelevant",
                 "whyNotRelevant",
                 "overallRelevance"
               ]
             }
-          },
-          "searchQueries": {
-            "type": "number"
-          },
-          "tokensUsed": {
-            "type": "object",
-            "properties": {
-              "queryGeneration": {
-                "type": "number"
-              },
-              "scoring": {
-                "type": "number"
-              }
-            },
-            "required": [
-              "queryGeneration",
-              "scoring"
-            ]
           }
         },
         "required": [
-          "discoveredCount",
-          "outlets",
-          "searchQueries",
-          "tokensUsed"
-        ]
-      },
-      "BufferNext": {
-        "type": "object",
-        "properties": {
-          "idempotencyKey": {
-            "type": "string",
-            "minLength": 1
-          }
-        }
-      },
-      "BufferNextResponse": {
-        "type": "object",
-        "properties": {
-          "found": {
-            "type": "boolean"
-          },
-          "outlet": {
-            "type": "object",
-            "properties": {
-              "outletId": {
-                "type": "string",
-                "format": "uuid"
-              },
-              "outletName": {
-                "type": "string"
-              },
-              "outletUrl": {
-                "type": "string"
-              },
-              "outletDomain": {
-                "type": "string"
-              },
-              "campaignId": {
-                "type": "string",
-                "format": "uuid"
-              },
-              "brandId": {
-                "type": "string",
-                "format": "uuid"
-              },
-              "relevanceScore": {
-                "type": "number"
-              },
-              "whyRelevant": {
-                "type": "string"
-              },
-              "whyNotRelevant": {
-                "type": "string"
-              },
-              "overallRelevance": {
-                "type": "string",
-                "nullable": true
-              }
-            },
-            "required": [
-              "outletId",
-              "outletName",
-              "outletUrl",
-              "outletDomain",
-              "campaignId",
-              "brandId",
-              "relevanceScore",
-              "whyRelevant",
-              "whyNotRelevant",
-              "overallRelevance"
-            ]
-          }
-        },
-        "required": [
-          "found"
+          "outlets"
         ]
       },
       "OutletResponse": {
@@ -1432,130 +1359,10 @@
         }
       }
     },
-    "/outlets/discover": {
-      "post": {
-        "summary": "Discover relevant outlets via Google search + LLM scoring",
-        "description": "Requires x-campaign-id and x-brand-id headers. Fetches brand data from brand-service, generates search queries via LLM, searches Google via google-service, scores results for relevance via LLM, and bulk upserts discovered outlets. Pass featureInput as opaque context forwarded to LLM calls.",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "x-org-id",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "description": "Organization ID (from client-service)"
-          },
-          {
-            "in": "header",
-            "name": "x-user-id",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "description": "User ID (from client-service)"
-          },
-          {
-            "in": "header",
-            "name": "x-run-id",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "description": "Run ID (caller's run from runs-service)"
-          },
-          {
-            "in": "header",
-            "name": "x-feature-slug",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Feature slug for tracking (propagated downstream)"
-          },
-          {
-            "in": "header",
-            "name": "x-campaign-id",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "description": "Campaign ID (required for mutating endpoints)"
-          },
-          {
-            "in": "header",
-            "name": "x-brand-id",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "description": "Brand ID (required for mutating endpoints)"
-          },
-          {
-            "in": "header",
-            "name": "x-workflow-name",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Workflow name for tracking (propagated downstream)"
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DiscoverOutlets"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "No outlets found (empty results)"
-          },
-          "201": {
-            "description": "Outlets discovered and saved",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DiscoverOutletsResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation error or missing headers",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Upstream service error (brand-service, chat-service, or google-service)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/buffer/next": {
       "post": {
-        "summary": "Pull the next best outlet from the buffer",
-        "description": "Buffer-first strategy: returns the highest-scored open outlet for the campaign. If the buffer is empty, triggers a lightweight mini-discover (3 queries × 5 Google results, LLM scoring) to refill it, then returns the top result. Supports idempotency via optional idempotencyKey. Requires x-campaign-id and x-brand-id headers.",
+        "summary": "Pull the next best outlet(s) from the buffer",
+        "description": "Returns up to `count` (default 1, max 50) highest-scored open outlets for the campaign. If the buffer is empty, triggers a lightweight mini-discover (3 queries × 5 Google results, LLM scoring) to refill it. Supports idempotency via optional idempotencyKey. Requires x-campaign-id and x-brand-id headers.",
         "parameters": [
           {
             "in": "header",
@@ -1637,7 +1444,7 @@
         },
         "responses": {
           "200": {
-            "description": "Next outlet from buffer (found: true) or no outlets available (found: false)",
+            "description": "Array of outlets (may be empty if none available)",
             "content": {
               "application/json": {
                 "schema": {

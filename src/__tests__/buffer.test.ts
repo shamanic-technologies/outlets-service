@@ -65,6 +65,22 @@ function withHeaders(req: request.Test): request.Test {
     .set("x-brand-id", BRAND_ID);
 }
 
+function makeOutletRow(overrides: Record<string, unknown> = {}) {
+  return {
+    outlet_id: OUTLET_ID,
+    outlet_name: "HR Tech Weekly",
+    outlet_url: "https://hrtechweekly.com",
+    outlet_domain: "hrtechweekly.com",
+    campaign_id: CAMPAIGN_ID,
+    brand_id: BRAND_ID,
+    relevance_score: "92.00",
+    why_relevant: "Perfect fit",
+    why_not_relevant: "Small reach",
+    overall_relevance: "high",
+    ...overrides,
+  };
+}
+
 // --- Mini-discover fixtures ---
 const brandResponse = {
   id: BRAND_ID,
@@ -176,45 +192,55 @@ beforeEach(() => {
 });
 
 describe("POST /buffer/next", () => {
-  it("returns the top outlet from the buffer", async () => {
-    // idempotency check → no cache
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+  it("returns one outlet by default (count=1)", async () => {
     // claimNext → found an outlet
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        {
-          outlet_id: OUTLET_ID,
-          outlet_name: "HR Tech Weekly",
-          outlet_url: "https://hrtechweekly.com",
-          outlet_domain: "hrtechweekly.com",
-          campaign_id: CAMPAIGN_ID,
-          brand_id: BRAND_ID,
-          relevance_score: "92.00",
-          why_relevant: "Perfect fit",
-          why_not_relevant: "Small reach",
-          overall_relevance: "high",
-        },
-      ],
-    });
+    mockQuery.mockResolvedValueOnce({ rows: [makeOutletRow()] });
     // dedup check → not a duplicate
-    mockQuery.mockResolvedValueOnce({ rows: [] });
-    // save idempotency cache
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const res = await withHeaders(
       request(app).post("/buffer/next")
-    ).send({ idempotencyKey: "test-key-1" });
+    ).send({});
 
     expect(res.status).toBe(200);
-    expect(res.body.found).toBe(true);
-    expect(res.body.outlet.outletId).toBe(OUTLET_ID);
-    expect(res.body.outlet.outletName).toBe("HR Tech Weekly");
-    expect(res.body.outlet.relevanceScore).toBe(92);
-    expect(res.body.outlet.campaignId).toBe(CAMPAIGN_ID);
+    expect(res.body.outlets).toHaveLength(1);
+    expect(res.body.outlets[0].outletId).toBe(OUTLET_ID);
+    expect(res.body.outlets[0].outletName).toBe("HR Tech Weekly");
+    expect(res.body.outlets[0].relevanceScore).toBe(92);
+  });
+
+  it("returns multiple outlets when count > 1", async () => {
+    const OUTLET_ID_2 = "22222222-2222-2222-2222-222222222222";
+
+    // claimNext → outlet 1
+    mockQuery.mockResolvedValueOnce({ rows: [makeOutletRow()] });
+    // dedup check → ok
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    // claimNext → outlet 2
+    mockQuery.mockResolvedValueOnce({
+      rows: [makeOutletRow({
+        outlet_id: OUTLET_ID_2,
+        outlet_name: "TechCrunch",
+        outlet_url: "https://techcrunch.com",
+        outlet_domain: "techcrunch.com",
+        relevance_score: "80.00",
+      })],
+    });
+    // dedup check → ok
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await withHeaders(
+      request(app).post("/buffer/next")
+    ).send({ count: 2 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.outlets).toHaveLength(2);
+    expect(res.body.outlets[0].outletId).toBe(OUTLET_ID);
+    expect(res.body.outlets[1].outletId).toBe(OUTLET_ID_2);
   });
 
   it("returns cached response for duplicate idempotencyKey", async () => {
-    const cachedResponse = { found: true, outlet: { outletId: OUTLET_ID, outletName: "Cached Outlet" } };
+    const cachedResponse = { outlets: [{ outletId: OUTLET_ID, outletName: "Cached Outlet" }] };
     mockQuery.mockResolvedValueOnce({ rows: [{ response: cachedResponse }] });
 
     const res = await withHeaders(
@@ -223,29 +249,20 @@ describe("POST /buffer/next", () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(cachedResponse);
-    // Should NOT attempt to claim
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
   it("skips duplicate outlets and tries the next one", async () => {
-    // no idempotency key, so no cache check
+    const OUTLET_ID_2 = "22222222-2222-2222-2222-222222222222";
 
     // claimNext iteration 1 → found outlet that is a cross-campaign dup
     mockQuery.mockResolvedValueOnce({
-      rows: [
-        {
-          outlet_id: OUTLET_ID,
-          outlet_name: "Dup Outlet",
-          outlet_url: "https://dup.com",
-          outlet_domain: "dup.com",
-          campaign_id: CAMPAIGN_ID,
-          brand_id: BRAND_ID,
-          relevance_score: "90.00",
-          why_relevant: "Good",
-          why_not_relevant: "None",
-          overall_relevance: "high",
-        },
-      ],
+      rows: [makeOutletRow({
+        outlet_name: "Dup Outlet",
+        outlet_url: "https://dup.com",
+        outlet_domain: "dup.com",
+        relevance_score: "90.00",
+      })],
     });
     // dedup check → IS a duplicate
     mockQuery.mockResolvedValueOnce({ rows: [{ "1": 1 }] });
@@ -253,22 +270,15 @@ describe("POST /buffer/next", () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
     // claimNext iteration 2 → found a good outlet
-    const OUTLET_ID_2 = "22222222-2222-2222-2222-222222222222";
     mockQuery.mockResolvedValueOnce({
-      rows: [
-        {
-          outlet_id: OUTLET_ID_2,
-          outlet_name: "Good Outlet",
-          outlet_url: "https://good.com",
-          outlet_domain: "good.com",
-          campaign_id: CAMPAIGN_ID,
-          brand_id: BRAND_ID,
-          relevance_score: "85.00",
-          why_relevant: "Great fit",
-          why_not_relevant: "None",
-          overall_relevance: "high",
-        },
-      ],
+      rows: [makeOutletRow({
+        outlet_id: OUTLET_ID_2,
+        outlet_name: "Good Outlet",
+        outlet_url: "https://good.com",
+        outlet_domain: "good.com",
+        relevance_score: "85.00",
+        why_relevant: "Great fit",
+      })],
     });
     // dedup check → not a dup
     mockQuery.mockResolvedValueOnce({ rows: [] });
@@ -278,9 +288,9 @@ describe("POST /buffer/next", () => {
     ).send({});
 
     expect(res.status).toBe(200);
-    expect(res.body.found).toBe(true);
-    expect(res.body.outlet.outletId).toBe(OUTLET_ID_2);
-    expect(res.body.outlet.outletName).toBe("Good Outlet");
+    expect(res.body.outlets).toHaveLength(1);
+    expect(res.body.outlets[0].outletId).toBe(OUTLET_ID_2);
+    expect(res.body.outlets[0].outletName).toBe("Good Outlet");
   });
 
   it("triggers mini-discover when buffer is empty, then returns top outlet", async () => {
@@ -300,22 +310,7 @@ describe("POST /buffer/next", () => {
       .mockResolvedValueOnce({}); // COMMIT
 
     // claimNext iteration 2 (after refill) → found outlet
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        {
-          outlet_id: OUTLET_ID,
-          outlet_name: "HR Tech Weekly",
-          outlet_url: "https://hrtechweekly.com",
-          outlet_domain: "hrtechweekly.com",
-          campaign_id: CAMPAIGN_ID,
-          brand_id: BRAND_ID,
-          relevance_score: "92.00",
-          why_relevant: "Perfect fit",
-          why_not_relevant: "Small reach",
-          overall_relevance: "high",
-        },
-      ],
-    });
+    mockQuery.mockResolvedValueOnce({ rows: [makeOutletRow()] });
     // dedup check → not a dup
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
@@ -324,8 +319,8 @@ describe("POST /buffer/next", () => {
     ).send({});
 
     expect(res.status).toBe(200);
-    expect(res.body.found).toBe(true);
-    expect(res.body.outlet.outletName).toBe("HR Tech Weekly");
+    expect(res.body.outlets).toHaveLength(1);
+    expect(res.body.outlets[0].outletName).toBe("HR Tech Weekly");
 
     // Verify mini-discover was triggered
     expect(mockChatComplete).toHaveBeenCalledTimes(2); // query gen + scoring
@@ -336,7 +331,7 @@ describe("POST /buffer/next", () => {
     expect(searchCall.queries[0].num).toBe(5);
   });
 
-  it("returns { found: false } when mini-discover finds nothing", async () => {
+  it("returns empty outlets array when mini-discover finds nothing", async () => {
     // claimNext → buffer empty
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
@@ -360,8 +355,40 @@ describe("POST /buffer/next", () => {
     ).send({});
 
     expect(res.status).toBe(200);
-    expect(res.body.found).toBe(false);
-    expect(res.body.outlet).toBeUndefined();
+    expect(res.body.outlets).toHaveLength(0);
+  });
+
+  it("returns partial results when buffer runs dry mid-collection", async () => {
+    // claimNext → outlet 1
+    mockQuery.mockResolvedValueOnce({ rows: [makeOutletRow()] });
+    // dedup → ok
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    // claimNext → buffer empty
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    // mini-discover mocks → finds nothing
+    mockGetBrand.mockResolvedValue(brandResponse);
+    mockExtractFields.mockResolvedValue(extractFieldsResponse);
+    mockGetFeatureInputs.mockResolvedValue(null);
+    mockChatComplete
+      .mockResolvedValueOnce(miniDiscoverQueryResponse)
+      .mockResolvedValueOnce({
+        content: "",
+        json: { outlets: [] },
+        tokensInput: 100,
+        tokensOutput: 20,
+        model: "claude-sonnet-4-6",
+      });
+    mockSearchBatch.mockResolvedValueOnce(miniDiscoverSearchResponse);
+
+    const res = await withHeaders(
+      request(app).post("/buffer/next")
+    ).send({ count: 5 });
+
+    expect(res.status).toBe(200);
+    // Got 1 out of 5 requested — partial result
+    expect(res.body.outlets).toHaveLength(1);
+    expect(res.body.outlets[0].outletId).toBe(OUTLET_ID);
   });
 
   it("returns 400 when x-campaign-id header is missing", async () => {
@@ -408,22 +435,7 @@ describe("POST /buffer/next", () => {
 
   it("works without idempotencyKey", async () => {
     // claimNext → found outlet
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        {
-          outlet_id: OUTLET_ID,
-          outlet_name: "Test Outlet",
-          outlet_url: "https://test.com",
-          outlet_domain: "test.com",
-          campaign_id: CAMPAIGN_ID,
-          brand_id: BRAND_ID,
-          relevance_score: "80.00",
-          why_relevant: "Good",
-          why_not_relevant: "None",
-          overall_relevance: "medium",
-        },
-      ],
-    });
+    mockQuery.mockResolvedValueOnce({ rows: [makeOutletRow()] });
     // dedup check → not a dup
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
@@ -432,7 +444,7 @@ describe("POST /buffer/next", () => {
     ).send({});
 
     expect(res.status).toBe(200);
-    expect(res.body.found).toBe(true);
+    expect(res.body.outlets).toHaveLength(1);
     // No idempotency cache save
     expect(mockQuery).toHaveBeenCalledTimes(2); // claim + dedup only
   });
@@ -458,7 +470,7 @@ describe("POST /buffer/next", () => {
     ).send({});
 
     expect(res.status).toBe(200);
-    expect(res.body.found).toBe(false);
+    expect(res.body.outlets).toHaveLength(0);
     // Should only have called LLM once (query gen), not retry
     expect(mockChatComplete).toHaveBeenCalledTimes(1);
   });
