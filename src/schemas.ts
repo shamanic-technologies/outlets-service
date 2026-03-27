@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 // Enums
-export const outletStatusEnum = z.enum(["open", "ended", "denied"]);
+export const outletStatusEnum = z.enum(["open", "ended", "denied", "served", "skipped"]);
 
 // --- Outlets ---
 
@@ -109,6 +109,32 @@ export const statsGroupedResponseSchema = z.object({
     })
   ),
 });
+
+// --- Buffer Next ---
+
+export const bufferNextSchema = z.object({
+  idempotencyKey: z.string().min(1).optional(),
+});
+
+export const bufferNextResponseSchema = z.object({
+  found: z.boolean(),
+  outlet: z
+    .object({
+      outletId: z.string().uuid(),
+      outletName: z.string(),
+      outletUrl: z.string(),
+      outletDomain: z.string(),
+      campaignId: z.string().uuid(),
+      brandId: z.string().uuid(),
+      relevanceScore: z.number(),
+      whyRelevant: z.string(),
+      whyNotRelevant: z.string(),
+      overallRelevance: z.string().nullable(),
+    })
+    .optional(),
+});
+
+export type BufferNext = z.infer<typeof bufferNextSchema>;
 
 // --- Discover ---
 

@@ -1,0 +1,421 @@
+import { Router, Request, Response } from "express";
+import { z } from "zod";
+import { validateBody } from "../middleware/validate";
+import { pool } from "../db/pool";
+import { chatComplete } from "../services/chat";
+import { searchBatch } from "../services/google";
+import { getBrand, extractFields, findField } from "../services/brand";
+import { getFeatureInputs } from "../services/campaign";
+import {
+  GENERATE_QUERIES_SYSTEM_PROMPT,
+  SCORE_OUTLETS_SYSTEM_PROMPT,
+  buildQueryGenerationMessage,
+  buildScoringMessage,
+  type BrandPromptContext,
+} from "../prompts";
+import { bufferNextSchema } from "../schemas";
+import type { OrgContext } from "../middleware/org-context";
+
+const MINI_DISCOVER_QUERY_COUNT = 3;
+const MINI_DISCOVER_RESULTS_PER_QUERY = 5;
+const MAX_CLAIM_ITERATIONS = 10;
+const IDEMPOTENCY_TTL_DAYS = 60;
+
+const querySchema = z.object({
+  queries: z.array(
+    z.object({
+      query: z.string(),
+      type: z.enum(["web", "news"]),
+      rationale: z.string(),
+    })
+  ),
+});
+
+const scoringSchema = z.object({
+  outlets: z.array(
+    z.object({
+      name: z.string(),
+      url: z.string(),
+      domain: z.string(),
+      relevanceScore: z.number().min(0).max(100),
+      whyRelevant: z.string(),
+      whyNotRelevant: z.string(),
+      overallRelevance: z.string(),
+    })
+  ),
+});
+
+/** Fields we need from brand-service for mini-discover */
+const BRAND_FIELDS = [
+  { key: "elevator_pitch", description: "A concise elevator pitch describing what the brand does" },
+  { key: "categories", description: "The brand's primary industry vertical or categories" },
+  { key: "target_geo", description: "Priority geographic markets for outreach" },
+  { key: "target_audience", description: "Target audience for the brand's products or services" },
+  { key: "angles", description: "PR angles and editorial hooks the brand can leverage" },
+];
+
+function extractDomain(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+interface ClaimedOutlet {
+  outletId: string;
+  outletName: string;
+  outletUrl: string;
+  outletDomain: string;
+  campaignId: string;
+  brandId: string;
+  relevanceScore: number;
+  whyRelevant: string;
+  whyNotRelevant: string;
+  overallRelevance: string | null;
+}
+
+/**
+ * Try to claim the next open outlet from the buffer using FOR UPDATE SKIP LOCKED.
+ * Returns the claimed outlet or null if buffer is empty.
+ */
+async function claimNext(campaignId: string): Promise<ClaimedOutlet | null> {
+  const result = await pool.query(
+    `UPDATE campaign_outlets co
+     SET status = 'served', updated_at = CURRENT_TIMESTAMP
+     FROM (
+       SELECT co2.campaign_id, co2.outlet_id
+       FROM campaign_outlets co2
+       WHERE co2.campaign_id = $1 AND co2.status = 'open'
+       ORDER BY co2.relevance_score DESC
+       LIMIT 1
+       FOR UPDATE SKIP LOCKED
+     ) sub
+     JOIN outlets o ON o.id = sub.outlet_id
+     WHERE co.campaign_id = sub.campaign_id AND co.outlet_id = sub.outlet_id
+     RETURNING o.id AS outlet_id, o.outlet_name, o.outlet_url, o.outlet_domain,
+               co.campaign_id, co.brand_id, co.relevance_score,
+               co.why_relevant, co.why_not_relevant, co.overall_relevance`,
+    [campaignId]
+  );
+
+  if (result.rows.length === 0) return null;
+
+  const r = result.rows[0];
+  return {
+    outletId: r.outlet_id,
+    outletName: r.outlet_name,
+    outletUrl: r.outlet_url,
+    outletDomain: r.outlet_domain,
+    campaignId: r.campaign_id,
+    brandId: r.brand_id,
+    relevanceScore: Number(r.relevance_score),
+    whyRelevant: r.why_relevant,
+    whyNotRelevant: r.why_not_relevant,
+    overallRelevance: r.overall_relevance,
+  };
+}
+
+/**
+ * Check if this outlet domain was already served for the same org+brand (cross-campaign dedup).
+ */
+async function isDuplicate(
+  orgId: string,
+  brandId: string,
+  outletDomain: string,
+  excludeCampaignId: string
+): Promise<boolean> {
+  const result = await pool.query(
+    `SELECT 1 FROM campaign_outlets co
+     JOIN outlets o ON o.id = co.outlet_id
+     WHERE co.org_id = $1 AND co.brand_id = $2 AND o.outlet_domain = $3
+       AND co.status = 'served' AND co.campaign_id != $4
+     LIMIT 1`,
+    [orgId, brandId, outletDomain, excludeCampaignId]
+  );
+  return result.rows.length > 0;
+}
+
+/**
+ * Mark an outlet as skipped (e.g. cross-campaign duplicate).
+ */
+async function markSkipped(campaignId: string, outletId: string): Promise<void> {
+  await pool.query(
+    `UPDATE campaign_outlets SET status = 'skipped', updated_at = CURRENT_TIMESTAMP
+     WHERE campaign_id = $1 AND outlet_id = $2`,
+    [campaignId, outletId]
+  );
+}
+
+/**
+ * Mini-discover: lightweight outlet discovery (3 queries × 5 results).
+ * Returns number of outlets inserted into the buffer.
+ */
+async function miniDiscover(ctx: OrgContext): Promise<number> {
+  const [brand, extractedFields, featureInputs] = await Promise.all([
+    getBrand(ctx.brandId!, ctx),
+    extractFields(ctx.brandId!, BRAND_FIELDS, ctx),
+    getFeatureInputs(ctx.campaignId!, ctx),
+  ]);
+
+  const brandContext: BrandPromptContext = {
+    brandName: brand.name || brand.domain || "Unknown",
+    brandDescription:
+      findField(extractedFields, "elevator_pitch") ||
+      brand.elevatorPitch ||
+      brand.bio ||
+      "No description available",
+    industry: findField(extractedFields, "categories") || brand.categories || "General",
+    targetGeo: findField(extractedFields, "target_geo") || brand.location || undefined,
+    targetAudience: findField(extractedFields, "target_audience") || undefined,
+    angles: (() => {
+      const raw = findField(extractedFields, "angles");
+      return raw ? raw.split(", ") : undefined;
+    })(),
+  };
+
+  const featureInput = featureInputs ?? undefined;
+
+  // Step 1: Generate a small set of search queries
+  const queryGenResponse = await chatComplete(
+    {
+      message: buildQueryGenerationMessage(brandContext, featureInput),
+      systemPrompt:
+        GENERATE_QUERIES_SYSTEM_PROMPT.replace(
+          "Generate 8-12 queries",
+          `Generate exactly ${MINI_DISCOVER_QUERY_COUNT} queries`
+        ),
+      responseFormat: "json",
+      temperature: 0.7,
+      maxTokens: 800,
+    },
+    ctx
+  );
+
+  const queryJson = queryGenResponse.json;
+  if (queryJson && Array.isArray(queryJson.queries)) {
+    queryJson.queries = (queryJson.queries as Array<Record<string, unknown>>)
+      .filter((q) => q.query && q.type && q.rationale)
+      .slice(0, MINI_DISCOVER_QUERY_COUNT);
+  }
+
+  const parsedQueries = querySchema.safeParse(queryJson);
+  if (!parsedQueries.success || parsedQueries.data.queries.length === 0) {
+    console.error("[outlets-service] Mini-discover: LLM returned invalid query format:", queryGenResponse.content);
+    return 0;
+  }
+
+  // Step 2: Search with small result count
+  const searchResponse = await searchBatch(
+    {
+      queries: parsedQueries.data.queries.map((q) => ({
+        query: q.query,
+        type: q.type,
+        num: MINI_DISCOVER_RESULTS_PER_QUERY,
+      })),
+    },
+    ctx
+  );
+
+  // Step 3: Score results
+  const scoringResponse = await chatComplete(
+    {
+      message: buildScoringMessage(
+        brandContext,
+        searchResponse.results.map((r) => ({
+          query: r.query,
+          results: r.results.map((sr) => ({
+            title: sr.title,
+            url: sr.url,
+            snippet: sr.snippet,
+            domain: sr.domain,
+          })),
+        })),
+        featureInput
+      ),
+      systemPrompt: SCORE_OUTLETS_SYSTEM_PROMPT,
+      responseFormat: "json",
+      temperature: 0.3,
+      maxTokens: 3000,
+    },
+    ctx
+  );
+
+  const parsedOutlets = scoringSchema.safeParse(scoringResponse.json);
+  if (!parsedOutlets.success) {
+    console.error("[outlets-service] Mini-discover: LLM returned invalid scoring format:", scoringResponse.content);
+    return 0;
+  }
+
+  const outlets = parsedOutlets.data.outlets;
+  if (outlets.length === 0) return 0;
+
+  // Step 4: Bulk upsert into DB
+  const featureSlug = ctx.featureSlug || null;
+  const client = await pool.connect();
+  let inserted = 0;
+
+  try {
+    await client.query("BEGIN");
+
+    for (const o of outlets) {
+      const domain = extractDomain(o.url);
+      const url = o.url.startsWith("http") ? o.url : `https://${o.url}`;
+
+      const outletResult = await client.query(
+        `INSERT INTO outlets (outlet_name, outlet_url, outlet_domain)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (outlet_url)
+         DO UPDATE SET outlet_name = EXCLUDED.outlet_name, outlet_domain = EXCLUDED.outlet_domain, updated_at = CURRENT_TIMESTAMP
+         RETURNING id`,
+        [o.name, url, domain]
+      );
+      const outletId = outletResult.rows[0].id;
+
+      // Only insert if not already in this campaign's buffer
+      const insertResult = await client.query(
+        `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_id, feature_slug, workflow_name, why_relevant, why_not_relevant, relevance_score, status, overall_relevance)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'open', $10)
+         ON CONFLICT (campaign_id, outlet_id) DO NOTHING`,
+        [
+          ctx.campaignId,
+          outletId,
+          ctx.orgId,
+          ctx.brandId,
+          featureSlug,
+          ctx.workflowName || null,
+          o.whyRelevant,
+          o.whyNotRelevant,
+          o.relevanceScore,
+          o.overallRelevance,
+        ]
+      );
+      if (insertResult.rowCount && insertResult.rowCount > 0) inserted++;
+    }
+
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  console.log(`[outlets-service] Mini-discover: inserted ${inserted} outlets into buffer for campaign ${ctx.campaignId}`);
+  return inserted;
+}
+
+const router = Router();
+
+// POST /buffer/next — pull the next best outlet from the buffer
+router.post(
+  "/next",
+  validateBody(bufferNextSchema),
+  async (req: Request, res: Response): Promise<void> => {
+    const ctx = req.orgContext!;
+
+    if (!ctx.campaignId || !ctx.brandId) {
+      res.status(400).json({ error: "x-campaign-id and x-brand-id headers are required" });
+      return;
+    }
+
+    const { idempotencyKey } = req.body;
+
+    try {
+      // Check idempotency cache
+      if (idempotencyKey) {
+        const cached = await pool.query(
+          `SELECT response FROM idempotency_cache WHERE idempotency_key = $1`,
+          [idempotencyKey]
+        );
+        if (cached.rows.length > 0) {
+          res.json(cached.rows[0].response);
+          return;
+        }
+      }
+
+      let didRefill = false;
+
+      for (let i = 0; i < MAX_CLAIM_ITERATIONS; i++) {
+        const claimed = await claimNext(ctx.campaignId);
+
+        if (!claimed) {
+          // Buffer empty — try mini-discover once
+          if (didRefill) {
+            // Already refilled and still empty → nothing found
+            const response = { found: false as const };
+            if (idempotencyKey) {
+              await saveIdempotencyCache(idempotencyKey, response);
+            }
+            res.json(response);
+            return;
+          }
+
+          const filled = await miniDiscover(ctx);
+          didRefill = true;
+
+          if (filled === 0) {
+            const response = { found: false as const };
+            if (idempotencyKey) {
+              await saveIdempotencyCache(idempotencyKey, response);
+            }
+            res.json(response);
+            return;
+          }
+          continue; // retry claim from freshly filled buffer
+        }
+
+        // Check cross-campaign dedup
+        const dup = await isDuplicate(ctx.orgId, ctx.brandId, claimed.outletDomain, ctx.campaignId);
+        if (dup) {
+          await markSkipped(claimed.campaignId, claimed.outletId);
+          continue; // try next outlet
+        }
+
+        // Success — return the outlet
+        const response = { found: true as const, outlet: claimed };
+        if (idempotencyKey) {
+          await saveIdempotencyCache(idempotencyKey, response);
+        }
+        res.json(response);
+        return;
+      }
+
+      // Exhausted max iterations
+      console.warn(`[outlets-service] buffer/next: exhausted ${MAX_CLAIM_ITERATIONS} iterations for campaign ${ctx.campaignId}`);
+      const response = { found: false as const };
+      if (idempotencyKey) {
+        await saveIdempotencyCache(idempotencyKey, response);
+      }
+      res.json(response);
+    } catch (err) {
+      console.error("[outlets-service] Error in buffer/next:", err);
+      const message = err instanceof Error ? err.message : "Internal server error";
+      const status = message.includes("failed (") ? 502 : 500;
+      res.status(status).json({ error: message });
+    }
+  }
+);
+
+async function saveIdempotencyCache(
+  key: string,
+  response: Record<string, unknown>
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO idempotency_cache (idempotency_key, response)
+     VALUES ($1, $2)
+     ON CONFLICT (idempotency_key) DO NOTHING`,
+    [key, JSON.stringify(response)]
+  );
+
+  // Probabilistic cleanup (~1% of requests)
+  if (Math.random() < 0.01) {
+    pool
+      .query(
+        `DELETE FROM idempotency_cache WHERE created_at < CURRENT_TIMESTAMP - INTERVAL '${IDEMPOTENCY_TTL_DAYS} days'`
+      )
+      .catch((err) => console.warn("[outlets-service] Idempotency cache cleanup failed:", err));
+  }
+}
+
+export default router;
