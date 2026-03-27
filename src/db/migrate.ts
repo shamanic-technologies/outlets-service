@@ -1,16 +1,20 @@
 import { pool } from "./pool";
 
-const migration = `
--- Enums
+// Enum additions MUST run outside a transaction so new values are committed
+// before any DDL that references them (e.g. partial indexes with WHERE status = 'served').
+const enumSetup = `
 DO $$ BEGIN
   CREATE TYPE outlet_status_enum AS ENUM ('open', 'ended', 'denied');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
+`;
 
--- Add new enum values (idempotent)
-DO $$ BEGIN ALTER TYPE outlet_status_enum ADD VALUE IF NOT EXISTS 'served'; EXCEPTION WHEN others THEN NULL; END $$;
-DO $$ BEGIN ALTER TYPE outlet_status_enum ADD VALUE IF NOT EXISTS 'skipped'; EXCEPTION WHEN others THEN NULL; END $$;
+const enumAdditions = [
+  `ALTER TYPE outlet_status_enum ADD VALUE IF NOT EXISTS 'served'`,
+  `ALTER TYPE outlet_status_enum ADD VALUE IF NOT EXISTS 'skipped'`,
+];
 
+const migration = `
 -- outlets (deduplicated by URL)
 CREATE TABLE IF NOT EXISTS outlets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -65,7 +69,24 @@ CREATE INDEX IF NOT EXISTS idx_outlets_domain ON outlets(outlet_domain);
 
 export async function runMigration(): Promise<void> {
   console.log("Running migration...");
+
+  // Step 1: Create enum type (idempotent)
+  await pool.query(enumSetup);
+
+  // Step 2: Add new enum values — each runs as its own implicit transaction
+  // so the values are committed before any DDL references them.
+  for (const stmt of enumAdditions) {
+    try {
+      await pool.query(stmt);
+    } catch (err: any) {
+      // 42710 = duplicate_object — value already exists, safe to ignore
+      if (err.code !== "42710") throw err;
+    }
+  }
+
+  // Step 3: Tables, indexes (can now reference 'served'/'skipped')
   await pool.query(migration);
+
   console.log("Migration complete.");
 }
 
