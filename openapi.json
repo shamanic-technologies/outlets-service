@@ -54,7 +54,9 @@
             "enum": [
               "open",
               "ended",
-              "denied"
+              "denied",
+              "served",
+              "skipped"
             ],
             "default": "open"
           }
@@ -110,7 +112,9 @@
             "enum": [
               "open",
               "ended",
-              "denied"
+              "denied",
+              "served",
+              "skipped"
             ]
           },
           "reason": {
@@ -163,7 +167,9 @@
                   "enum": [
                     "open",
                     "ended",
-                    "denied"
+                    "denied",
+                    "served",
+                    "skipped"
                   ],
                   "default": "open"
                 }
@@ -360,7 +366,9 @@
             "enum": [
               "open",
               "ended",
-              "denied"
+              "denied",
+              "served",
+              "skipped"
             ]
           },
           "overallRelevance": {

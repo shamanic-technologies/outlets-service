@@ -7,6 +7,10 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
+-- Add new enum values (idempotent)
+DO $$ BEGIN ALTER TYPE outlet_status_enum ADD VALUE IF NOT EXISTS 'served'; EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN ALTER TYPE outlet_status_enum ADD VALUE IF NOT EXISTS 'skipped'; EXCEPTION WHEN others THEN NULL; END $$;
+
 -- outlets (deduplicated by URL)
 CREATE TABLE IF NOT EXISTS outlets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -39,12 +43,22 @@ CREATE TABLE IF NOT EXISTS campaign_outlets (
   PRIMARY KEY (campaign_id, outlet_id)
 );
 
+-- idempotency_cache for buffer/next
+CREATE TABLE IF NOT EXISTS idempotency_cache (
+  idempotency_key TEXT PRIMARY KEY,
+  response JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_campaign_outlets_campaign ON campaign_outlets(campaign_id);
 CREATE INDEX IF NOT EXISTS idx_campaign_outlets_outlet ON campaign_outlets(outlet_id);
 CREATE INDEX IF NOT EXISTS idx_campaign_outlets_org ON campaign_outlets(org_id);
 CREATE INDEX IF NOT EXISTS idx_campaign_outlets_brand ON campaign_outlets(brand_id);
 CREATE INDEX IF NOT EXISTS idx_campaign_outlets_workflow ON campaign_outlets(workflow_name);
+CREATE INDEX IF NOT EXISTS idx_campaign_outlets_buffer ON campaign_outlets(campaign_id, status, relevance_score DESC) WHERE status = 'open';
+CREATE INDEX IF NOT EXISTS idx_campaign_outlets_dedup ON campaign_outlets(org_id, brand_id, outlet_id) WHERE status = 'served';
+CREATE INDEX IF NOT EXISTS idx_idempotency_cache_created ON idempotency_cache(created_at);
 CREATE INDEX IF NOT EXISTS idx_outlets_url ON outlets(outlet_url);
 CREATE INDEX IF NOT EXISTS idx_outlets_domain ON outlets(outlet_domain);
 `;
