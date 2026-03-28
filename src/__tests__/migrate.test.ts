@@ -19,8 +19,8 @@ describe("runMigration", () => {
     const { runMigration } = await import("../db/migrate");
     await runMigration();
 
-    // Should be at least 4 calls: enumSetup, 2x ALTER TYPE, migration DDL
-    expect(mockQuery.mock.calls.length).toBeGreaterThanOrEqual(4);
+    // Should be at least 5 calls: enumSetup, 2x ALTER TYPE, columnRename, migration DDL
+    expect(mockQuery.mock.calls.length).toBeGreaterThanOrEqual(5);
 
     // First call: CREATE TYPE enum
     expect(mockQuery.mock.calls[0][0]).toContain("CREATE TYPE outlet_status_enum");
@@ -29,11 +29,14 @@ describe("runMigration", () => {
     expect(mockQuery.mock.calls[1][0]).toContain("ADD VALUE IF NOT EXISTS 'served'");
     expect(mockQuery.mock.calls[2][0]).toContain("ADD VALUE IF NOT EXISTS 'skipped'");
 
-    // Fourth call: main DDL (tables + indexes)
-    expect(mockQuery.mock.calls[3][0]).toContain("CREATE TABLE IF NOT EXISTS outlets");
+    // Fourth call: column rename (must run BEFORE index creation)
+    expect(mockQuery.mock.calls[3][0]).toContain("RENAME COLUMN workflow_name TO workflow_slug");
+
+    // Fifth call: main DDL (tables + indexes)
+    expect(mockQuery.mock.calls[4][0]).toContain("CREATE TABLE IF NOT EXISTS outlets");
 
     // Verify enum ADD VALUE is NOT bundled into the main migration string
-    const mainMigration = mockQuery.mock.calls[3][0] as string;
+    const mainMigration = mockQuery.mock.calls[4][0] as string;
     expect(mainMigration).not.toContain("ADD VALUE");
   });
 
@@ -45,6 +48,7 @@ describe("runMigration", () => {
       .mockResolvedValueOnce({ rows: [] }) // enumSetup
       .mockRejectedValueOnce({ code: "42710" }) // 'served' already exists
       .mockRejectedValueOnce({ code: "42710" }) // 'skipped' already exists
+      .mockResolvedValueOnce({ rows: [] }) // columnRename
       .mockResolvedValueOnce({ rows: [] }); // migration DDL
 
     await expect(runMigration()).resolves.toBeUndefined();
