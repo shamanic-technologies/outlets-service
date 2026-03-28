@@ -84,12 +84,12 @@ export const errorResponseSchema = z.object({
 
 // --- Stats ---
 
-const statsGroupByEnum = z.enum(["workflowName", "brandId", "campaignId"]);
+const statsGroupByEnum = z.enum(["workflowSlug", "brandId", "campaignId"]);
 
 export const statsQuerySchema = z.object({
   brandId: z.string().uuid().optional(),
   campaignId: z.string().uuid().optional(),
-  workflowName: z.string().optional(),
+  workflowSlug: z.string().optional(),
   groupBy: statsGroupByEnum.optional(),
 });
 

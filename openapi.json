@@ -568,12 +568,12 @@
           },
           {
             "in": "header",
-            "name": "x-workflow-name",
+            "name": "x-workflow-slug",
             "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "Workflow name for tracking (propagated downstream)"
+            "description": "Workflow slug for tracking (propagated downstream)"
           }
         ],
         "requestBody": {
@@ -672,12 +672,12 @@
           },
           {
             "in": "header",
-            "name": "x-workflow-name",
+            "name": "x-workflow-slug",
             "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "Workflow name for tracking (propagated downstream)"
+            "description": "Workflow slug for tracking (propagated downstream)"
           },
           {
             "in": "query",
@@ -807,12 +807,12 @@
           },
           {
             "in": "header",
-            "name": "x-workflow-name",
+            "name": "x-workflow-slug",
             "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "Workflow name for tracking (propagated downstream)"
+            "description": "Workflow slug for tracking (propagated downstream)"
           }
         ],
         "responses": {
@@ -904,12 +904,12 @@
           },
           {
             "in": "header",
-            "name": "x-workflow-name",
+            "name": "x-workflow-slug",
             "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "Workflow name for tracking (propagated downstream)"
+            "description": "Workflow slug for tracking (propagated downstream)"
           }
         ],
         "requestBody": {
@@ -1013,12 +1013,12 @@
           },
           {
             "in": "header",
-            "name": "x-workflow-name",
+            "name": "x-workflow-slug",
             "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "Workflow name for tracking (propagated downstream)"
+            "description": "Workflow slug for tracking (propagated downstream)"
           }
         ],
         "requestBody": {
@@ -1109,12 +1109,12 @@
           },
           {
             "in": "header",
-            "name": "x-workflow-name",
+            "name": "x-workflow-slug",
             "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "Workflow name for tracking (propagated downstream)"
+            "description": "Workflow slug for tracking (propagated downstream)"
           }
         ],
         "requestBody": {
@@ -1201,12 +1201,12 @@
           },
           {
             "in": "header",
-            "name": "x-workflow-name",
+            "name": "x-workflow-slug",
             "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "Workflow name for tracking (propagated downstream)"
+            "description": "Workflow slug for tracking (propagated downstream)"
           }
         ],
         "requestBody": {
@@ -1228,7 +1228,7 @@
     "/outlets/stats": {
       "get": {
         "summary": "Aggregated outlet discovery metrics",
-        "description": "Returns outlet discovery stats (count, avg relevance, search queries used). Supports filtering by brandId, campaignId, workflowName and optional groupBy.",
+        "description": "Returns outlet discovery stats (count, avg relevance, search queries used). Supports filtering by brandId, campaignId, workflowSlug and optional groupBy.",
         "parameters": [
           {
             "in": "header",
@@ -1291,12 +1291,12 @@
           },
           {
             "in": "header",
-            "name": "x-workflow-name",
+            "name": "x-workflow-slug",
             "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "Workflow name for tracking (propagated downstream)"
+            "description": "Workflow slug for tracking (propagated downstream)"
           },
           {
             "in": "query",
@@ -1318,11 +1318,11 @@
           },
           {
             "in": "query",
-            "name": "workflowName",
+            "name": "workflowSlug",
             "schema": {
               "type": "string"
             },
-            "description": "Filter by workflow name"
+            "description": "Filter by workflow slug"
           },
           {
             "in": "query",
@@ -1330,7 +1330,7 @@
             "schema": {
               "type": "string",
               "enum": [
-                "workflowName",
+                "workflowSlug",
                 "brandId",
                 "campaignId"
               ]
@@ -1425,12 +1425,12 @@
           },
           {
             "in": "header",
-            "name": "x-workflow-name",
+            "name": "x-workflow-slug",
             "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "Workflow name for tracking (propagated downstream)"
+            "description": "Workflow slug for tracking (propagated downstream)"
           }
         ],
         "requestBody": {
@@ -1541,12 +1541,12 @@
           },
           {
             "in": "header",
-            "name": "x-workflow-name",
+            "name": "x-workflow-slug",
             "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "Workflow name for tracking (propagated downstream)"
+            "description": "Workflow slug for tracking (propagated downstream)"
           },
           {
             "in": "query",
@@ -1648,12 +1648,12 @@
           },
           {
             "in": "header",
-            "name": "x-workflow-name",
+            "name": "x-workflow-slug",
             "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "Workflow name for tracking (propagated downstream)"
+            "description": "Workflow slug for tracking (propagated downstream)"
           },
           {
             "in": "path",

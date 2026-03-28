@@ -6,7 +6,7 @@ import { statsQuerySchema } from "../schemas";
 const router = Router();
 
 const GROUP_BY_COLUMN: Record<string, string> = {
-  workflowName: "co.workflow_name",
+  workflowSlug: "co.workflow_slug",
   brandId: "co.brand_id",
   campaignId: "co.campaign_id",
 };
@@ -32,9 +32,9 @@ router.get(
         conditions.push(`co.campaign_id = $${idx++}`);
         params.push(q.campaignId);
       }
-      if (q.workflowName) {
-        conditions.push(`co.workflow_name = $${idx++}`);
-        params.push(q.workflowName);
+      if (q.workflowSlug) {
+        conditions.push(`co.workflow_slug = $${idx++}`);
+        params.push(q.workflowSlug);
       }
 
       const where = conditions.join(" AND ");
