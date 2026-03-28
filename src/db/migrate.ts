@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS campaign_outlets (
   org_id TEXT NOT NULL,
   brand_id UUID NOT NULL,
   feature_slug TEXT,
-  workflow_name TEXT,
+  workflow_slug TEXT,
   why_relevant TEXT NOT NULL,
   why_not_relevant TEXT NOT NULL,
   relevance_score NUMERIC(5,2) NOT NULL,
@@ -59,13 +59,28 @@ CREATE INDEX IF NOT EXISTS idx_campaign_outlets_campaign ON campaign_outlets(cam
 CREATE INDEX IF NOT EXISTS idx_campaign_outlets_outlet ON campaign_outlets(outlet_id);
 CREATE INDEX IF NOT EXISTS idx_campaign_outlets_org ON campaign_outlets(org_id);
 CREATE INDEX IF NOT EXISTS idx_campaign_outlets_brand ON campaign_outlets(brand_id);
-CREATE INDEX IF NOT EXISTS idx_campaign_outlets_workflow ON campaign_outlets(workflow_name);
+CREATE INDEX IF NOT EXISTS idx_campaign_outlets_workflow ON campaign_outlets(workflow_slug);
 CREATE INDEX IF NOT EXISTS idx_campaign_outlets_buffer ON campaign_outlets(campaign_id, status, relevance_score DESC) WHERE status = 'open';
 CREATE INDEX IF NOT EXISTS idx_campaign_outlets_dedup ON campaign_outlets(org_id, brand_id, outlet_id) WHERE status = 'served';
 CREATE INDEX IF NOT EXISTS idx_idempotency_cache_created ON idempotency_cache(created_at);
 CREATE INDEX IF NOT EXISTS idx_outlets_url ON outlets(outlet_url);
 CREATE INDEX IF NOT EXISTS idx_outlets_domain ON outlets(outlet_domain);
 `;
+
+// Rename workflow_name → workflow_slug (idempotent: skips if column already renamed)
+const columnRename = `
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'campaign_outlets' AND column_name = 'workflow_name'
+  ) THEN
+    ALTER TABLE campaign_outlets RENAME COLUMN workflow_name TO workflow_slug;
+  END IF;
+END $$;
+`;
+
+// Recreate index on renamed column (old index auto-follows the rename,
+// but the name still says "workflow" which is fine — no action needed)
 
 export async function runMigration(): Promise<void> {
   console.log("Running migration...");
@@ -86,6 +101,9 @@ export async function runMigration(): Promise<void> {
 
   // Step 3: Tables, indexes (can now reference 'served'/'skipped')
   await pool.query(migration);
+
+  // Step 4: Rename workflow_name → workflow_slug (idempotent)
+  await pool.query(columnRename);
 
   console.log("Migration complete.");
 }

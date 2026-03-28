@@ -274,7 +274,7 @@ async function miniDiscover(ctx: OrgContext): Promise<number> {
 
       // Only insert if not already in this campaign's buffer
       const insertResult = await client.query(
-        `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_id, feature_slug, workflow_name, why_relevant, why_not_relevant, relevance_score, status, overall_relevance)
+        `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_id, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, overall_relevance)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'open', $10)
          ON CONFLICT (campaign_id, outlet_id) DO NOTHING`,
         [
@@ -283,7 +283,7 @@ async function miniDiscover(ctx: OrgContext): Promise<number> {
           ctx.orgId,
           ctx.brandId,
           featureSlug,
-          ctx.workflowName || null,
+          ctx.workflowSlug || null,
           o.whyRelevant,
           o.whyNotRelevant,
           o.relevanceScore,

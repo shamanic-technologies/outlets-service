@@ -26,13 +26,13 @@ describe("buildServiceHeaders", () => {
       featureSlug: "outlets",
       campaignId: "camp-1",
       brandId: "brand-1",
-      workflowName: "discover",
+      workflowSlug: "discover",
     };
     const h = buildServiceHeaders("sk-test", ctx);
     expect(h["x-feature-slug"]).toBe("outlets");
     expect(h["x-campaign-id"]).toBe("camp-1");
     expect(h["x-brand-id"]).toBe("brand-1");
-    expect(h["x-workflow-name"]).toBe("discover");
+    expect(h["x-workflow-slug"]).toBe("discover");
   });
 
   it("omits optional headers when context values are undefined", () => {
@@ -40,6 +40,6 @@ describe("buildServiceHeaders", () => {
     expect(h).not.toHaveProperty("x-feature-slug");
     expect(h).not.toHaveProperty("x-campaign-id");
     expect(h).not.toHaveProperty("x-brand-id");
-    expect(h).not.toHaveProperty("x-workflow-name");
+    expect(h).not.toHaveProperty("x-workflow-slug");
   });
 });

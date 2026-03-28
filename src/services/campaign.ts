@@ -6,7 +6,7 @@ export interface Campaign {
   id: string;
   orgId: string;
   name: string;
-  workflowName: string;
+  workflowSlug: string;
   brandId: string | null;
   featureSlug: string | null;
   featureInputs: Record<string, unknown> | null;

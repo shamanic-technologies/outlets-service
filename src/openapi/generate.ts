@@ -28,7 +28,7 @@ const orgContextHeaders = [
   { in: "header", name: "x-feature-slug", required: false, schema: { type: "string" }, description: "Feature slug for tracking (propagated downstream)" },
   { in: "header", name: "x-campaign-id", required: false, schema: { type: "string", format: "uuid" }, description: "Campaign ID (required for mutating endpoints)" },
   { in: "header", name: "x-brand-id", required: false, schema: { type: "string", format: "uuid" }, description: "Brand ID (required for mutating endpoints)" },
-  { in: "header", name: "x-workflow-name", required: false, schema: { type: "string" }, description: "Workflow name for tracking (propagated downstream)" },
+  { in: "header", name: "x-workflow-slug", required: false, schema: { type: "string" }, description: "Workflow slug for tracking (propagated downstream)" },
 ];
 
 const spec = {
@@ -160,13 +160,13 @@ const spec = {
     "/outlets/stats": {
       get: {
         summary: "Aggregated outlet discovery metrics",
-        description: "Returns outlet discovery stats (count, avg relevance, search queries used). Supports filtering by brandId, campaignId, workflowName and optional groupBy.",
+        description: "Returns outlet discovery stats (count, avg relevance, search queries used). Supports filtering by brandId, campaignId, workflowSlug and optional groupBy.",
         parameters: [
           ...orgContextHeaders,
           { in: "query", name: "brandId", schema: { type: "string", format: "uuid" }, description: "Filter by brand ID" },
           { in: "query", name: "campaignId", schema: { type: "string", format: "uuid" }, description: "Filter by campaign ID" },
-          { in: "query", name: "workflowName", schema: { type: "string" }, description: "Filter by workflow name" },
-          { in: "query", name: "groupBy", schema: { type: "string", enum: ["workflowName", "brandId", "campaignId"] }, description: "Group results by this dimension" },
+          { in: "query", name: "workflowSlug", schema: { type: "string" }, description: "Filter by workflow slug" },
+          { in: "query", name: "groupBy", schema: { type: "string", enum: ["workflowSlug", "brandId", "campaignId"] }, description: "Group results by this dimension" },
         ],
         responses: {
           "200": {

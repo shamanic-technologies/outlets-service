@@ -18,6 +18,6 @@ export function buildServiceHeaders(
   if (ctx.featureSlug) h["x-feature-slug"] = ctx.featureSlug;
   if (ctx.campaignId) h["x-campaign-id"] = ctx.campaignId;
   if (ctx.brandId) h["x-brand-id"] = ctx.brandId;
-  if (ctx.workflowName) h["x-workflow-name"] = ctx.workflowName;
+  if (ctx.workflowSlug) h["x-workflow-slug"] = ctx.workflowSlug;
   return h;
 }
