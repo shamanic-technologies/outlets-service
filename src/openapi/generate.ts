@@ -160,13 +160,16 @@ const spec = {
     "/outlets/stats": {
       get: {
         summary: "Aggregated outlet discovery metrics",
-        description: "Returns outlet discovery stats (count, avg relevance, search queries used). Supports filtering by brandId, campaignId, workflowSlug and optional groupBy.",
+        description: "Returns outlet discovery stats (count, avg relevance, search queries used). Supports filtering by brandId, campaignId, workflowSlug, featureSlug, and dynasty slugs. Dynasty slug filters resolve to all versioned slugs via workflow-service / features-service.",
         parameters: [
           ...orgContextHeaders,
           { in: "query", name: "brandId", schema: { type: "string", format: "uuid" }, description: "Filter by brand ID" },
           { in: "query", name: "campaignId", schema: { type: "string", format: "uuid" }, description: "Filter by campaign ID" },
-          { in: "query", name: "workflowSlug", schema: { type: "string" }, description: "Filter by workflow slug" },
-          { in: "query", name: "groupBy", schema: { type: "string", enum: ["workflowSlug", "brandId", "campaignId"] }, description: "Group results by this dimension" },
+          { in: "query", name: "workflowSlug", schema: { type: "string" }, description: "Filter by exact workflow slug" },
+          { in: "query", name: "featureSlug", schema: { type: "string" }, description: "Filter by exact feature slug" },
+          { in: "query", name: "workflowDynastySlug", schema: { type: "string" }, description: "Filter by workflow dynasty slug (resolved to all versioned slugs). Takes priority over workflowSlug." },
+          { in: "query", name: "featureDynastySlug", schema: { type: "string" }, description: "Filter by feature dynasty slug (resolved to all versioned slugs). Takes priority over featureSlug." },
+          { in: "query", name: "groupBy", schema: { type: "string", enum: ["workflowSlug", "featureSlug", "brandId", "campaignId", "workflowDynastySlug", "featureDynastySlug"] }, description: "Group results by this dimension. Dynasty groupBy aggregates versioned slugs into their dynasty." },
         ],
         responses: {
           "200": {

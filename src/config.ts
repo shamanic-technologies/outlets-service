@@ -10,4 +10,8 @@ export const config = {
   brandServiceApiKey: process.env.BRAND_SERVICE_API_KEY || "",
   campaignServiceUrl: process.env.CAMPAIGN_SERVICE_URL || "",
   campaignServiceApiKey: process.env.CAMPAIGN_SERVICE_API_KEY || "",
+  featuresServiceUrl: process.env.FEATURES_SERVICE_URL || "",
+  featuresServiceApiKey: process.env.FEATURES_SERVICE_API_KEY || "",
+  workflowServiceUrl: process.env.WORKFLOW_SERVICE_URL || "",
+  workflowServiceApiKey: process.env.WORKFLOW_SERVICE_API_KEY || "",
 };
