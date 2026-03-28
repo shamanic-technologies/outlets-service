@@ -99,11 +99,12 @@ export async function runMigration(): Promise<void> {
     }
   }
 
-  // Step 3: Tables, indexes (can now reference 'served'/'skipped')
-  await pool.query(migration);
-
-  // Step 4: Rename workflow_name → workflow_slug (idempotent)
+  // Step 3: Rename workflow_name → workflow_slug (idempotent)
+  // Must run BEFORE index creation, since the index references workflow_slug
   await pool.query(columnRename);
+
+  // Step 4: Tables, indexes (can now reference 'served'/'skipped' and workflow_slug)
+  await pool.query(migration);
 
   console.log("Migration complete.");
 }
