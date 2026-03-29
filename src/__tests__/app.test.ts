@@ -93,6 +93,39 @@ describe("POST /outlets", () => {
     expect(res.body.outletStatus).toBe("open");
   });
 
+  it("deduplicates by domain, not URL", async () => {
+    const outletRow = {
+      id: "11111111-1111-1111-1111-111111111111",
+      outlet_name: "TechCrunch",
+      outlet_url: "https://techcrunch.com/some/path",
+      outlet_domain: "techcrunch.com",
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+    };
+
+    mockQuery
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({ rows: [outletRow] }) // INSERT outlets (domain conflict → returns existing)
+      .mockResolvedValueOnce({ rows: [] }) // INSERT campaign_outlets
+      .mockResolvedValueOnce({}); // COMMIT
+
+    const res = await withFullHeaders(request(app).post("/outlets")).send({
+      outletName: "TechCrunch",
+      outletUrl: "https://techcrunch.com/different/path",
+      outletDomain: "techcrunch.com",
+      whyRelevant: "Good",
+      whyNotRelevant: "None",
+      relevanceScore: 90,
+    });
+
+    expect(res.status).toBe(201);
+    // Verify the INSERT uses ON CONFLICT (outlet_domain)
+    const insertCall = mockQuery.mock.calls[1];
+    expect(insertCall[0]).toContain("ON CONFLICT (outlet_domain)");
+    // The returned outlet is the existing one (same id)
+    expect(res.body.id).toBe(outletRow.id);
+  });
+
   it("returns 400 when x-campaign-id header is missing", async () => {
     const res = await withIdentity(request(app).post("/outlets"))
       .set("x-brand-id", BRAND_ID)

@@ -15,11 +15,11 @@ const enumAdditions = [
 ];
 
 const migration = `
--- outlets (deduplicated by URL)
+-- outlets (deduplicated by domain)
 CREATE TABLE IF NOT EXISTS outlets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   outlet_name TEXT NOT NULL,
-  outlet_url TEXT NOT NULL UNIQUE,
+  outlet_url TEXT NOT NULL,
   outlet_domain TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -64,7 +64,7 @@ CREATE INDEX IF NOT EXISTS idx_campaign_outlets_buffer ON campaign_outlets(campa
 CREATE INDEX IF NOT EXISTS idx_campaign_outlets_dedup ON campaign_outlets(org_id, brand_id, outlet_id) WHERE status = 'served';
 CREATE INDEX IF NOT EXISTS idx_idempotency_cache_created ON idempotency_cache(created_at);
 CREATE INDEX IF NOT EXISTS idx_outlets_url ON outlets(outlet_url);
-CREATE INDEX IF NOT EXISTS idx_outlets_domain ON outlets(outlet_domain);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_outlets_domain ON outlets(outlet_domain);
 `;
 
 // Rename workflow_name → workflow_slug (idempotent: skips if column already renamed)
@@ -82,8 +82,56 @@ END $$;
 // Recreate index on renamed column (old index auto-follows the rename,
 // but the name still says "workflow" which is fine — no action needed)
 
+// Dedup existing outlets by domain — merges duplicates before switching the unique constraint.
+// Idempotent: no-op if no duplicates exist.
+const dedupByDomain = `
+DO $$
+DECLARE
+  _domain TEXT;
+  _keep_id UUID;
+BEGIN
+  FOR _domain, _keep_id IN
+    SELECT outlet_domain, MIN(id) FROM outlets GROUP BY outlet_domain HAVING COUNT(*) > 1
+  LOOP
+    -- For campaigns that have both canonical and duplicate outlets,
+    -- keep the canonical row but upgrade its score if the duplicate scored higher
+    UPDATE campaign_outlets co_keep
+    SET
+      relevance_score = GREATEST(co_keep.relevance_score, co_dup.relevance_score),
+      why_relevant = CASE WHEN co_dup.relevance_score > co_keep.relevance_score THEN co_dup.why_relevant ELSE co_keep.why_relevant END,
+      why_not_relevant = CASE WHEN co_dup.relevance_score > co_keep.relevance_score THEN co_dup.why_not_relevant ELSE co_keep.why_not_relevant END,
+      overall_relevance = CASE WHEN co_dup.relevance_score > co_keep.relevance_score THEN co_dup.overall_relevance ELSE co_keep.overall_relevance END,
+      relevance_rationale = CASE WHEN co_dup.relevance_score > co_keep.relevance_score THEN co_dup.relevance_rationale ELSE co_keep.relevance_rationale END,
+      updated_at = CURRENT_TIMESTAMP
+    FROM campaign_outlets co_dup
+    WHERE co_keep.outlet_id = _keep_id
+      AND co_dup.campaign_id = co_keep.campaign_id
+      AND co_dup.outlet_id IN (SELECT id FROM outlets WHERE outlet_domain = _domain AND id != _keep_id);
+
+    -- Remove duplicate campaign_outlets where canonical already exists in same campaign
+    DELETE FROM campaign_outlets
+    WHERE outlet_id IN (SELECT id FROM outlets WHERE outlet_domain = _domain AND id != _keep_id)
+      AND campaign_id IN (SELECT campaign_id FROM campaign_outlets WHERE outlet_id = _keep_id);
+
+    -- Repoint remaining campaign_outlets (no conflict) to canonical outlet
+    UPDATE campaign_outlets
+    SET outlet_id = _keep_id, updated_at = CURRENT_TIMESTAMP
+    WHERE outlet_id IN (SELECT id FROM outlets WHERE outlet_domain = _domain AND id != _keep_id);
+
+    -- Delete duplicate outlet rows
+    DELETE FROM outlets WHERE outlet_domain = _domain AND id != _keep_id;
+  END LOOP;
+END $$;
+`;
+
+// Switch unique constraint from outlet_url to outlet_domain
+const switchUniqueConstraint = `
+ALTER TABLE outlets DROP CONSTRAINT IF EXISTS outlets_outlet_url_key;
+DROP INDEX IF EXISTS idx_outlets_domain;
+`;
+
 export async function runMigration(): Promise<void> {
-  console.log("Running migration...");
+  console.log("[outlets-service] Running migration...");
 
   // Step 1: Create enum type (idempotent)
   await pool.query(enumSetup);
@@ -106,7 +154,18 @@ export async function runMigration(): Promise<void> {
   // Step 4: Tables, indexes (can now reference 'served'/'skipped' and workflow_slug)
   await pool.query(migration);
 
-  console.log("Migration complete.");
+  // Step 5: Dedup existing outlets by domain (must run AFTER tables exist,
+  // BEFORE unique index on outlet_domain is enforced)
+  await pool.query(dedupByDomain);
+
+  // Step 6: Switch unique constraint from outlet_url to outlet_domain
+  await pool.query(switchUniqueConstraint);
+
+  // Step 7: Re-run DDL to create the unique index on outlet_domain
+  // (the main migration DDL now has CREATE UNIQUE INDEX IF NOT EXISTS)
+  await pool.query(migration);
+
+  console.log("[outlets-service] Migration complete.");
 }
 
 // Allow running as standalone script
