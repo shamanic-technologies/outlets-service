@@ -11,6 +11,14 @@ vi.mock("../db/pool", () => ({
   },
 }));
 
+// Mock runs service
+const mockBatchRunCosts = vi.fn();
+vi.mock("../services/runs", () => ({
+  createChildRun: vi.fn(),
+  closeRun: vi.fn(),
+  batchRunCosts: (...args: unknown[]) => mockBatchRunCosts(...args),
+}));
+
 // Mock dynasty service
 vi.mock("../services/dynasty", () => ({
   resolveWorkflowDynastySlugs: vi.fn(),
@@ -344,5 +352,173 @@ describe("GET /outlets/stats with empty dynasty filter + groupBy", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ groups: [] });
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+});
+
+// ========================
+// Stats Costs
+// ========================
+const BRAND_ID = "55555555-5555-5555-5555-555555555555";
+const CAMPAIGN_ID = "22222222-2222-2222-2222-222222222222";
+const RUN_ID_1 = "aaaa1111-1111-1111-1111-111111111111";
+const RUN_ID_2 = "aaaa2222-2222-2222-2222-222222222222";
+const OUTLET_ID_1 = "bbbb1111-1111-1111-1111-111111111111";
+const OUTLET_ID_2 = "bbbb2222-2222-2222-2222-222222222222";
+const OUTLET_ID_3 = "bbbb3333-3333-3333-3333-333333333333";
+
+describe("GET /outlets/stats/costs", () => {
+  it("returns empty groups when no outlets have run_id", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await withIdentity(request(app).get("/outlets/stats/costs"));
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ groups: [] });
+  });
+
+  it("returns flat totals without groupBy", async () => {
+    // DB: distinct runs with outlet counts
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { run_id: RUN_ID_1, outlet_count: 3 },
+        { run_id: RUN_ID_2, outlet_count: 2 },
+      ],
+    });
+
+    // runs-service batch costs
+    mockBatchRunCosts.mockResolvedValueOnce([
+      { runId: RUN_ID_1, totalCostInUsdCents: 300, actualCostInUsdCents: 200, provisionedCostInUsdCents: 100 },
+      { runId: RUN_ID_2, totalCostInUsdCents: 150, actualCostInUsdCents: 150, provisionedCostInUsdCents: 0 },
+    ]);
+
+    const res = await withIdentity(request(app).get("/outlets/stats/costs"));
+
+    expect(res.status).toBe(200);
+    expect(res.body.groups).toHaveLength(1);
+    expect(res.body.groups[0].totalCostInUsdCents).toBe(450);
+    expect(res.body.groups[0].actualCostInUsdCents).toBe(350);
+    expect(res.body.groups[0].provisionedCostInUsdCents).toBe(100);
+    expect(res.body.groups[0].runCount).toBe(2);
+  });
+
+  it("groups by runId", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { run_id: RUN_ID_1, outlet_count: 3 },
+        { run_id: RUN_ID_2, outlet_count: 2 },
+      ],
+    });
+
+    mockBatchRunCosts.mockResolvedValueOnce([
+      { runId: RUN_ID_1, totalCostInUsdCents: 300, actualCostInUsdCents: 200, provisionedCostInUsdCents: 100 },
+      { runId: RUN_ID_2, totalCostInUsdCents: 150, actualCostInUsdCents: 150, provisionedCostInUsdCents: 0 },
+    ]);
+
+    const res = await withIdentity(request(app).get("/outlets/stats/costs")).query({ groupBy: "runId" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.groups).toHaveLength(2);
+
+    const run1 = res.body.groups.find((g: any) => g.dimensions.runId === RUN_ID_1);
+    expect(run1.totalCostInUsdCents).toBe(300);
+    expect(run1.outletCount).toBe(3);
+    expect(run1.runCount).toBe(1);
+
+    const run2 = res.body.groups.find((g: any) => g.dimensions.runId === RUN_ID_2);
+    expect(run2.totalCostInUsdCents).toBe(150);
+    expect(run2.outletCount).toBe(2);
+  });
+
+  it("groups by outletId with cost = run cost / outlets in run", async () => {
+    // Run 1 produced 2 outlets, run 2 produced 1 outlet
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { run_id: RUN_ID_1, outlet_count: 2 },
+        { run_id: RUN_ID_2, outlet_count: 1 },
+      ],
+    });
+
+    mockBatchRunCosts.mockResolvedValueOnce([
+      { runId: RUN_ID_1, totalCostInUsdCents: 200, actualCostInUsdCents: 200, provisionedCostInUsdCents: 0 },
+      { runId: RUN_ID_2, totalCostInUsdCents: 100, actualCostInUsdCents: 100, provisionedCostInUsdCents: 0 },
+    ]);
+
+    // Outlet-to-run mapping query
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { outlet_id: OUTLET_ID_1, run_id: RUN_ID_1 },
+        { outlet_id: OUTLET_ID_2, run_id: RUN_ID_1 },
+        { outlet_id: OUTLET_ID_3, run_id: RUN_ID_2 },
+      ],
+    });
+
+    const res = await withIdentity(request(app).get("/outlets/stats/costs")).query({ groupBy: "outletId" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.groups).toHaveLength(3);
+
+    // Outlet 1 & 2: from run1 (200 cents / 2 outlets = 100 each)
+    const o1 = res.body.groups.find((g: any) => g.dimensions.outletId === OUTLET_ID_1);
+    expect(o1.totalCostInUsdCents).toBe(100);
+
+    const o2 = res.body.groups.find((g: any) => g.dimensions.outletId === OUTLET_ID_2);
+    expect(o2.totalCostInUsdCents).toBe(100);
+
+    // Outlet 3: from run2 (100 cents / 1 outlet = 100)
+    const o3 = res.body.groups.find((g: any) => g.dimensions.outletId === OUTLET_ID_3);
+    expect(o3.totalCostInUsdCents).toBe(100);
+  });
+
+  it("filters by brandId", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await withIdentity(request(app).get("/outlets/stats/costs")).query({ brandId: BRAND_ID });
+
+    expect(res.status).toBe(200);
+    // Verify brandId was included in the WHERE clause
+    const queryCall = mockQuery.mock.calls[0];
+    expect(queryCall[0]).toContain("co.brand_id");
+    expect(queryCall[1]).toContain(BRAND_ID);
+  });
+
+  it("filters by campaignId", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await withIdentity(request(app).get("/outlets/stats/costs")).query({ campaignId: CAMPAIGN_ID });
+
+    expect(res.status).toBe(200);
+    const queryCall = mockQuery.mock.calls[0];
+    expect(queryCall[0]).toContain("co.campaign_id");
+    expect(queryCall[1]).toContain(CAMPAIGN_ID);
+  });
+
+  it("returns 502 when runs-service is down", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ run_id: RUN_ID_1, outlet_count: 1 }],
+    });
+
+    mockBatchRunCosts.mockRejectedValueOnce(
+      new Error("runs-service POST /v1/runs/costs/batch failed (503): Service Unavailable")
+    );
+
+    const res = await withIdentity(request(app).get("/outlets/stats/costs"));
+
+    expect(res.status).toBe(502);
+    expect(res.body.error).toContain("runs-service");
+  });
+
+  it("handles runs with zero cost gracefully", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ run_id: RUN_ID_1, outlet_count: 5 }],
+    });
+
+    // Run exists but has no cost entries yet
+    mockBatchRunCosts.mockResolvedValueOnce([]);
+
+    const res = await withIdentity(request(app).get("/outlets/stats/costs"));
+
+    expect(res.status).toBe(200);
+    expect(res.body.groups[0].totalCostInUsdCents).toBe(0);
+    expect(res.body.groups[0].runCount).toBe(1);
   });
 });

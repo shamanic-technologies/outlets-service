@@ -2,7 +2,8 @@ import { Router, Request, Response } from "express";
 import { pool } from "../db/pool";
 import { config } from "../config";
 import { validateQuery } from "../middleware/validate";
-import { statsQuerySchema } from "../schemas";
+import { statsQuerySchema, statsCostsQuerySchema } from "../schemas";
+import { batchRunCosts } from "../services/runs";
 import {
   resolveWorkflowDynastySlugs,
   resolveFeatureDynastySlugs,
@@ -202,6 +203,153 @@ router.get(
     } catch (err) {
       console.error("[outlets-service] Error getting outlet stats:", err);
       res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// GET /outlets/stats/costs — cost stats from runs-service, grouped by outletId or runId
+router.get(
+  "/stats/costs",
+  validateQuery(statsCostsQuerySchema),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const orgId = req.orgContext!.orgId;
+      const ctx = req.orgContext!;
+      const q = req.query as Record<string, string | undefined>;
+
+      // Build WHERE clause: org-scoped + optional filters
+      const conditions: string[] = ["co.org_id = $1", "co.run_id IS NOT NULL"];
+      const params: unknown[] = [orgId];
+      let idx = 2;
+
+      if (q.brandId) {
+        conditions.push(`co.brand_id = $${idx++}`);
+        params.push(q.brandId);
+      }
+      if (q.campaignId) {
+        conditions.push(`co.campaign_id = $${idx++}`);
+        params.push(q.campaignId);
+      }
+
+      const where = conditions.join(" AND ");
+
+      // Get distinct run_ids and count of outlets per run
+      const runResult = await pool.query(
+        `SELECT co.run_id, COUNT(DISTINCT co.outlet_id)::int AS outlet_count
+         FROM campaign_outlets co
+         WHERE ${where}
+         GROUP BY co.run_id`,
+        params
+      );
+
+      if (runResult.rows.length === 0) {
+        res.json({ groups: [] });
+        return;
+      }
+
+      const runIds = runResult.rows.map((r: any) => r.run_id as string);
+      const outletCountByRun = new Map<string, number>(
+        runResult.rows.map((r: any) => [r.run_id as string, r.outlet_count as number])
+      );
+
+      // Batch fetch costs from runs-service
+      const costs = await batchRunCosts(runIds, ctx);
+      const costByRun = new Map(costs.map((c) => [c.runId, c]));
+
+      const groupBy = q.groupBy as string | undefined;
+
+      if (groupBy === "runId") {
+        // Group by run: one row per discovery run
+        const groups = runIds.map((runId) => {
+          const cost = costByRun.get(runId);
+          return {
+            dimensions: { runId },
+            totalCostInUsdCents: cost?.totalCostInUsdCents ?? 0,
+            actualCostInUsdCents: cost?.actualCostInUsdCents ?? 0,
+            provisionedCostInUsdCents: cost?.provisionedCostInUsdCents ?? 0,
+            runCount: 1,
+            outletCount: outletCountByRun.get(runId) ?? 0,
+          };
+        });
+
+        res.json({ groups });
+      } else if (groupBy === "outletId") {
+        // Group by outlet: cost per outlet = run cost / outlets in that run
+        // Need outlet-to-run mapping
+        const outletResult = await pool.query(
+          `SELECT co.outlet_id, co.run_id
+           FROM campaign_outlets co
+           WHERE ${where}`,
+          params
+        );
+
+        // An outlet may have been touched by multiple runs; sum the per-outlet share from each
+        const outletCosts = new Map<string, { total: number; actual: number; provisioned: number; runs: Set<string> }>();
+
+        for (const row of outletResult.rows) {
+          const outletId = row.outlet_id as string;
+          const runId = row.run_id as string;
+          const cost = costByRun.get(runId);
+          const count = outletCountByRun.get(runId) ?? 1;
+
+          const share = {
+            total: (cost?.totalCostInUsdCents ?? 0) / count,
+            actual: (cost?.actualCostInUsdCents ?? 0) / count,
+            provisioned: (cost?.provisionedCostInUsdCents ?? 0) / count,
+          };
+
+          const existing = outletCosts.get(outletId);
+          if (existing) {
+            existing.total += share.total;
+            existing.actual += share.actual;
+            existing.provisioned += share.provisioned;
+            existing.runs.add(runId);
+          } else {
+            outletCosts.set(outletId, {
+              total: share.total,
+              actual: share.actual,
+              provisioned: share.provisioned,
+              runs: new Set([runId]),
+            });
+          }
+        }
+
+        const groups = Array.from(outletCosts.entries()).map(([outletId, v]) => ({
+          dimensions: { outletId },
+          totalCostInUsdCents: Math.round(v.total),
+          actualCostInUsdCents: Math.round(v.actual),
+          provisionedCostInUsdCents: Math.round(v.provisioned),
+          runCount: v.runs.size,
+        }));
+
+        res.json({ groups });
+      } else {
+        // No groupBy: flat totals across all runs
+        let totalCost = 0;
+        let actualCost = 0;
+        let provisionedCost = 0;
+
+        for (const cost of costs) {
+          totalCost += cost.totalCostInUsdCents;
+          actualCost += cost.actualCostInUsdCents;
+          provisionedCost += cost.provisionedCostInUsdCents;
+        }
+
+        res.json({
+          groups: [{
+            dimensions: {},
+            totalCostInUsdCents: totalCost,
+            actualCostInUsdCents: actualCost,
+            provisionedCostInUsdCents: provisionedCost,
+            runCount: runIds.length,
+          }],
+        });
+      }
+    } catch (err) {
+      console.error("[outlets-service] Error getting cost stats:", err);
+      const message = err instanceof Error ? err.message : "Internal server error";
+      const status = message.includes("failed (") ? 502 : 500;
+      res.status(status).json({ error: message });
     }
   }
 );

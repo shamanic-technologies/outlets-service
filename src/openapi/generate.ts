@@ -16,6 +16,7 @@ import {
   statsGroupedResponseSchema,
   discoverSchema,
   discoverResponseSchema,
+  statsCostsResponseSchema,
 } from "../schemas";
 import { zodToJsonSchema } from "./zod-to-json";
 
@@ -57,6 +58,7 @@ const spec = {
       StatsGroupedResponse: zodToJsonSchema(statsGroupedResponseSchema),
       Discover: zodToJsonSchema(discoverSchema),
       DiscoverResponse: zodToJsonSchema(discoverResponseSchema),
+      StatsCostsResponse: zodToJsonSchema(statsCostsResponseSchema),
       HealthResponse: zodToJsonSchema(healthResponseSchema),
       ErrorResponse: zodToJsonSchema(errorResponseSchema),
     },
@@ -353,6 +355,38 @@ const spec = {
               },
             },
           },
+        },
+      },
+    },
+    "/outlets/stats/costs": {
+      get: {
+        summary: "Cost stats for outlet discovery",
+        description: "Returns aggregated discovery costs by querying runs-service for all runs associated with outlets. Supports filters (brandId, campaignId) and optional groupBy (outletId, runId). Without groupBy returns flat totals; with groupBy=outletId returns cost-per-outlet (run cost / outlets in that run); with groupBy=runId returns one row per discovery run.",
+        parameters: [
+          ...orgContextHeaders,
+          { in: "query", name: "brandId", schema: { type: "string", format: "uuid" }, description: "Filter by brand ID" },
+          { in: "query", name: "campaignId", schema: { type: "string", format: "uuid" }, description: "Filter by campaign ID" },
+          { in: "query", name: "groupBy", schema: { type: "string", enum: ["outletId", "runId"] }, description: "Group results by dimension. Omit for flat totals." },
+        ],
+        responses: {
+          "200": {
+            description: "Cost stats (flat or grouped)",
+            content: {
+              "application/json": {
+                schema: ref("StatsCostsResponse"),
+                example: {
+                  groups: [{
+                    dimensions: { outletId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890" },
+                    totalCostInUsdCents: 1234,
+                    actualCostInUsdCents: 800,
+                    provisionedCostInUsdCents: 434,
+                    runCount: 3,
+                  }],
+                },
+              },
+            },
+          },
+          "502": { description: "Upstream service error (runs-service)", content: { "application/json": { schema: ref("ErrorResponse") } } },
         },
       },
     },

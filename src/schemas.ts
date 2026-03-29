@@ -162,6 +162,28 @@ export const discoverResponseSchema = z.object({
 
 export type Discover = z.infer<typeof discoverSchema>;
 
+// --- Stats Costs ---
+
+const statsCostsGroupByEnum = z.enum(["outletId", "runId"]);
+
+export const statsCostsQuerySchema = z.object({
+  brandId: z.string().uuid().optional(),
+  campaignId: z.string().uuid().optional(),
+  groupBy: statsCostsGroupByEnum.optional(),
+});
+
+export const statsCostsResponseSchema = z.object({
+  groups: z.array(
+    z.object({
+      dimensions: z.record(z.string().nullable()),
+      totalCostInUsdCents: z.number(),
+      actualCostInUsdCents: z.number(),
+      provisionedCostInUsdCents: z.number(),
+      runCount: z.number(),
+    })
+  ),
+});
+
 // Type exports
 export type CreateOutlet = z.infer<typeof createOutletSchema>;
 export type UpdateOutlet = z.infer<typeof updateOutletSchema>;
