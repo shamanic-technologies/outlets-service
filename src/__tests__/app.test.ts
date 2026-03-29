@@ -90,7 +90,7 @@ describe("POST /outlets", () => {
     expect(res.body.campaignId).toBe(CAMPAIGN_ID);
     expect(res.body.brandId).toBe(BRAND_ID);
     expect(res.body.relevanceScore).toBe(85);
-    expect(res.body.outletStatus).toBe("open");
+    expect(res.body.status).toBe("open");
   });
 
   it("deduplicates by domain, not URL", async () => {

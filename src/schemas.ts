@@ -68,7 +68,7 @@ export const campaignOutletResponseSchema = outletResponseSchema.extend({
   whyRelevant: z.string(),
   whyNotRelevant: z.string(),
   relevanceScore: z.number(),
-  outletStatus: outletStatusEnum,
+  status: outletStatusEnum,
   overallRelevance: z.string().nullable(),
   relevanceRationale: z.string().nullable(),
 });
