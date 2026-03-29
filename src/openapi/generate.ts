@@ -77,26 +77,100 @@ const spec = {
     "/outlets": {
       post: {
         summary: "Create outlet (upsert by outlet_url)",
-        description: "Requires x-campaign-id and x-brand-id headers.",
+        description: "Requires x-campaign-id and x-brand-id headers. Upserts by outlet_domain — if the domain already exists, updates the name/url.",
         parameters: [...orgContextHeaders],
-        requestBody: { content: { "application/json": { schema: ref("CreateOutlet") } } },
+        requestBody: {
+          content: {
+            "application/json": {
+              schema: ref("CreateOutlet"),
+              example: {
+                outletName: "TechCrunch",
+                outletUrl: "https://techcrunch.com",
+                outletDomain: "techcrunch.com",
+                whyRelevant: "Top tech publication with high domain authority",
+                whyNotRelevant: "Highly competitive, may not accept guest posts",
+                relevanceScore: 85,
+                status: "open",
+              },
+            },
+          },
+        },
         responses: {
-          "201": { description: "Outlet created", content: { "application/json": { schema: ref("CampaignOutletResponse") } } },
+          "201": {
+            description: "Outlet created",
+            content: {
+              "application/json": {
+                schema: ref("CampaignOutletResponse"),
+                example: {
+                  id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                  outletName: "TechCrunch",
+                  outletUrl: "https://techcrunch.com",
+                  outletDomain: "techcrunch.com",
+                  campaignId: "11111111-2222-3333-4444-555555555555",
+                  brandId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                  whyRelevant: "Top tech publication with high domain authority",
+                  whyNotRelevant: "Highly competitive, may not accept guest posts",
+                  relevanceScore: 85,
+                  status: "open",
+                  overallRelevance: null,
+                  relevanceRationale: null,
+                  createdAt: "2026-01-15T10:30:00.000Z",
+                  updatedAt: "2026-01-15T10:30:00.000Z",
+                },
+              },
+            },
+          },
           "400": { description: "Validation error or missing headers", content: { "application/json": { schema: ref("ErrorResponse") } } },
         },
       },
       get: {
         summary: "List outlets with filters",
+        description: "Returns outlets joined with their campaign data. Filter by campaignId, brandId, and/or status.",
         parameters: [
           ...orgContextHeaders,
-          { in: "query", name: "campaignId", schema: { type: "string", format: "uuid" } },
-          { in: "query", name: "brandId", schema: { type: "string", format: "uuid" } },
-          { in: "query", name: "status", schema: { type: "string", enum: ["open", "ended", "denied", "served", "skipped"] } },
-          { in: "query", name: "limit", schema: { type: "integer", default: 100 } },
-          { in: "query", name: "offset", schema: { type: "integer", default: 0 } },
+          { in: "query", name: "campaignId", schema: { type: "string", format: "uuid" }, description: "Filter by campaign ID" },
+          { in: "query", name: "brandId", schema: { type: "string", format: "uuid" }, description: "Filter by brand ID" },
+          { in: "query", name: "status", schema: { type: "string", enum: ["open", "ended", "denied", "served", "skipped"] }, description: "Filter by outlet status" },
+          { in: "query", name: "limit", schema: { type: "integer", default: 100 }, description: "Max results (default 100, max 1000)" },
+          { in: "query", name: "offset", schema: { type: "integer", default: 0 }, description: "Pagination offset" },
         ],
         responses: {
-          "200": { description: "List of outlets" },
+          "200": {
+            description: "List of outlets",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    outlets: { type: "array", items: ref("CampaignOutletResponse") },
+                    total: { type: "integer" },
+                  },
+                  required: ["outlets", "total"],
+                },
+                example: {
+                  outlets: [
+                    {
+                      id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                      outletName: "TechCrunch",
+                      outletUrl: "https://techcrunch.com",
+                      outletDomain: "techcrunch.com",
+                      campaignId: "11111111-2222-3333-4444-555555555555",
+                      brandId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                      whyRelevant: "Top tech publication",
+                      whyNotRelevant: "Competitive",
+                      relevanceScore: 85,
+                      status: "open",
+                      overallRelevance: "high",
+                      relevanceRationale: null,
+                      createdAt: "2026-01-15T10:30:00.000Z",
+                      updatedAt: "2026-01-15T10:30:00.000Z",
+                    },
+                  ],
+                  total: 1,
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -122,38 +196,130 @@ const spec = {
     "/outlets/{id}/status": {
       patch: {
         summary: "Update outlet status",
-        description: "Requires x-campaign-id header to identify the campaign_outlets row.",
+        description: "Updates the status of an outlet within a campaign. Requires x-campaign-id header to identify the campaign_outlets row. Setting status to 'ended' also sets ended_at timestamp.",
         parameters: [
-          { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
+          { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" }, description: "Outlet ID" },
           ...orgContextHeaders,
         ],
-        requestBody: { content: { "application/json": { schema: ref("UpdateOutletStatus") } } },
+        requestBody: {
+          content: {
+            "application/json": {
+              schema: ref("UpdateOutletStatus"),
+              example: { status: "ended", reason: "No longer relevant to campaign goals" },
+            },
+          },
+        },
         responses: {
-          "200": { description: "Status updated" },
-          "400": { description: "Missing x-campaign-id header" },
-          "404": { description: "Not found" },
+          "200": {
+            description: "Status updated",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    outletId: { type: "string", format: "uuid" },
+                    campaignId: { type: "string", format: "uuid" },
+                    status: { type: "string", enum: ["open", "ended", "denied", "served", "skipped"] },
+                    reason: { type: "string", nullable: true },
+                    updatedAt: { type: "string", format: "date-time" },
+                  },
+                  required: ["outletId", "campaignId", "status", "updatedAt"],
+                },
+                example: {
+                  outletId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                  campaignId: "11111111-2222-3333-4444-555555555555",
+                  status: "ended",
+                  reason: "No longer relevant to campaign goals",
+                  updatedAt: "2026-01-16T14:00:00.000Z",
+                },
+              },
+            },
+          },
+          "400": { description: "Missing x-campaign-id header", content: { "application/json": { schema: ref("ErrorResponse") } } },
+          "404": { description: "Campaign outlet not found", content: { "application/json": { schema: ref("ErrorResponse") } } },
         },
       },
     },
     "/outlets/bulk": {
       post: {
         summary: "Bulk upsert outlets",
-        description: "Requires x-campaign-id and x-brand-id headers. All outlets in the batch share the same campaign and brand.",
+        description: "Requires x-campaign-id and x-brand-id headers. All outlets in the batch share the same campaign and brand. Max 500 outlets per request.",
         parameters: [...orgContextHeaders],
-        requestBody: { content: { "application/json": { schema: ref("BulkCreateOutlets") } } },
+        requestBody: {
+          content: {
+            "application/json": {
+              schema: ref("BulkCreateOutlets"),
+              example: {
+                outlets: [
+                  {
+                    outletName: "TechCrunch",
+                    outletUrl: "https://techcrunch.com",
+                    outletDomain: "techcrunch.com",
+                    whyRelevant: "Top tech publication",
+                    whyNotRelevant: "Competitive",
+                    relevanceScore: 85,
+                  },
+                  {
+                    outletName: "The Verge",
+                    outletUrl: "https://theverge.com",
+                    outletDomain: "theverge.com",
+                    whyRelevant: "Wide consumer tech audience",
+                    whyNotRelevant: "May not cover B2B topics",
+                    relevanceScore: 78,
+                  },
+                ],
+              },
+            },
+          },
+        },
         responses: {
-          "201": { description: "Outlets created" },
-          "400": { description: "Validation error or missing headers" },
+          "201": {
+            description: "Outlets created",
+            content: {
+              "application/json": {
+                example: {
+                  outlets: [
+                    { id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890", outletName: "TechCrunch", outletUrl: "https://techcrunch.com", campaignId: "11111111-2222-3333-4444-555555555555" },
+                    { id: "b2c3d4e5-f6a7-8901-bcde-f12345678901", outletName: "The Verge", outletUrl: "https://theverge.com", campaignId: "11111111-2222-3333-4444-555555555555" },
+                  ],
+                  count: 2,
+                },
+              },
+            },
+          },
+          "400": { description: "Validation error or missing headers", content: { "application/json": { schema: ref("ErrorResponse") } } },
         },
       },
     },
     "/outlets/search": {
       post: {
         summary: "Search outlets by name/url",
+        description: "Full-text search (ILIKE) on outlet name and URL. Optionally scoped to a campaign.",
         parameters: [...orgContextHeaders],
-        requestBody: { content: { "application/json": { schema: ref("SearchOutlets") } } },
+        requestBody: {
+          content: {
+            "application/json": {
+              schema: ref("SearchOutlets"),
+              example: { query: "tech", campaignId: "11111111-2222-3333-4444-555555555555", limit: 10 },
+            },
+          },
+        },
         responses: {
-          "200": { description: "Search results" },
+          "200": {
+            description: "Search results",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    outlets: { type: "array", items: ref("OutletResponse") },
+                    total: { type: "integer" },
+                  },
+                  required: ["outlets", "total"],
+                },
+              },
+            },
+          },
         },
       },
     },

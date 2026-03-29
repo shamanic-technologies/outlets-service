@@ -71,7 +71,7 @@ router.get("/outlets/by-campaign/:campaignId", async (req: Request, res: Respons
         whyRelevant: r.why_relevant,
         whyNotRelevant: r.why_not_relevant,
         relevanceScore: Number(r.relevance_score),
-        outletStatus: r.outlet_status,
+        status: r.outlet_status,
         overallRelevance: r.overall_relevance,
         relevanceRationale: r.relevance_rationale,
         createdAt: r.created_at,
