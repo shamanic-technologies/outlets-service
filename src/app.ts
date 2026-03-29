@@ -5,6 +5,7 @@ import outletsRouter from "./routes/outlets";
 import internalRouter from "./routes/internal";
 import bufferRouter from "./routes/buffer";
 import statsRouter from "./routes/stats";
+import discoverRouter from "./routes/discover";
 import path from "path";
 import fs from "fs";
 
@@ -32,6 +33,9 @@ export function createApp() {
 
   // Stats route (must be before /outlets/:id to avoid path conflicts)
   app.use("/outlets", statsRouter);
+
+  // Discover route (must be before /outlets/:id to avoid path conflicts)
+  app.use("/outlets", discoverRouter);
 
   // Buffer route
   app.use("/buffer", bufferRouter);

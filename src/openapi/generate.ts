@@ -14,6 +14,8 @@ import {
   campaignOutletResponseSchema,
   statsResponseSchema,
   statsGroupedResponseSchema,
+  discoverSchema,
+  discoverResponseSchema,
 } from "../schemas";
 import { zodToJsonSchema } from "./zod-to-json";
 
@@ -53,6 +55,8 @@ const spec = {
       CampaignOutletResponse: zodToJsonSchema(campaignOutletResponseSchema),
       StatsResponse: zodToJsonSchema(statsResponseSchema),
       StatsGroupedResponse: zodToJsonSchema(statsGroupedResponseSchema),
+      Discover: zodToJsonSchema(discoverSchema),
+      DiscoverResponse: zodToJsonSchema(discoverResponseSchema),
       HealthResponse: zodToJsonSchema(healthResponseSchema),
       ErrorResponse: zodToJsonSchema(errorResponseSchema),
     },
@@ -131,6 +135,7 @@ const spec = {
           { in: "query", name: "campaignId", schema: { type: "string", format: "uuid" }, description: "Filter by campaign ID" },
           { in: "query", name: "brandId", schema: { type: "string", format: "uuid" }, description: "Filter by brand ID" },
           { in: "query", name: "status", schema: { type: "string", enum: ["open", "ended", "denied", "served", "skipped"] }, description: "Filter by outlet status" },
+          { in: "query", name: "runId", schema: { type: "string" }, description: "Filter by run ID (from discover endpoint)" },
           { in: "query", name: "limit", schema: { type: "integer", default: 100 }, description: "Max results (default 100, max 1000)" },
           { in: "query", name: "offset", schema: { type: "integer", default: 0 }, description: "Pagination offset" },
         ],
@@ -348,6 +353,34 @@ const spec = {
               },
             },
           },
+        },
+      },
+    },
+    "/outlets/discover": {
+      post: {
+        summary: "Discover outlets for a campaign",
+        description: "Runs parameterized outlet discovery: generates search queries via LLM, searches Google, scores results, and inserts into the campaign buffer. Creates a child run in runs-service for cost tracking. Requires x-campaign-id and x-brand-id headers.",
+        parameters: [...orgContextHeaders],
+        requestBody: {
+          content: {
+            "application/json": {
+              schema: ref("Discover"),
+              example: { count: 50 },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Discovery completed",
+            content: {
+              "application/json": {
+                schema: ref("DiscoverResponse"),
+                example: { runId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890", discovered: 42 },
+              },
+            },
+          },
+          "400": { description: "Missing required headers or invalid count", content: { "application/json": { schema: ref("ErrorResponse") } } },
+          "502": { description: "Upstream service error during discovery", content: { "application/json": { schema: ref("ErrorResponse") } } },
         },
       },
     },

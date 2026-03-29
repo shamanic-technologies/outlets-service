@@ -21,6 +21,12 @@ const MINI_DISCOVER_RESULTS_PER_QUERY = 5;
 const MAX_CLAIM_ITERATIONS = 50;
 const IDEMPOTENCY_TTL_DAYS = 60;
 
+export interface DiscoverOptions {
+  queryCount: number;
+  resultsPerQuery: number;
+  runId?: string;
+}
+
 const querySchema = z.object({
   queries: z.array(
     z.object({
@@ -73,6 +79,7 @@ interface ClaimedOutlet {
   whyRelevant: string;
   whyNotRelevant: string;
   overallRelevance: string | null;
+  runId: string | null;
 }
 
 /**
@@ -95,7 +102,7 @@ async function claimNext(campaignId: string): Promise<ClaimedOutlet | null> {
      WHERE co.campaign_id = sub.campaign_id AND co.outlet_id = sub.outlet_id
      RETURNING o.id AS outlet_id, o.outlet_name, o.outlet_url, o.outlet_domain,
                co.campaign_id, co.brand_id, co.relevance_score,
-               co.why_relevant, co.why_not_relevant, co.overall_relevance`,
+               co.why_relevant, co.why_not_relevant, co.overall_relevance, co.run_id`,
     [campaignId]
   );
 
@@ -113,6 +120,7 @@ async function claimNext(campaignId: string): Promise<ClaimedOutlet | null> {
     whyRelevant: r.why_relevant,
     whyNotRelevant: r.why_not_relevant,
     overallRelevance: r.overall_relevance,
+    runId: r.run_id || null,
   };
 }
 
@@ -148,10 +156,11 @@ async function markSkipped(campaignId: string, outletId: string): Promise<void> 
 }
 
 /**
- * Mini-discover: lightweight outlet discovery (3 queries × 5 results).
- * Returns number of outlets inserted into the buffer.
+ * Parameterized outlet discovery. Generates search queries, runs Google search,
+ * scores results with LLM, and inserts into the campaign buffer.
+ * Returns number of outlets inserted.
  */
-async function miniDiscover(ctx: OrgContext): Promise<number> {
+export async function discoverOutlets(ctx: OrgContext, options: DiscoverOptions): Promise<number> {
   const [brand, extractedFields, featureInputs] = await Promise.all([
     getBrand(ctx.brandId!, ctx),
     extractFields(ctx.brandId!, BRAND_FIELDS, ctx),
@@ -183,7 +192,7 @@ async function miniDiscover(ctx: OrgContext): Promise<number> {
       systemPrompt:
         GENERATE_QUERIES_SYSTEM_PROMPT.replace(
           "Generate 8-12 queries",
-          `Generate exactly ${MINI_DISCOVER_QUERY_COUNT} queries`
+          `Generate exactly ${options.queryCount} queries`
         ),
       responseFormat: "json",
       temperature: 0.7,
@@ -196,7 +205,7 @@ async function miniDiscover(ctx: OrgContext): Promise<number> {
   if (queryJson && Array.isArray(queryJson.queries)) {
     queryJson.queries = (queryJson.queries as Array<Record<string, unknown>>)
       .filter((q) => q.query && q.type && q.rationale)
-      .slice(0, MINI_DISCOVER_QUERY_COUNT);
+      .slice(0, options.queryCount);
   }
 
   const parsedQueries = querySchema.safeParse(queryJson);
@@ -211,7 +220,7 @@ async function miniDiscover(ctx: OrgContext): Promise<number> {
       queries: parsedQueries.data.queries.map((q) => ({
         query: q.query,
         type: q.type,
-        num: MINI_DISCOVER_RESULTS_PER_QUERY,
+        num: options.resultsPerQuery,
       })),
     },
     ctx
@@ -274,8 +283,8 @@ async function miniDiscover(ctx: OrgContext): Promise<number> {
 
       // Only insert if not already in this campaign's buffer
       const insertResult = await client.query(
-        `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_id, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, overall_relevance)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'open', $10)
+        `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_id, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, overall_relevance, run_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'open', $10, $11)
          ON CONFLICT (campaign_id, outlet_id) DO NOTHING`,
         [
           ctx.campaignId,
@@ -288,6 +297,7 @@ async function miniDiscover(ctx: OrgContext): Promise<number> {
           o.whyNotRelevant,
           o.relevanceScore,
           o.overallRelevance,
+          options.runId || null,
         ]
       );
       if (insertResult.rowCount && insertResult.rowCount > 0) inserted++;
@@ -301,8 +311,17 @@ async function miniDiscover(ctx: OrgContext): Promise<number> {
     client.release();
   }
 
-  console.log(`[outlets-service] Mini-discover: inserted ${inserted} outlets into buffer for campaign ${ctx.campaignId}`);
+  console.log(`[outlets-service] Discover: inserted ${inserted} outlets into buffer for campaign ${ctx.campaignId}`);
   return inserted;
+}
+
+/** Mini-discover: lightweight wrapper around discoverOutlets with default params. */
+async function miniDiscover(ctx: OrgContext): Promise<number> {
+  return discoverOutlets(ctx, {
+    queryCount: MINI_DISCOVER_QUERY_COUNT,
+    resultsPerQuery: MINI_DISCOVER_RESULTS_PER_QUERY,
+    runId: ctx.runId,
+  });
 }
 
 const router = Router();

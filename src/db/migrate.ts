@@ -165,6 +165,12 @@ export async function runMigration(): Promise<void> {
   // (the main migration DDL now has CREATE UNIQUE INDEX IF NOT EXISTS)
   await pool.query(migration);
 
+  // Step 8: Add run_id column to campaign_outlets for run tracking
+  await pool.query(`
+    ALTER TABLE campaign_outlets ADD COLUMN IF NOT EXISTS run_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_campaign_outlets_run_id ON campaign_outlets(run_id);
+  `);
+
   console.log("[outlets-service] Migration complete.");
 }
 
