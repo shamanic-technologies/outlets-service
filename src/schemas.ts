@@ -37,6 +37,7 @@ export const listOutletsQuerySchema = z.object({
   campaignId: z.string().uuid().optional(),
   brandId: z.string().uuid().optional(),
   status: outletStatusEnum.optional(),
+  runId: z.string().optional(),
   limit: z.coerce.number().int().positive().max(1000).optional().default(100),
   offset: z.coerce.number().int().min(0).optional().default(0),
 });
@@ -71,6 +72,7 @@ export const campaignOutletResponseSchema = outletResponseSchema.extend({
   status: outletStatusEnum,
   overallRelevance: z.string().nullable(),
   relevanceRationale: z.string().nullable(),
+  runId: z.string().nullable(),
 });
 
 export const healthResponseSchema = z.object({
@@ -140,11 +142,25 @@ export const bufferNextResponseSchema = z.object({
       whyRelevant: z.string(),
       whyNotRelevant: z.string(),
       overallRelevance: z.string().nullable(),
+      runId: z.string().nullable(),
     })
   ),
 });
 
 export type BufferNext = z.infer<typeof bufferNextSchema>;
+
+// --- Discover ---
+
+export const discoverSchema = z.object({
+  count: z.number().int().min(1).max(200).optional().default(15),
+});
+
+export const discoverResponseSchema = z.object({
+  runId: z.string(),
+  discovered: z.number(),
+});
+
+export type Discover = z.infer<typeof discoverSchema>;
 
 // Type exports
 export type CreateOutlet = z.infer<typeof createOutletSchema>;

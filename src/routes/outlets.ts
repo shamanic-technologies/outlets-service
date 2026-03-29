@@ -52,16 +52,17 @@ router.post(
         const outlet = outletResult.rows[0];
 
         await client.query(
-          `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_id, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, overall_relevance, relevance_rationale)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_id, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, overall_relevance, relevance_rationale, run_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
            ON CONFLICT (campaign_id, outlet_id)
            DO UPDATE SET why_relevant = EXCLUDED.why_relevant, why_not_relevant = EXCLUDED.why_not_relevant,
              relevance_score = EXCLUDED.relevance_score, status = EXCLUDED.status,
              overall_relevance = EXCLUDED.overall_relevance, relevance_rationale = EXCLUDED.relevance_rationale,
              feature_slug = EXCLUDED.feature_slug, org_id = EXCLUDED.org_id,
              brand_id = EXCLUDED.brand_id, workflow_slug = EXCLUDED.workflow_slug,
+             run_id = EXCLUDED.run_id,
              updated_at = CURRENT_TIMESTAMP`,
-          [ctx.campaignId, outlet.id, ctx.orgId, ctx.brandId, featureSlug, ctx.workflowSlug || null, b.whyRelevant, b.whyNotRelevant, b.relevanceScore, b.status || "open", b.overallRelevance || null, b.relevanceRationale || null]
+          [ctx.campaignId, outlet.id, ctx.orgId, ctx.brandId, featureSlug, ctx.workflowSlug || null, b.whyRelevant, b.whyNotRelevant, b.relevanceScore, b.status || "open", b.overallRelevance || null, b.relevanceRationale || null, ctx.runId]
         );
 
         await client.query("COMMIT");
@@ -79,6 +80,7 @@ router.post(
           status: b.status || "open",
           overallRelevance: b.overallRelevance || null,
           relevanceRationale: b.relevanceRationale || null,
+          runId: ctx.runId,
           createdAt: outlet.created_at,
           updatedAt: outlet.updated_at,
         });
@@ -118,13 +120,17 @@ router.get(
         conditions.push(`co.status = $${paramIdx++}`);
         params.push(q.status);
       }
+      if (q.runId) {
+        conditions.push(`co.run_id = $${paramIdx++}`);
+        params.push(q.runId);
+      }
 
       const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
       const result = await pool.query(
         `SELECT o.id, o.outlet_name, o.outlet_url, o.outlet_domain,
                 co.campaign_id, co.brand_id, co.why_relevant, co.why_not_relevant, co.relevance_score,
-                co.status AS outlet_status, co.overall_relevance, co.relevance_rationale,
+                co.status AS outlet_status, co.overall_relevance, co.relevance_rationale, co.run_id,
                 o.created_at, o.updated_at
          FROM outlets o
          JOIN campaign_outlets co ON o.id = co.outlet_id
@@ -148,6 +154,7 @@ router.get(
           status: r.outlet_status,
           overallRelevance: r.overall_relevance,
           relevanceRationale: r.relevance_rationale,
+          runId: r.run_id || null,
           createdAt: r.created_at,
           updatedAt: r.updated_at,
         })),
@@ -314,16 +321,17 @@ router.post(
           const outlet = outletResult.rows[0];
 
           await client.query(
-            `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_id, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, overall_relevance, relevance_rationale)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_id, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, overall_relevance, relevance_rationale, run_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
              ON CONFLICT (campaign_id, outlet_id)
              DO UPDATE SET why_relevant = EXCLUDED.why_relevant, why_not_relevant = EXCLUDED.why_not_relevant,
                relevance_score = EXCLUDED.relevance_score, status = EXCLUDED.status,
                overall_relevance = EXCLUDED.overall_relevance, relevance_rationale = EXCLUDED.relevance_rationale,
                feature_slug = EXCLUDED.feature_slug, org_id = EXCLUDED.org_id,
                brand_id = EXCLUDED.brand_id, workflow_slug = EXCLUDED.workflow_slug,
+               run_id = EXCLUDED.run_id,
                updated_at = CURRENT_TIMESTAMP`,
-            [ctx.campaignId, outlet.id, ctx.orgId, ctx.brandId, featureSlug, ctx.workflowSlug || null, b.whyRelevant, b.whyNotRelevant, b.relevanceScore, b.status || "open", b.overallRelevance || null, b.relevanceRationale || null]
+            [ctx.campaignId, outlet.id, ctx.orgId, ctx.brandId, featureSlug, ctx.workflowSlug || null, b.whyRelevant, b.whyNotRelevant, b.relevanceScore, b.status || "open", b.overallRelevance || null, b.relevanceRationale || null, ctx.runId]
           );
 
           results.push({
