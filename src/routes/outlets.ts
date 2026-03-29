@@ -44,8 +44,8 @@ router.post(
         const outletResult = await client.query(
           `INSERT INTO outlets (outlet_name, outlet_url, outlet_domain)
            VALUES ($1, $2, $3)
-           ON CONFLICT (outlet_url)
-           DO UPDATE SET outlet_name = EXCLUDED.outlet_name, outlet_domain = EXCLUDED.outlet_domain, updated_at = CURRENT_TIMESTAMP
+           ON CONFLICT (outlet_domain)
+           DO UPDATE SET outlet_name = EXCLUDED.outlet_name, outlet_url = EXCLUDED.outlet_url, updated_at = CURRENT_TIMESTAMP
            RETURNING id, outlet_name, outlet_url, outlet_domain, created_at, updated_at`,
           [b.outletName, b.outletUrl, domain]
         );
@@ -306,8 +306,8 @@ router.post(
           const outletResult = await client.query(
             `INSERT INTO outlets (outlet_name, outlet_url, outlet_domain)
              VALUES ($1, $2, $3)
-             ON CONFLICT (outlet_url)
-             DO UPDATE SET outlet_name = EXCLUDED.outlet_name, outlet_domain = EXCLUDED.outlet_domain, updated_at = CURRENT_TIMESTAMP
+             ON CONFLICT (outlet_domain)
+             DO UPDATE SET outlet_name = EXCLUDED.outlet_name, outlet_url = EXCLUDED.outlet_url, updated_at = CURRENT_TIMESTAMP
              RETURNING id, outlet_name, outlet_url, outlet_domain`,
             [b.outletName, b.outletUrl, domain]
           );
