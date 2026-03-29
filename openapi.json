@@ -484,6 +484,45 @@
           "discovered"
         ]
       },
+      "StatsCostsResponse": {
+        "type": "object",
+        "properties": {
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "dimensions": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "totalCostInUsdCents": {
+                  "type": "number"
+                },
+                "actualCostInUsdCents": {
+                  "type": "number"
+                },
+                "provisionedCostInUsdCents": {
+                  "type": "number"
+                },
+                "runCount": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "dimensions",
+                "totalCostInUsdCents",
+                "actualCostInUsdCents",
+                "provisionedCostInUsdCents",
+                "runCount"
+              ]
+            }
+          }
+        },
+        "required": [
+          "groups"
+        ]
+      },
       "HealthResponse": {
         "type": "object",
         "properties": {
@@ -1640,6 +1679,147 @@
                       "$ref": "#/components/schemas/StatsGroupedResponse"
                     }
                   ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/outlets/stats/costs": {
+      "get": {
+        "summary": "Cost stats for outlet discovery",
+        "description": "Returns aggregated discovery costs by querying runs-service for all runs associated with outlets. Supports filters (brandId, campaignId) and optional groupBy (outletId, runId). Without groupBy returns flat totals; with groupBy=outletId returns cost-per-outlet (run cost / outlets in that run); with groupBy=runId returns one row per discovery run.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (caller's run from runs-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug for tracking (propagated downstream)"
+          },
+          {
+            "in": "header",
+            "name": "x-campaign-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Campaign ID (required for mutating endpoints)"
+          },
+          {
+            "in": "header",
+            "name": "x-brand-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Brand ID (required for mutating endpoints)"
+          },
+          {
+            "in": "header",
+            "name": "x-workflow-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workflow slug for tracking (propagated downstream)"
+          },
+          {
+            "in": "query",
+            "name": "brandId",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Filter by brand ID"
+          },
+          {
+            "in": "query",
+            "name": "campaignId",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Filter by campaign ID"
+          },
+          {
+            "in": "query",
+            "name": "groupBy",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "outletId",
+                "runId"
+              ]
+            },
+            "description": "Group results by dimension. Omit for flat totals."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cost stats (flat or grouped)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsCostsResponse"
+                },
+                "example": {
+                  "groups": [
+                    {
+                      "dimensions": {
+                        "outletId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                      },
+                      "totalCostInUsdCents": 1234,
+                      "actualCostInUsdCents": 800,
+                      "provisionedCostInUsdCents": 434,
+                      "runCount": 3
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Upstream service error (runs-service)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
