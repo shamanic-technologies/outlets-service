@@ -91,7 +91,7 @@ DECLARE
   _keep_id UUID;
 BEGIN
   FOR _domain, _keep_id IN
-    SELECT outlet_domain, MIN(id) FROM outlets GROUP BY outlet_domain HAVING COUNT(*) > 1
+    SELECT outlet_domain, (MIN(id::text))::uuid FROM outlets GROUP BY outlet_domain HAVING COUNT(*) > 1
   LOOP
     -- For campaigns that have both canonical and duplicate outlets,
     -- keep the canonical row but upgrade its score if the duplicate scored higher
