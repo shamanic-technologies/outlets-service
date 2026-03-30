@@ -50,7 +50,7 @@ router.get(
         params.push(q.campaignId);
       }
 
-      // --- Workflow filter: dynasty takes priority over exact slug ---
+      // --- Workflow filter: dynasty > plural slugs > exact slug ---
       if (q.workflowDynastySlug) {
         const slugs = await resolveWorkflowDynastySlugs(
           q.workflowDynastySlug,
@@ -64,17 +64,37 @@ router.get(
         conditions.push(`co.workflow_slug IN (${placeholders})`);
         params.push(...slugs);
         idx += slugs.length;
+      } else if (q.workflowSlugs) {
+        const slugs = q.workflowSlugs.split(",").map((s) => s.trim()).filter(Boolean);
+        if (slugs.length === 0) {
+          res.json(q.groupBy ? { groups: [] } : EMPTY_STATS);
+          return;
+        }
+        const placeholders = slugs.map((_, i) => `$${idx + i}`).join(", ");
+        conditions.push(`co.workflow_slug IN (${placeholders})`);
+        params.push(...slugs);
+        idx += slugs.length;
       } else if (q.workflowSlug) {
         conditions.push(`co.workflow_slug = $${idx++}`);
         params.push(q.workflowSlug);
       }
 
-      // --- Feature filter: dynasty takes priority over exact slug ---
+      // --- Feature filter: dynasty > plural slugs > exact slug ---
       if (q.featureDynastySlug) {
         const slugs = await resolveFeatureDynastySlugs(
           q.featureDynastySlug,
           config.featuresServiceApiKey
         );
+        if (slugs.length === 0) {
+          res.json(q.groupBy ? { groups: [] } : EMPTY_STATS);
+          return;
+        }
+        const placeholders = slugs.map((_, i) => `$${idx + i}`).join(", ");
+        conditions.push(`co.feature_slug IN (${placeholders})`);
+        params.push(...slugs);
+        idx += slugs.length;
+      } else if (q.featureSlugs) {
+        const slugs = q.featureSlugs.split(",").map((s) => s.trim()).filter(Boolean);
         if (slugs.length === 0) {
           res.json(q.groupBy ? { groups: [] } : EMPTY_STATS);
           return;

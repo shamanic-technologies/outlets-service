@@ -1626,11 +1626,27 @@
           },
           {
             "in": "query",
+            "name": "workflowSlugs",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by multiple workflow slugs (comma-separated). Takes priority over workflowSlug."
+          },
+          {
+            "in": "query",
             "name": "featureSlug",
             "schema": {
               "type": "string"
             },
             "description": "Filter by exact feature slug"
+          },
+          {
+            "in": "query",
+            "name": "featureSlugs",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by multiple feature slugs (comma-separated). Takes priority over featureSlug."
           },
           {
             "in": "query",
