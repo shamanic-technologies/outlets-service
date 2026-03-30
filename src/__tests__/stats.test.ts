@@ -97,6 +97,117 @@ describe("GET /outlets/stats?workflowSlug=...", () => {
 });
 
 // ========================
+// Filter: workflowSlugs (comma-separated)
+// ========================
+describe("GET /outlets/stats?workflowSlugs=...", () => {
+  it("filters by multiple workflow slugs", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ outlets_discovered: 10, avg_relevance_score: "75.00", search_queries_used: 20 }],
+    });
+
+    const res = await withIdentity(request(app).get("/outlets/stats")).query({
+      workflowSlugs: "cold-email-v2,warm-intro-v1",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.outletsDiscovered).toBe(10);
+    const sql = mockQuery.mock.calls[0][0] as string;
+    expect(sql).toContain("co.workflow_slug IN ($2, $3)");
+    expect(mockQuery.mock.calls[0][1]).toEqual([ORG_ID, "cold-email-v2", "warm-intro-v1"]);
+  });
+
+  it("ignores empty workflowSlugs string (treated as no filter)", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ outlets_discovered: 5, avg_relevance_score: "70.00", search_queries_used: 10 }],
+    });
+
+    const res = await withIdentity(request(app).get("/outlets/stats")).query({
+      workflowSlugs: "",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.outletsDiscovered).toBe(5);
+    // Empty string is falsy — no workflow filter applied
+    const sql = mockQuery.mock.calls[0][0] as string;
+    expect(sql).not.toContain("workflow_slug");
+  });
+
+  it("works with groupBy=workflowSlug", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { group_key: "cold-email-v2", outlets_discovered: 5, avg_relevance_score: "80.00", search_queries_used: 10 },
+        { group_key: "warm-intro-v1", outlets_discovered: 3, avg_relevance_score: "70.00", search_queries_used: 6 },
+      ],
+    });
+
+    const res = await withIdentity(request(app).get("/outlets/stats")).query({
+      workflowSlugs: "cold-email-v2,warm-intro-v1",
+      groupBy: "workflowSlug",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.groups).toHaveLength(2);
+    expect(res.body.groups[0].key).toBe("cold-email-v2");
+  });
+
+  it("is overridden by workflowDynastySlug", async () => {
+    mockedResolveWorkflow.mockResolvedValueOnce(["cold-email", "cold-email-v2"]);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ outlets_discovered: 8, avg_relevance_score: "70.00", search_queries_used: 15 }],
+    });
+
+    const res = await withIdentity(request(app).get("/outlets/stats")).query({
+      workflowDynastySlug: "cold-email",
+      workflowSlugs: "ignored-slug-1,ignored-slug-2",
+    });
+
+    expect(res.status).toBe(200);
+    // Dynasty should be used, not workflowSlugs
+    const params = mockQuery.mock.calls[0][1] as unknown[];
+    expect(params).toContain("cold-email");
+    expect(params).not.toContain("ignored-slug-1");
+  });
+});
+
+// ========================
+// Filter: featureSlugs (comma-separated)
+// ========================
+describe("GET /outlets/stats?featureSlugs=...", () => {
+  it("filters by multiple feature slugs", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ outlets_discovered: 7, avg_relevance_score: "65.00", search_queries_used: 14 }],
+    });
+
+    const res = await withIdentity(request(app).get("/outlets/stats")).query({
+      featureSlugs: "feat-alpha,feat-beta",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.outletsDiscovered).toBe(7);
+    const sql = mockQuery.mock.calls[0][0] as string;
+    expect(sql).toContain("co.feature_slug IN ($2, $3)");
+    expect(mockQuery.mock.calls[0][1]).toEqual([ORG_ID, "feat-alpha", "feat-beta"]);
+  });
+
+  it("is overridden by featureDynastySlug", async () => {
+    mockedResolveFeature.mockResolvedValueOnce(["feat-alpha", "feat-alpha-v2"]);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ outlets_discovered: 7, avg_relevance_score: "65.00", search_queries_used: 14 }],
+    });
+
+    const res = await withIdentity(request(app).get("/outlets/stats")).query({
+      featureDynastySlug: "feat-alpha",
+      featureSlugs: "ignored-1,ignored-2",
+    });
+
+    expect(res.status).toBe(200);
+    const params = mockQuery.mock.calls[0][1] as unknown[];
+    expect(params).toContain("feat-alpha");
+    expect(params).not.toContain("ignored-1");
+  });
+});
+
+// ========================
 // Filter: workflowDynastySlug
 // ========================
 describe("GET /outlets/stats?workflowDynastySlug=...", () => {
