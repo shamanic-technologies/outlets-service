@@ -27,7 +27,7 @@ router.post(
   async (req: Request, res: Response): Promise<void> => {
     const ctx = req.orgContext!;
 
-    if (!ctx.campaignId || !ctx.brandId) {
+    if (!ctx.campaignId || ctx.brandIds.length === 0) {
       res.status(400).json({ error: "x-campaign-id and x-brand-id headers are required" });
       return;
     }
@@ -52,17 +52,17 @@ router.post(
         const outlet = outletResult.rows[0];
 
         await client.query(
-          `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_id, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, overall_relevance, relevance_rationale, run_id)
+          `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_ids, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, overall_relevance, relevance_rationale, run_id)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
            ON CONFLICT (campaign_id, outlet_id)
            DO UPDATE SET why_relevant = EXCLUDED.why_relevant, why_not_relevant = EXCLUDED.why_not_relevant,
              relevance_score = EXCLUDED.relevance_score, status = EXCLUDED.status,
              overall_relevance = EXCLUDED.overall_relevance, relevance_rationale = EXCLUDED.relevance_rationale,
              feature_slug = EXCLUDED.feature_slug, org_id = EXCLUDED.org_id,
-             brand_id = EXCLUDED.brand_id, workflow_slug = EXCLUDED.workflow_slug,
+             brand_ids = EXCLUDED.brand_ids, workflow_slug = EXCLUDED.workflow_slug,
              run_id = EXCLUDED.run_id,
              updated_at = CURRENT_TIMESTAMP`,
-          [ctx.campaignId, outlet.id, ctx.orgId, ctx.brandId, featureSlug, ctx.workflowSlug || null, b.whyRelevant, b.whyNotRelevant, b.relevanceScore, b.status || "open", b.overallRelevance || null, b.relevanceRationale || null, ctx.runId]
+          [ctx.campaignId, outlet.id, ctx.orgId, ctx.brandIds, featureSlug, ctx.workflowSlug || null, b.whyRelevant, b.whyNotRelevant, b.relevanceScore, b.status || "open", b.overallRelevance || null, b.relevanceRationale || null, ctx.runId]
         );
 
         await client.query("COMMIT");
@@ -73,7 +73,7 @@ router.post(
           outletUrl: outlet.outlet_url,
           outletDomain: outlet.outlet_domain,
           campaignId: ctx.campaignId,
-          brandId: ctx.brandId,
+          brandIds: ctx.brandIds,
           whyRelevant: b.whyRelevant,
           whyNotRelevant: b.whyNotRelevant,
           relevanceScore: Number(b.relevanceScore),
@@ -113,7 +113,7 @@ router.get(
         params.push(q.campaignId);
       }
       if (q.brandId) {
-        conditions.push(`co.brand_id = $${paramIdx++}`);
+        conditions.push(`$${paramIdx++} = ANY(co.brand_ids)`);
         params.push(q.brandId);
       }
       if (q.status) {
@@ -129,7 +129,7 @@ router.get(
 
       const result = await pool.query(
         `SELECT o.id, o.outlet_name, o.outlet_url, o.outlet_domain,
-                co.campaign_id, co.brand_id, co.why_relevant, co.why_not_relevant, co.relevance_score,
+                co.campaign_id, co.brand_ids, co.why_relevant, co.why_not_relevant, co.relevance_score,
                 co.status AS outlet_status, co.overall_relevance, co.relevance_rationale, co.run_id,
                 o.created_at, o.updated_at
          FROM outlets o
@@ -147,7 +147,7 @@ router.get(
           outletUrl: r.outlet_url,
           outletDomain: r.outlet_domain,
           campaignId: r.campaign_id,
-          brandId: r.brand_id,
+          brandIds: r.brand_ids,
           whyRelevant: r.why_relevant,
           whyNotRelevant: r.why_not_relevant,
           relevanceScore: Number(r.relevance_score),
@@ -293,7 +293,7 @@ router.post(
   async (req: Request, res: Response): Promise<void> => {
     const ctx = req.orgContext!;
 
-    if (!ctx.campaignId || !ctx.brandId) {
+    if (!ctx.campaignId || ctx.brandIds.length === 0) {
       res.status(400).json({ error: "x-campaign-id and x-brand-id headers are required" });
       return;
     }
@@ -321,17 +321,17 @@ router.post(
           const outlet = outletResult.rows[0];
 
           await client.query(
-            `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_id, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, overall_relevance, relevance_rationale, run_id)
+            `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_ids, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, overall_relevance, relevance_rationale, run_id)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
              ON CONFLICT (campaign_id, outlet_id)
              DO UPDATE SET why_relevant = EXCLUDED.why_relevant, why_not_relevant = EXCLUDED.why_not_relevant,
                relevance_score = EXCLUDED.relevance_score, status = EXCLUDED.status,
                overall_relevance = EXCLUDED.overall_relevance, relevance_rationale = EXCLUDED.relevance_rationale,
                feature_slug = EXCLUDED.feature_slug, org_id = EXCLUDED.org_id,
-               brand_id = EXCLUDED.brand_id, workflow_slug = EXCLUDED.workflow_slug,
+               brand_ids = EXCLUDED.brand_ids, workflow_slug = EXCLUDED.workflow_slug,
                run_id = EXCLUDED.run_id,
                updated_at = CURRENT_TIMESTAMP`,
-            [ctx.campaignId, outlet.id, ctx.orgId, ctx.brandId, featureSlug, ctx.workflowSlug || null, b.whyRelevant, b.whyNotRelevant, b.relevanceScore, b.status || "open", b.overallRelevance || null, b.relevanceRationale || null, ctx.runId]
+            [ctx.campaignId, outlet.id, ctx.orgId, ctx.brandIds, featureSlug, ctx.workflowSlug || null, b.whyRelevant, b.whyNotRelevant, b.relevanceScore, b.status || "open", b.overallRelevance || null, b.relevanceRationale || null, ctx.runId]
           );
 
           results.push({

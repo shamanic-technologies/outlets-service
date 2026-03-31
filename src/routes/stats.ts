@@ -17,7 +17,6 @@ const router = Router();
 const GROUP_BY_COLUMN: Record<string, string> = {
   workflowSlug: "co.workflow_slug",
   featureSlug: "co.feature_slug",
-  brandId: "co.brand_id",
   campaignId: "co.campaign_id",
 };
 
@@ -42,7 +41,7 @@ router.get(
 
       // --- Static filters ---
       if (q.brandId) {
-        conditions.push(`co.brand_id = $${idx++}`);
+        conditions.push(`$${idx++} = ANY(co.brand_ids)`);
         params.push(q.brandId);
       }
       if (q.campaignId) {
@@ -177,6 +176,32 @@ router.get(
         return;
       }
 
+      // --- GroupBy brandId (requires unnest of brand_ids array) ---
+      if (groupBy === "brandId") {
+        const result = await pool.query(
+          `SELECT
+            brand_id::text AS group_key,
+            COUNT(DISTINCT co.outlet_id)::int AS outlets_discovered,
+            ROUND(AVG(co.relevance_score), 2) AS avg_relevance_score,
+            SUM(co.search_queries_used)::int AS search_queries_used
+           FROM campaign_outlets co, unnest(co.brand_ids) AS brand_id
+           WHERE ${where}
+           GROUP BY brand_id
+           ORDER BY outlets_discovered DESC`,
+          params
+        );
+
+        res.json({
+          groups: result.rows.map((r: any) => ({
+            key: String(r.group_key),
+            outletsDiscovered: r.outlets_discovered,
+            avgRelevanceScore: Number(r.avg_relevance_score),
+            searchQueriesUsed: r.search_queries_used,
+          })),
+        });
+        return;
+      }
+
       // --- Standard groupBy (direct column) ---
       if (groupBy && GROUP_BY_COLUMN[groupBy]) {
         const col = GROUP_BY_COLUMN[groupBy];
@@ -243,7 +268,7 @@ router.get(
       let idx = 2;
 
       if (q.brandId) {
-        conditions.push(`co.brand_id = $${idx++}`);
+        conditions.push(`$${idx++} = ANY(co.brand_ids)`);
         params.push(q.brandId);
       }
       if (q.campaignId) {

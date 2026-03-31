@@ -40,13 +40,11 @@ vi.mock("../services/google", () => ({
 }));
 
 // Mock brand service
-const mockGetBrand = vi.fn();
 const mockExtractFields = vi.fn();
 vi.mock("../services/brand", async () => {
   const actual = await vi.importActual("../services/brand");
   return {
     ...actual,
-    getBrand: (...args: unknown[]) => mockGetBrand(...args),
     extractFields: (...args: unknown[]) => mockExtractFields(...args),
   };
 });
@@ -74,19 +72,8 @@ function withHeaders(req: request.Test): request.Test {
     .set("x-brand-id", BRAND_ID);
 }
 
-const brandResponse = {
-  id: BRAND_ID,
-  name: "Acme Corp",
-  domain: "acme.com",
-  brandUrl: "https://acme.com",
-  elevatorPitch: null,
-  bio: null,
-  mission: null,
-  location: null,
-  categories: null,
-};
-
 const extractFieldsResponse = [
+  { key: "brand_name", value: "Acme Corp", cached: true, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: ["https://acme.com"] },
   { key: "elevator_pitch", value: "SaaS platform for HR automation", cached: true, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: ["https://acme.com"] },
   { key: "categories", value: "HR Tech", cached: true, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: ["https://acme.com"] },
   { key: "target_geo", value: "US", cached: true, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: null },
@@ -130,7 +117,6 @@ const scoringResponse = {
 };
 
 function setupDiscoverMocks() {
-  mockGetBrand.mockResolvedValue(brandResponse);
   mockExtractFields.mockResolvedValue(extractFieldsResponse);
   mockGetFeatureInputs.mockResolvedValue(null);
   mockChatComplete
@@ -191,7 +177,7 @@ describe("POST /outlets/discover", () => {
 
   it("closes run as failed on error", async () => {
     mockCreateChildRun.mockResolvedValue(CHILD_RUN_ID);
-    mockGetBrand.mockRejectedValueOnce(new Error("brand-service failed (503): down"));
+    mockExtractFields.mockRejectedValueOnce(new Error("brand-service /brands/extract-fields failed (503): down"));
 
     const res = await withHeaders(
       request(app).post("/outlets/discover")
@@ -247,7 +233,6 @@ describe("POST /outlets/discover", () => {
 
   it("stops batching when a batch returns 0 discovered", async () => {
     // First batch: LLM returns invalid format → 0 discovered
-    mockGetBrand.mockResolvedValue(brandResponse);
     mockExtractFields.mockResolvedValue(extractFieldsResponse);
     mockGetFeatureInputs.mockResolvedValue(null);
     mockChatComplete.mockResolvedValueOnce({
@@ -292,7 +277,6 @@ describe("POST /outlets/discover", () => {
   it("runs multiple batches for large count", async () => {
     // count=30 → 2 batches of 15
     // Batch 1: discovers 2 outlets
-    mockGetBrand.mockResolvedValue(brandResponse);
     mockExtractFields.mockResolvedValue(extractFieldsResponse);
     mockGetFeatureInputs.mockResolvedValue(null);
     mockChatComplete

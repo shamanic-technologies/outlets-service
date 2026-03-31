@@ -6,6 +6,7 @@ const BASE_CTX: OrgContext = {
   orgId: "org-1",
   userId: "user-1",
   runId: "run-1",
+  brandIds: [],
 };
 
 describe("buildServiceHeaders", () => {
@@ -25,7 +26,7 @@ describe("buildServiceHeaders", () => {
       ...BASE_CTX,
       featureSlug: "outlets",
       campaignId: "camp-1",
-      brandId: "brand-1",
+      brandIds: ["brand-1"],
       workflowSlug: "discover",
     };
     const h = buildServiceHeaders("sk-test", ctx);
@@ -35,7 +36,16 @@ describe("buildServiceHeaders", () => {
     expect(h["x-workflow-slug"]).toBe("discover");
   });
 
-  it("omits optional headers when context values are undefined", () => {
+  it("forwards multiple brand IDs as CSV", () => {
+    const ctx: OrgContext = {
+      ...BASE_CTX,
+      brandIds: ["brand-1", "brand-2", "brand-3"],
+    };
+    const h = buildServiceHeaders("sk-test", ctx);
+    expect(h["x-brand-id"]).toBe("brand-1,brand-2,brand-3");
+  });
+
+  it("omits optional headers when context values are undefined or empty", () => {
     const h = buildServiceHeaders("sk-test", BASE_CTX);
     expect(h).not.toHaveProperty("x-feature-slug");
     expect(h).not.toHaveProperty("x-campaign-id");

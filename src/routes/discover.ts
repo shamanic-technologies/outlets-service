@@ -15,7 +15,7 @@ router.post(
   async (req: Request, res: Response): Promise<void> => {
     const ctx = req.orgContext!;
 
-    if (!ctx.campaignId || !ctx.brandId) {
+    if (!ctx.campaignId || ctx.brandIds.length === 0) {
       res.status(400).json({ error: "x-campaign-id and x-brand-id headers are required" });
       return;
     }

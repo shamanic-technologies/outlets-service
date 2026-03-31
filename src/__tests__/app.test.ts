@@ -88,7 +88,7 @@ describe("POST /outlets", () => {
     expect(res.body.id).toBe(outletRow.id);
     expect(res.body.outletName).toBe("TechCrunch");
     expect(res.body.campaignId).toBe(CAMPAIGN_ID);
-    expect(res.body.brandId).toBe(BRAND_ID);
+    expect(res.body.brandIds).toEqual([BRAND_ID]);
     expect(res.body.relevanceScore).toBe(85);
     expect(res.body.status).toBe("open");
   });
@@ -160,7 +160,7 @@ describe("GET /outlets", () => {
           outlet_url: "https://techcrunch.com",
           outlet_domain: "techcrunch.com",
           campaign_id: CAMPAIGN_ID,
-          brand_id: BRAND_ID,
+          brand_ids: [BRAND_ID],
           why_relevant: "Top tech",
           why_not_relevant: "Competitive",
           relevance_score: "85.00",
@@ -182,7 +182,7 @@ describe("GET /outlets", () => {
     expect(res.body.outlets).toHaveLength(1);
     expect(res.body.outlets[0].outletName).toBe("TechCrunch");
     expect(res.body.outlets[0].relevanceScore).toBe(85);
-    expect(res.body.outlets[0].brandId).toBe(BRAND_ID);
+    expect(res.body.outlets[0].brandIds).toEqual([BRAND_ID]);
   });
 
   it("lists outlets without filters", async () => {
@@ -437,7 +437,7 @@ describe("GET /internal/outlets/by-campaign/:campaignId", () => {
           outlet_name: "TechCrunch",
           outlet_url: "https://techcrunch.com",
           outlet_domain: "techcrunch.com",
-          brand_id: BRAND_ID,
+          brand_ids: [BRAND_ID],
           why_relevant: "Top tech",
           why_not_relevant: "Competitive",
           relevance_score: "85.00",
@@ -457,7 +457,7 @@ describe("GET /internal/outlets/by-campaign/:campaignId", () => {
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(1);
     expect(res.body.outlets[0].outletName).toBe("TechCrunch");
-    expect(res.body.outlets[0].brandId).toBe(BRAND_ID);
+    expect(res.body.outlets[0].brandIds).toEqual([BRAND_ID]);
     expect(res.body.outlets[0].relevanceScore).toBe(85);
   });
 });
@@ -470,5 +470,64 @@ describe("Identity headers", () => {
     const res = await request(app).get("/outlets");
     expect(res.status).toBe(400);
     expect(res.body.error).toContain("x-org-id");
+  });
+});
+
+// ========================
+// Multi-brand support
+// ========================
+const BRAND_ID_2 = "66666666-6666-6666-6666-666666666666";
+
+describe("Multi-brand x-brand-id CSV header", () => {
+  it("parses comma-separated brand IDs and stores as brand_ids array", async () => {
+    const outletRow = {
+      id: "11111111-1111-1111-1111-111111111111",
+      outlet_name: "TechCrunch",
+      outlet_url: "https://techcrunch.com",
+      outlet_domain: "techcrunch.com",
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+    };
+
+    mockQuery
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({ rows: [outletRow] }) // INSERT outlets
+      .mockResolvedValueOnce({ rows: [] }) // INSERT campaign_outlets
+      .mockResolvedValueOnce({}); // COMMIT
+
+    const res = await withIdentity(request(app).post("/outlets"))
+      .set("x-campaign-id", CAMPAIGN_ID)
+      .set("x-brand-id", `${BRAND_ID},${BRAND_ID_2}`)
+      .send({
+        outletName: "TechCrunch",
+        outletUrl: "https://techcrunch.com",
+        outletDomain: "techcrunch.com",
+        whyRelevant: "Top tech publication",
+        whyNotRelevant: "Might be too competitive",
+        relevanceScore: 85,
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.brandIds).toEqual([BRAND_ID, BRAND_ID_2]);
+
+    // Verify brand_ids was passed as array to the INSERT
+    const campaignInsertCall = mockQuery.mock.calls[2];
+    expect(campaignInsertCall[1][3]).toEqual([BRAND_ID, BRAND_ID_2]);
+  });
+
+  it("returns 400 when x-brand-id header is empty for mutating endpoints", async () => {
+    const res = await withIdentity(request(app).post("/outlets"))
+      .set("x-campaign-id", CAMPAIGN_ID)
+      .send({
+        outletName: "TechCrunch",
+        outletUrl: "https://techcrunch.com",
+        outletDomain: "techcrunch.com",
+        whyRelevant: "Good",
+        whyNotRelevant: "None",
+        relevanceScore: 85,
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("x-brand-id");
   });
 });

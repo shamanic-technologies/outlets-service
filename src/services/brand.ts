@@ -2,18 +2,6 @@ import { config } from "../config";
 import type { OrgContext } from "../middleware/org-context";
 import { buildServiceHeaders } from "./headers";
 
-export interface Brand {
-  id: string;
-  name: string | null;
-  domain: string | null;
-  brandUrl: string | null;
-  elevatorPitch: string | null;
-  bio: string | null;
-  mission: string | null;
-  location: string | null;
-  categories: string | null;
-}
-
 export interface ExtractFieldResult {
   key: string;
   value: string | string[] | Record<string, unknown> | null;
@@ -28,33 +16,20 @@ export interface FieldRequest {
   description: string;
 }
 
-export async function getBrand(brandId: string, ctx: OrgContext): Promise<Brand> {
-  const res = await fetch(`${config.brandServiceUrl}/brands/${brandId}`, {
-    headers: buildServiceHeaders(config.brandServiceApiKey, ctx),
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`brand-service /brands/${brandId} failed (${res.status}): ${body}`);
-  }
-  const data = (await res.json()) as { brand: Brand };
-  return data.brand;
-}
-
 export async function extractFields(
-  brandId: string,
   fields: FieldRequest[],
   ctx: OrgContext
 ): Promise<ExtractFieldResult[]> {
-  const res = await fetch(`${config.brandServiceUrl}/brands/${brandId}/extract-fields`, {
+  const res = await fetch(`${config.brandServiceUrl}/brands/extract-fields`, {
     method: "POST",
     headers: buildServiceHeaders(config.brandServiceApiKey, ctx),
     body: JSON.stringify({ fields }),
   });
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`brand-service /brands/${brandId}/extract-fields failed (${res.status}): ${body}`);
+    throw new Error(`brand-service /brands/extract-fields failed (${res.status}): ${body}`);
   }
-  const data = (await res.json()) as { brandId: string; results: ExtractFieldResult[] };
+  const data = (await res.json()) as { results: ExtractFieldResult[] };
   return data.results;
 }
 

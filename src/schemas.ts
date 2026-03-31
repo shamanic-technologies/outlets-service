@@ -65,7 +65,7 @@ export const outletResponseSchema = z.object({
 
 export const campaignOutletResponseSchema = outletResponseSchema.extend({
   campaignId: z.string().uuid(),
-  brandId: z.string().uuid(),
+  brandIds: z.array(z.string().uuid()),
   whyRelevant: z.string(),
   whyNotRelevant: z.string(),
   relevanceScore: z.number(),
@@ -139,7 +139,7 @@ export const bufferNextResponseSchema = z.object({
       outletUrl: z.string(),
       outletDomain: z.string(),
       campaignId: z.string().uuid(),
-      brandId: z.string().uuid(),
+      brandIds: z.array(z.string().uuid()),
       relevanceScore: z.number(),
       whyRelevant: z.string(),
       whyNotRelevant: z.string(),

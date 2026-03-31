@@ -50,7 +50,7 @@ router.get("/outlets/by-campaign/:campaignId", async (req: Request, res: Respons
     const result = await pool.query(
       `SELECT
         o.id, o.outlet_name, o.outlet_url, o.outlet_domain,
-        co.brand_id, co.why_relevant, co.why_not_relevant, co.relevance_score, co.status AS outlet_status,
+        co.brand_ids, co.why_relevant, co.why_not_relevant, co.relevance_score, co.status AS outlet_status,
         co.overall_relevance, co.relevance_rationale,
         o.created_at, o.updated_at
        FROM campaign_outlets co
@@ -67,7 +67,7 @@ router.get("/outlets/by-campaign/:campaignId", async (req: Request, res: Respons
         outletUrl: r.outlet_url,
         outletDomain: r.outlet_domain,
         campaignId,
-        brandId: r.brand_id,
+        brandIds: r.brand_ids,
         whyRelevant: r.why_relevant,
         whyNotRelevant: r.why_not_relevant,
         relevanceScore: Number(r.relevance_score),
