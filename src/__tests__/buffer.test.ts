@@ -80,14 +80,14 @@ function makeOutletRow(overrides: Record<string, unknown> = {}) {
 }
 
 // --- Mini-discover fixtures ---
-const extractFieldsResponse = [
-  { key: "brand_name", value: "Acme Corp", cached: true, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: ["https://acme.com"] },
-  { key: "elevator_pitch", value: "SaaS platform for HR automation", cached: true, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: ["https://acme.com"] },
-  { key: "categories", value: "HR Tech", cached: true, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: ["https://acme.com"] },
-  { key: "target_geo", value: "US", cached: true, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: null },
-  { key: "target_audience", value: "HR directors", cached: true, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: null },
-  { key: "angles", value: null, cached: false, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: null },
-];
+const extractFieldsResponse = {
+  brand_name: { value: "Acme Corp", byBrand: { "acme.com": { value: "Acme Corp", cached: true, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: ["https://acme.com"] } } },
+  elevator_pitch: { value: "SaaS platform for HR automation", byBrand: { "acme.com": { value: "SaaS platform for HR automation", cached: true, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: ["https://acme.com"] } } },
+  categories: { value: "HR Tech", byBrand: { "acme.com": { value: "HR Tech", cached: true, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: ["https://acme.com"] } } },
+  target_geo: { value: "US", byBrand: { "acme.com": { value: "US", cached: true, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: null } } },
+  target_audience: { value: "HR directors", byBrand: { "acme.com": { value: "HR directors", cached: true, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: null } } },
+  angles: { value: null, byBrand: { "acme.com": { value: null, cached: false, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: null } } },
+};
 
 const miniDiscoverQueryResponse = {
   content: "",
