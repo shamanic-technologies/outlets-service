@@ -586,9 +586,9 @@ describe("GET /outlets/stats/costs", () => {
     const res = await withIdentity(request(app).get("/outlets/stats/costs")).query({ brandId: BRAND_ID });
 
     expect(res.status).toBe(200);
-    // Verify brandId was included in the WHERE clause
+    // Verify brandId was included in the WHERE clause using ANY(co.brand_ids)
     const queryCall = mockQuery.mock.calls[0];
-    expect(queryCall[0]).toContain("co.brand_id");
+    expect(queryCall[0]).toContain("ANY(co.brand_ids)");
     expect(queryCall[1]).toContain(BRAND_ID);
   });
 

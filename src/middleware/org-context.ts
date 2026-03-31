@@ -6,7 +6,7 @@ export interface OrgContext {
   runId: string;
   featureSlug?: string;
   campaignId?: string;
-  brandId?: string;
+  brandIds: string[];
   workflowSlug?: string;
 }
 
@@ -34,7 +34,8 @@ export function extractOrgContext(
   const runId = req.headers["x-run-id"] as string | undefined;
   const featureSlug = req.headers["x-feature-slug"] as string | undefined;
   const campaignId = req.headers["x-campaign-id"] as string | undefined;
-  const brandId = req.headers["x-brand-id"] as string | undefined;
+  const rawBrandId = req.headers["x-brand-id"] as string | undefined;
+  const brandIds = String(rawBrandId ?? "").split(",").map(s => s.trim()).filter(Boolean);
   const workflowSlug = req.headers["x-workflow-slug"] as string | undefined;
 
   if (!orgId || !userId || !runId) {
@@ -42,6 +43,6 @@ export function extractOrgContext(
     return;
   }
 
-  req.orgContext = { orgId, userId, runId, featureSlug, campaignId, brandId, workflowSlug };
+  req.orgContext = { orgId, userId, runId, featureSlug, campaignId, brandIds, workflowSlug };
   next();
 }

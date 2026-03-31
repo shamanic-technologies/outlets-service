@@ -17,7 +17,7 @@ export function buildServiceHeaders(
   };
   if (ctx.featureSlug) h["x-feature-slug"] = ctx.featureSlug;
   if (ctx.campaignId) h["x-campaign-id"] = ctx.campaignId;
-  if (ctx.brandId) h["x-brand-id"] = ctx.brandId;
+  if (ctx.brandIds.length > 0) h["x-brand-id"] = ctx.brandIds.join(",");
   if (ctx.workflowSlug) h["x-workflow-slug"] = ctx.workflowSlug;
   return h;
 }

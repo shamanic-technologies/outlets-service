@@ -32,13 +32,11 @@ vi.mock("../services/google", () => ({
 }));
 
 // Mock brand service
-const mockGetBrand = vi.fn();
 const mockExtractFields = vi.fn();
 vi.mock("../services/brand", async () => {
   const actual = await vi.importActual("../services/brand");
   return {
     ...actual,
-    getBrand: (...args: unknown[]) => mockGetBrand(...args),
     extractFields: (...args: unknown[]) => mockExtractFields(...args),
   };
 });
@@ -72,7 +70,7 @@ function makeOutletRow(overrides: Record<string, unknown> = {}) {
     outlet_url: "https://hrtechweekly.com",
     outlet_domain: "hrtechweekly.com",
     campaign_id: CAMPAIGN_ID,
-    brand_id: BRAND_ID,
+    brand_ids: [BRAND_ID],
     relevance_score: "92.00",
     why_relevant: "Perfect fit",
     why_not_relevant: "Small reach",
@@ -82,19 +80,8 @@ function makeOutletRow(overrides: Record<string, unknown> = {}) {
 }
 
 // --- Mini-discover fixtures ---
-const brandResponse = {
-  id: BRAND_ID,
-  name: "Acme Corp",
-  domain: "acme.com",
-  brandUrl: "https://acme.com",
-  elevatorPitch: null,
-  bio: null,
-  mission: null,
-  location: null,
-  categories: null,
-};
-
 const extractFieldsResponse = [
+  { key: "brand_name", value: "Acme Corp", cached: true, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: ["https://acme.com"] },
   { key: "elevator_pitch", value: "SaaS platform for HR automation", cached: true, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: ["https://acme.com"] },
   { key: "categories", value: "HR Tech", cached: true, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: ["https://acme.com"] },
   { key: "target_geo", value: "US", cached: true, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: null },
@@ -172,7 +159,6 @@ const miniDiscoverScoringResponse = {
 };
 
 function setupMiniDiscoverMocks() {
-  mockGetBrand.mockResolvedValue(brandResponse);
   mockExtractFields.mockResolvedValue(extractFieldsResponse);
   mockGetFeatureInputs.mockResolvedValue(null);
   mockChatComplete
@@ -336,7 +322,6 @@ describe("POST /buffer/next", () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
     // mini-discover mocks → scoring returns empty outlets
-    mockGetBrand.mockResolvedValue(brandResponse);
     mockExtractFields.mockResolvedValue(extractFieldsResponse);
     mockGetFeatureInputs.mockResolvedValue(null);
     mockChatComplete
@@ -367,7 +352,6 @@ describe("POST /buffer/next", () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
     // mini-discover mocks → finds nothing
-    mockGetBrand.mockResolvedValue(brandResponse);
     mockExtractFields.mockResolvedValue(extractFieldsResponse);
     mockGetFeatureInputs.mockResolvedValue(null);
     mockChatComplete
@@ -421,8 +405,8 @@ describe("POST /buffer/next", () => {
     // claimNext → buffer empty
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
-    mockGetBrand.mockRejectedValueOnce(
-      new Error("brand-service /brands/55555555-5555-5555-5555-555555555555 failed (503): Service Unavailable")
+    mockExtractFields.mockRejectedValueOnce(
+      new Error("brand-service /brands/extract-fields failed (503): Service Unavailable")
     );
 
     const res = await withHeaders(
@@ -454,7 +438,6 @@ describe("POST /buffer/next", () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
     // mini-discover → LLM returns invalid format
-    mockGetBrand.mockResolvedValue(brandResponse);
     mockExtractFields.mockResolvedValue(extractFieldsResponse);
     mockGetFeatureInputs.mockResolvedValue(null);
     mockChatComplete.mockResolvedValueOnce({

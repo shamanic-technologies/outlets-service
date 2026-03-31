@@ -4,7 +4,7 @@ import { validateBody } from "../middleware/validate";
 import { pool } from "../db/pool";
 import { chatComplete } from "../services/chat";
 import { searchBatch } from "../services/google";
-import { getBrand, extractFields, findField } from "../services/brand";
+import { extractFields, findField } from "../services/brand";
 import { getFeatureInputs } from "../services/campaign";
 import {
   GENERATE_QUERIES_SYSTEM_PROMPT,
@@ -53,6 +53,7 @@ const scoringSchema = z.object({
 
 /** Fields we need from brand-service for mini-discover */
 const BRAND_FIELDS = [
+  { key: "brand_name", description: "The brand's display name" },
   { key: "elevator_pitch", description: "A concise elevator pitch describing what the brand does" },
   { key: "categories", description: "The brand's primary industry vertical or categories" },
   { key: "target_geo", description: "Priority geographic markets for outreach" },
@@ -74,7 +75,7 @@ interface ClaimedOutlet {
   outletUrl: string;
   outletDomain: string;
   campaignId: string;
-  brandId: string;
+  brandIds: string[];
   relevanceScore: number;
   whyRelevant: string;
   whyNotRelevant: string;
@@ -101,7 +102,7 @@ async function claimNext(campaignId: string): Promise<ClaimedOutlet | null> {
      JOIN outlets o ON o.id = sub.outlet_id
      WHERE co.campaign_id = sub.campaign_id AND co.outlet_id = sub.outlet_id
      RETURNING o.id AS outlet_id, o.outlet_name, o.outlet_url, o.outlet_domain,
-               co.campaign_id, co.brand_id, co.relevance_score,
+               co.campaign_id, co.brand_ids, co.relevance_score,
                co.why_relevant, co.why_not_relevant, co.overall_relevance, co.run_id`,
     [campaignId]
   );
@@ -115,7 +116,7 @@ async function claimNext(campaignId: string): Promise<ClaimedOutlet | null> {
     outletUrl: r.outlet_url,
     outletDomain: r.outlet_domain,
     campaignId: r.campaign_id,
-    brandId: r.brand_id,
+    brandIds: r.brand_ids,
     relevanceScore: Number(r.relevance_score),
     whyRelevant: r.why_relevant,
     whyNotRelevant: r.why_not_relevant,
@@ -125,21 +126,21 @@ async function claimNext(campaignId: string): Promise<ClaimedOutlet | null> {
 }
 
 /**
- * Check if this outlet domain was already served for the same org+brand (cross-campaign dedup).
+ * Check if this outlet domain was already served for the same org + any overlapping brand (cross-campaign dedup).
  */
 async function isDuplicate(
   orgId: string,
-  brandId: string,
+  brandIds: string[],
   outletDomain: string,
   excludeCampaignId: string
 ): Promise<boolean> {
   const result = await pool.query(
     `SELECT 1 FROM campaign_outlets co
      JOIN outlets o ON o.id = co.outlet_id
-     WHERE co.org_id = $1 AND co.brand_id = $2 AND o.outlet_domain = $3
+     WHERE co.org_id = $1 AND co.brand_ids && $2 AND o.outlet_domain = $3
        AND co.status = 'served' AND co.campaign_id != $4
      LIMIT 1`,
-    [orgId, brandId, outletDomain, excludeCampaignId]
+    [orgId, brandIds, outletDomain, excludeCampaignId]
   );
   return result.rows.length > 0;
 }
@@ -161,21 +162,18 @@ async function markSkipped(campaignId: string, outletId: string): Promise<void> 
  * Returns number of outlets inserted.
  */
 export async function discoverOutlets(ctx: OrgContext, options: DiscoverOptions): Promise<number> {
-  const [brand, extractedFields, featureInputs] = await Promise.all([
-    getBrand(ctx.brandId!, ctx),
-    extractFields(ctx.brandId!, BRAND_FIELDS, ctx),
+  const [extractedFields, featureInputs] = await Promise.all([
+    extractFields(BRAND_FIELDS, ctx),
     getFeatureInputs(ctx.campaignId!, ctx),
   ]);
 
   const brandContext: BrandPromptContext = {
-    brandName: brand.name || brand.domain || "Unknown",
+    brandName: findField(extractedFields, "brand_name") || "Unknown",
     brandDescription:
       findField(extractedFields, "elevator_pitch") ||
-      brand.elevatorPitch ||
-      brand.bio ||
       "No description available",
-    industry: findField(extractedFields, "categories") || brand.categories || "General",
-    targetGeo: findField(extractedFields, "target_geo") || brand.location || undefined,
+    industry: findField(extractedFields, "categories") || "General",
+    targetGeo: findField(extractedFields, "target_geo") || undefined,
     targetAudience: findField(extractedFields, "target_audience") || undefined,
     angles: (() => {
       const raw = findField(extractedFields, "angles");
@@ -283,14 +281,14 @@ export async function discoverOutlets(ctx: OrgContext, options: DiscoverOptions)
 
       // Only insert if not already in this campaign's buffer
       const insertResult = await client.query(
-        `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_id, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, overall_relevance, run_id)
+        `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_ids, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, overall_relevance, run_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'open', $10, $11)
          ON CONFLICT (campaign_id, outlet_id) DO NOTHING`,
         [
           ctx.campaignId,
           outletId,
           ctx.orgId,
-          ctx.brandId,
+          ctx.brandIds,
           featureSlug,
           ctx.workflowSlug || null,
           o.whyRelevant,
@@ -333,7 +331,7 @@ router.post(
   async (req: Request, res: Response): Promise<void> => {
     const ctx = req.orgContext!;
 
-    if (!ctx.campaignId || !ctx.brandId) {
+    if (!ctx.campaignId || ctx.brandIds.length === 0) {
       res.status(400).json({ error: "x-campaign-id and x-brand-id headers are required" });
       return;
     }
@@ -371,7 +369,7 @@ router.post(
         }
 
         // Check cross-campaign dedup
-        const dup = await isDuplicate(ctx.orgId, ctx.brandId, claimed.outletDomain, ctx.campaignId);
+        const dup = await isDuplicate(ctx.orgId, ctx.brandIds, claimed.outletDomain, ctx.campaignId);
         if (dup) {
           await markSkipped(claimed.campaignId, claimed.outletId);
           continue; // try next outlet

@@ -30,7 +30,7 @@ const orgContextHeaders = [
   { in: "header", name: "x-run-id", required: true, schema: { type: "string", format: "uuid" }, description: "Run ID (caller's run from runs-service)" },
   { in: "header", name: "x-feature-slug", required: false, schema: { type: "string" }, description: "Feature slug for tracking (propagated downstream)" },
   { in: "header", name: "x-campaign-id", required: false, schema: { type: "string", format: "uuid" }, description: "Campaign ID (required for mutating endpoints)" },
-  { in: "header", name: "x-brand-id", required: false, schema: { type: "string", format: "uuid" }, description: "Brand ID (required for mutating endpoints)" },
+  { in: "header", name: "x-brand-id", required: false, schema: { type: "string" }, description: "Brand ID(s) — single UUID or comma-separated UUIDs for multi-brand campaigns (required for mutating endpoints). Example: uuid1,uuid2,uuid3" },
   { in: "header", name: "x-workflow-slug", required: false, schema: { type: "string" }, description: "Workflow slug for tracking (propagated downstream)" },
 ];
 
@@ -113,7 +113,7 @@ const spec = {
                   outletUrl: "https://techcrunch.com",
                   outletDomain: "techcrunch.com",
                   campaignId: "11111111-2222-3333-4444-555555555555",
-                  brandId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                  brandIds: ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"],
                   whyRelevant: "Top tech publication with high domain authority",
                   whyNotRelevant: "Highly competitive, may not accept guest posts",
                   relevanceScore: 85,
@@ -162,7 +162,7 @@ const spec = {
                       outletUrl: "https://techcrunch.com",
                       outletDomain: "techcrunch.com",
                       campaignId: "11111111-2222-3333-4444-555555555555",
-                      brandId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                      brandIds: ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"],
                       whyRelevant: "Top tech publication",
                       whyNotRelevant: "Competitive",
                       relevanceScore: 85,

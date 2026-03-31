@@ -171,6 +171,30 @@ export async function runMigration(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_campaign_outlets_run_id ON campaign_outlets(run_id);
   `);
 
+  // Step 9: Migrate brand_id → brand_ids UUID[]
+  await pool.query(`
+    ALTER TABLE campaign_outlets ADD COLUMN IF NOT EXISTS brand_ids UUID[];
+  `);
+  // Backfill from existing brand_id
+  await pool.query(`
+    UPDATE campaign_outlets SET brand_ids = ARRAY[brand_id]
+    WHERE brand_ids IS NULL AND brand_id IS NOT NULL;
+  `);
+  // GIN index for array queries
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_campaign_outlets_brand_ids ON campaign_outlets USING GIN (brand_ids);
+  `);
+  // Drop old brand_id column and its index
+  await pool.query(`
+    DROP INDEX IF EXISTS idx_campaign_outlets_brand;
+    ALTER TABLE campaign_outlets DROP COLUMN IF EXISTS brand_id;
+  `);
+  // Recreate dedup index using brand_ids
+  await pool.query(`
+    DROP INDEX IF EXISTS idx_campaign_outlets_dedup;
+    CREATE INDEX IF NOT EXISTS idx_campaign_outlets_dedup ON campaign_outlets(org_id, outlet_id) WHERE status = 'served';
+  `);
+
   console.log("[outlets-service] Migration complete.");
 }
 
