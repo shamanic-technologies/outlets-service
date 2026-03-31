@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS campaign_outlets (
   campaign_id UUID NOT NULL,
   outlet_id UUID NOT NULL REFERENCES outlets(id) ON DELETE CASCADE,
   org_id TEXT NOT NULL,
-  brand_id UUID NOT NULL,
+  brand_ids UUID[],
   feature_slug TEXT,
   workflow_slug TEXT,
   why_relevant TEXT NOT NULL,
@@ -58,10 +58,10 @@ CREATE TABLE IF NOT EXISTS idempotency_cache (
 CREATE INDEX IF NOT EXISTS idx_campaign_outlets_campaign ON campaign_outlets(campaign_id);
 CREATE INDEX IF NOT EXISTS idx_campaign_outlets_outlet ON campaign_outlets(outlet_id);
 CREATE INDEX IF NOT EXISTS idx_campaign_outlets_org ON campaign_outlets(org_id);
-CREATE INDEX IF NOT EXISTS idx_campaign_outlets_brand ON campaign_outlets(brand_id);
+CREATE INDEX IF NOT EXISTS idx_campaign_outlets_brand_ids ON campaign_outlets USING GIN (brand_ids);
 CREATE INDEX IF NOT EXISTS idx_campaign_outlets_workflow ON campaign_outlets(workflow_slug);
 CREATE INDEX IF NOT EXISTS idx_campaign_outlets_buffer ON campaign_outlets(campaign_id, status, relevance_score DESC) WHERE status = 'open';
-CREATE INDEX IF NOT EXISTS idx_campaign_outlets_dedup ON campaign_outlets(org_id, brand_id, outlet_id) WHERE status = 'served';
+CREATE INDEX IF NOT EXISTS idx_campaign_outlets_dedup ON campaign_outlets(org_id, outlet_id) WHERE status = 'served';
 CREATE INDEX IF NOT EXISTS idx_idempotency_cache_created ON idempotency_cache(created_at);
 CREATE INDEX IF NOT EXISTS idx_outlets_url ON outlets(outlet_url);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_outlets_domain ON outlets(outlet_domain);
@@ -171,28 +171,23 @@ export async function runMigration(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_campaign_outlets_run_id ON campaign_outlets(run_id);
   `);
 
-  // Step 9: Migrate brand_id → brand_ids UUID[]
+  // Step 9: Migrate brand_id → brand_ids UUID[] (for databases predating the schema change)
+  // Backfill from existing brand_id (no-op if column already dropped)
   await pool.query(`
-    ALTER TABLE campaign_outlets ADD COLUMN IF NOT EXISTS brand_ids UUID[];
+    DO $$ BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'campaign_outlets' AND column_name = 'brand_id'
+      ) THEN
+        UPDATE campaign_outlets SET brand_ids = ARRAY[brand_id]
+        WHERE brand_ids IS NULL AND brand_id IS NOT NULL;
+      END IF;
+    END $$;
   `);
-  // Backfill from existing brand_id
-  await pool.query(`
-    UPDATE campaign_outlets SET brand_ids = ARRAY[brand_id]
-    WHERE brand_ids IS NULL AND brand_id IS NOT NULL;
-  `);
-  // GIN index for array queries
-  await pool.query(`
-    CREATE INDEX IF NOT EXISTS idx_campaign_outlets_brand_ids ON campaign_outlets USING GIN (brand_ids);
-  `);
-  // Drop old brand_id column and its index
+  // Drop old brand_id column and its index (idempotent)
   await pool.query(`
     DROP INDEX IF EXISTS idx_campaign_outlets_brand;
     ALTER TABLE campaign_outlets DROP COLUMN IF EXISTS brand_id;
-  `);
-  // Recreate dedup index using brand_ids
-  await pool.query(`
-    DROP INDEX IF EXISTS idx_campaign_outlets_dedup;
-    CREATE INDEX IF NOT EXISTS idx_campaign_outlets_dedup ON campaign_outlets(org_id, outlet_id) WHERE status = 'served';
   `);
 
   console.log("[outlets-service] Migration complete.");
