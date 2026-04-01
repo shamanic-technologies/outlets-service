@@ -47,6 +47,12 @@ vi.mock("../services/campaign", () => ({
   getFeatureInputs: (...args: unknown[]) => mockGetFeatureInputs(...args),
 }));
 
+// Mock journalists service
+const mockIsOutletBlocked = vi.fn();
+vi.mock("../services/journalists", () => ({
+  isOutletBlocked: (...args: unknown[]) => mockIsOutletBlocked(...args),
+}));
+
 const ORG_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const USER_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 const RUN_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc";
@@ -181,8 +187,10 @@ describe("POST /buffer/next", () => {
   it("returns one outlet by default (count=1)", async () => {
     // claimNext → found an outlet
     mockQuery.mockResolvedValueOnce({ rows: [makeOutletRow()] });
-    // dedup check → not a duplicate
+    // block cache check → no cache hit
     mockQuery.mockResolvedValueOnce({ rows: [] });
+    // journalists-service → not blocked
+    mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
 
     const res = await withHeaders(
       request(app).post("/buffer/next")
@@ -200,8 +208,10 @@ describe("POST /buffer/next", () => {
 
     // claimNext → outlet 1
     mockQuery.mockResolvedValueOnce({ rows: [makeOutletRow()] });
-    // dedup check → ok
+    // block cache check → no cache hit
     mockQuery.mockResolvedValueOnce({ rows: [] });
+    // journalists-service → not blocked
+    mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
     // claimNext → outlet 2
     mockQuery.mockResolvedValueOnce({
       rows: [makeOutletRow({
@@ -212,8 +222,10 @@ describe("POST /buffer/next", () => {
         relevance_score: "80.00",
       })],
     });
-    // dedup check → ok
+    // block cache check → no cache hit
     mockQuery.mockResolvedValueOnce({ rows: [] });
+    // journalists-service → not blocked
+    mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
 
     const res = await withHeaders(
       request(app).post("/buffer/next")
@@ -238,20 +250,22 @@ describe("POST /buffer/next", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
-  it("skips duplicate outlets and tries the next one", async () => {
+  it("skips blocked outlets and tries the next one", async () => {
     const OUTLET_ID_2 = "22222222-2222-2222-2222-222222222222";
 
-    // claimNext iteration 1 → found outlet that is a cross-campaign dup
+    // claimNext iteration 1 → found outlet that is blocked
     mockQuery.mockResolvedValueOnce({
       rows: [makeOutletRow({
-        outlet_name: "Dup Outlet",
-        outlet_url: "https://dup.com",
-        outlet_domain: "dup.com",
+        outlet_name: "Blocked Outlet",
+        outlet_url: "https://blocked.com",
+        outlet_domain: "blocked.com",
         relevance_score: "90.00",
       })],
     });
-    // dedup check → IS a duplicate
-    mockQuery.mockResolvedValueOnce({ rows: [{ "1": 1 }] });
+    // block cache check → no cache hit
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    // journalists-service → blocked
+    mockIsOutletBlocked.mockResolvedValueOnce({ blocked: true, reason: "journalist replied negatively" });
     // markSkipped
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
@@ -266,8 +280,10 @@ describe("POST /buffer/next", () => {
         why_relevant: "Great fit",
       })],
     });
-    // dedup check → not a dup
+    // block cache check → no cache hit
     mockQuery.mockResolvedValueOnce({ rows: [] });
+    // journalists-service → not blocked
+    mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
 
     const res = await withHeaders(
       request(app).post("/buffer/next")
@@ -277,6 +293,47 @@ describe("POST /buffer/next", () => {
     expect(res.body.outlets).toHaveLength(1);
     expect(res.body.outlets[0].outletId).toBe(OUTLET_ID_2);
     expect(res.body.outlets[0].outletName).toBe("Good Outlet");
+  });
+
+  it("skips outlet from local cache without calling journalists-service", async () => {
+    const OUTLET_ID_2 = "22222222-2222-2222-2222-222222222222";
+
+    // claimNext iteration 1 → found outlet with existing skip cache
+    mockQuery.mockResolvedValueOnce({
+      rows: [makeOutletRow({
+        outlet_name: "Cached Blocked",
+        outlet_url: "https://cached.com",
+        outlet_domain: "cached.com",
+      })],
+    });
+    // block cache check → HIT (skipped within 30 days)
+    mockQuery.mockResolvedValueOnce({ rows: [{ "1": 1 }] });
+    // markSkipped
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    // claimNext iteration 2 → good outlet
+    mockQuery.mockResolvedValueOnce({
+      rows: [makeOutletRow({
+        outlet_id: OUTLET_ID_2,
+        outlet_name: "Good Outlet",
+        outlet_url: "https://good.com",
+        outlet_domain: "good.com",
+      })],
+    });
+    // block cache check → no cache hit
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    // journalists-service → not blocked
+    mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
+
+    const res = await withHeaders(
+      request(app).post("/buffer/next")
+    ).send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.outlets).toHaveLength(1);
+    expect(res.body.outlets[0].outletId).toBe(OUTLET_ID_2);
+    // journalists-service should only be called once (for the second outlet), not for the cached one
+    expect(mockIsOutletBlocked).toHaveBeenCalledTimes(1);
   });
 
   it("triggers mini-discover when buffer is empty, then returns top outlet", async () => {
@@ -297,8 +354,10 @@ describe("POST /buffer/next", () => {
 
     // claimNext iteration 2 (after refill) → found outlet
     mockQuery.mockResolvedValueOnce({ rows: [makeOutletRow()] });
-    // dedup check → not a dup
+    // block cache check → no cache hit
     mockQuery.mockResolvedValueOnce({ rows: [] });
+    // journalists-service → not blocked
+    mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
 
     const res = await withHeaders(
       request(app).post("/buffer/next")
@@ -346,8 +405,10 @@ describe("POST /buffer/next", () => {
   it("returns partial results when buffer runs dry mid-collection", async () => {
     // claimNext → outlet 1
     mockQuery.mockResolvedValueOnce({ rows: [makeOutletRow()] });
-    // dedup → ok
+    // block cache check → no cache hit
     mockQuery.mockResolvedValueOnce({ rows: [] });
+    // journalists-service → not blocked
+    mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
     // claimNext → buffer empty
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
@@ -420,8 +481,10 @@ describe("POST /buffer/next", () => {
   it("works without idempotencyKey", async () => {
     // claimNext → found outlet
     mockQuery.mockResolvedValueOnce({ rows: [makeOutletRow()] });
-    // dedup check → not a dup
+    // block cache check → no cache hit
     mockQuery.mockResolvedValueOnce({ rows: [] });
+    // journalists-service → not blocked
+    mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
 
     const res = await withHeaders(
       request(app).post("/buffer/next")
@@ -430,7 +493,7 @@ describe("POST /buffer/next", () => {
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(1);
     // No idempotency cache save
-    expect(mockQuery).toHaveBeenCalledTimes(2); // claim + dedup only
+    expect(mockQuery).toHaveBeenCalledTimes(2); // claim + block cache check only
   });
 
   it("does not refill twice if first refill was empty", async () => {
