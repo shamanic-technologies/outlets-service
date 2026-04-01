@@ -6,6 +6,7 @@ import { chatComplete } from "../services/chat";
 import { searchBatch } from "../services/google";
 import { extractFields, findField } from "../services/brand";
 import { getFeatureInputs } from "../services/campaign";
+import { isOutletBlocked } from "../services/journalists";
 import {
   GENERATE_QUERIES_SYSTEM_PROMPT,
   SCORE_OUTLETS_SYSTEM_PROMPT,
@@ -125,24 +126,33 @@ async function claimNext(campaignId: string): Promise<ClaimedOutlet | null> {
   };
 }
 
+const BLOCK_CACHE_DAYS = 30;
+
 /**
- * Check if this outlet domain was already served for the same org + any overlapping brand (cross-campaign dedup).
+ * Check if an outlet is blocked (contacted / in cooldown) via journalists-service.
+ * Uses a local cache: if this outlet was already skipped for the same org + overlapping
+ * brand within the last 30 days, skip without calling journalists-service.
  */
-async function isDuplicate(
+async function isBlocked(
+  outletId: string,
   orgId: string,
   brandIds: string[],
-  outletDomain: string,
-  excludeCampaignId: string
+  ctx: OrgContext
 ): Promise<boolean> {
-  const result = await pool.query(
-    `SELECT 1 FROM campaign_outlets co
-     JOIN outlets o ON o.id = co.outlet_id
-     WHERE co.org_id = $1 AND co.brand_ids && $2 AND o.outlet_domain = $3
-       AND co.status = 'served' AND co.campaign_id != $4
+  // Check local skip cache first (any campaign, same org + overlapping brands)
+  const cached = await pool.query(
+    `SELECT 1 FROM campaign_outlets
+     WHERE org_id = $1 AND brand_ids && $2 AND outlet_id = $3
+       AND status = 'skipped'
+       AND updated_at >= CURRENT_TIMESTAMP - INTERVAL '${BLOCK_CACHE_DAYS} days'
      LIMIT 1`,
-    [orgId, brandIds, outletDomain, excludeCampaignId]
+    [orgId, brandIds, outletId]
   );
-  return result.rows.length > 0;
+  if (cached.rows.length > 0) return true;
+
+  // No cache hit — ask journalists-service
+  const result = await isOutletBlocked(outletId, ctx);
+  return result.blocked;
 }
 
 /**
@@ -368,9 +378,9 @@ router.post(
           continue; // retry claim from freshly filled buffer
         }
 
-        // Check cross-campaign dedup
-        const dup = await isDuplicate(ctx.orgId, ctx.brandIds, claimed.outletDomain, ctx.campaignId);
-        if (dup) {
+        // Check if outlet is blocked (contacted / in cooldown) via journalists-service
+        const blocked = await isBlocked(claimed.outletId, ctx.orgId, ctx.brandIds, ctx);
+        if (blocked) {
           await markSkipped(claimed.campaignId, claimed.outletId);
           continue; // try next outlet
         }

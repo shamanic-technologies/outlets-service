@@ -16,4 +16,6 @@ export const config = {
   workflowServiceApiKey: process.env.WORKFLOW_SERVICE_API_KEY || "",
   runsServiceUrl: process.env.RUNS_SERVICE_URL || "",
   runsServiceApiKey: process.env.RUNS_SERVICE_API_KEY || "",
+  journalistsServiceUrl: process.env.JOURNALISTS_SERVICE_URL || "",
+  journalistsServiceApiKey: process.env.JOURNALISTS_SERVICE_API_KEY || "",
 };
