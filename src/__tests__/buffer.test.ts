@@ -496,6 +496,40 @@ describe("POST /buffer/next", () => {
     expect(mockQuery).toHaveBeenCalledTimes(2); // claim + block cache check only
   });
 
+  it("passes provider and model to chatComplete calls", async () => {
+    // claimNext → buffer empty
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    // mini-discover mocks
+    setupMiniDiscoverMocks();
+
+    // mini-discover DB: BEGIN, (INSERT outlet + INSERT campaign_outlet) x2, COMMIT
+    mockQuery
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({ rows: [{ id: OUTLET_ID }] })
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ id: "22222222-2222-2222-2222-222222222222" }] })
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({}); // COMMIT
+
+    // claimNext iteration 2 → found outlet
+    mockQuery.mockResolvedValueOnce({ rows: [makeOutletRow()] });
+    // block cache check → no cache hit
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    // journalists-service → not blocked
+    mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
+
+    await withHeaders(
+      request(app).post("/buffer/next")
+    ).send({});
+
+    // Both chatComplete calls (query gen + scoring) must include provider and model
+    expect(mockChatComplete).toHaveBeenCalledTimes(2);
+    for (const call of mockChatComplete.mock.calls) {
+      expect(call[0]).toMatchObject({ provider: "google", model: "flash" });
+    }
+  });
+
   it("does not refill twice if first refill was empty", async () => {
     // claimNext → buffer empty
     mockQuery.mockResolvedValueOnce({ rows: [] });

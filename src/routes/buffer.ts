@@ -196,6 +196,8 @@ export async function discoverOutlets(ctx: OrgContext, options: DiscoverOptions)
   // Step 1: Generate a small set of search queries
   const queryGenResponse = await chatComplete(
     {
+      provider: "google",
+      model: "flash",
       message: buildQueryGenerationMessage(brandContext, featureInput),
       systemPrompt:
         GENERATE_QUERIES_SYSTEM_PROMPT.replace(
@@ -237,6 +239,8 @@ export async function discoverOutlets(ctx: OrgContext, options: DiscoverOptions)
   // Step 3: Score results
   const scoringResponse = await chatComplete(
     {
+      provider: "google",
+      model: "flash",
       message: buildScoringMessage(
         brandContext,
         searchResponse.results.map((r) => ({

@@ -3,6 +3,8 @@ import type { OrgContext } from "../middleware/org-context";
 import { buildServiceHeaders } from "./headers";
 
 export interface CompleteRequest {
+  provider: string;
+  model: string;
   message: string;
   systemPrompt: string;
   responseFormat?: "json";
