@@ -526,7 +526,7 @@ describe("POST /buffer/next", () => {
     // Both chatComplete calls (query gen + scoring) must include provider and model
     expect(mockChatComplete).toHaveBeenCalledTimes(2);
     for (const call of mockChatComplete.mock.calls) {
-      expect(call[0]).toMatchObject({ provider: "google", model: "flash" });
+      expect(call[0]).toMatchObject({ provider: "google", model: "flash-lite" });
     }
   });
 
