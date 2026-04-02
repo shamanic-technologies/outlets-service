@@ -2,6 +2,8 @@ import { config } from "../config";
 import type { OrgContext } from "../middleware/org-context";
 import { buildServiceHeaders } from "./headers";
 
+const BRAND_TIMEOUT_MS = 60_000; // 60 seconds
+
 export interface BrandFieldValue {
   value: string | string[] | Record<string, unknown> | null;
   byBrand: Record<
@@ -28,14 +30,26 @@ export async function extractFields(
   fields: FieldRequest[],
   ctx: OrgContext
 ): Promise<ExtractFieldsResult> {
-  const res = await fetch(`${config.brandServiceUrl}/brands/extract-fields`, {
-    method: "POST",
-    headers: buildServiceHeaders(config.brandServiceApiKey, ctx),
-    body: JSON.stringify({ fields }),
-  });
+  const start = Date.now();
+  let res: Response;
+  try {
+    res = await fetch(`${config.brandServiceUrl}/brands/extract-fields`, {
+      method: "POST",
+      headers: buildServiceHeaders(config.brandServiceApiKey, ctx),
+      body: JSON.stringify({ fields }),
+      signal: AbortSignal.timeout(BRAND_TIMEOUT_MS),
+    });
+  } catch (err) {
+    const elapsed = Date.now() - start;
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      throw new Error(`[outlets-service] brand-service /brands/extract-fields timed out after ${elapsed}ms (limit=${BRAND_TIMEOUT_MS}ms)`);
+    }
+    throw new Error(`[outlets-service] brand-service /brands/extract-fields fetch failed after ${elapsed}ms: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`brand-service /brands/extract-fields failed (${res.status}): ${body}`);
+    throw new Error(`[outlets-service] brand-service /brands/extract-fields failed (${res.status}): ${body}`);
   }
   const data = (await res.json()) as { brands: unknown[]; fields: ExtractFieldsResult };
   return data.fields;

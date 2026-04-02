@@ -22,18 +22,27 @@ export async function isOutletBlocked(
     outlet_id: outletId,
   });
 
-  const res = await fetch(
-    `${config.journalistsServiceUrl}/internal/outlets/blocked?${params}`,
-    {
-      method: "GET",
-      headers: buildServiceHeaders(config.journalistsServiceApiKey, ctx),
+  let res: Response;
+  try {
+    res = await fetch(
+      `${config.journalistsServiceUrl}/internal/outlets/blocked?${params}`,
+      {
+        method: "GET",
+        headers: buildServiceHeaders(config.journalistsServiceApiKey, ctx),
+        signal: AbortSignal.timeout(30_000),
+      }
+    );
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      throw new Error(`[outlets-service] journalists-service /internal/outlets/blocked timed out after 30s`);
     }
-  );
+    throw new Error(`[outlets-service] journalists-service /internal/outlets/blocked fetch failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
 
   if (!res.ok) {
     const body = await res.text();
     throw new Error(
-      `journalists-service /internal/outlets/blocked failed (${res.status}): ${body}`
+      `[outlets-service] journalists-service /internal/outlets/blocked failed (${res.status}): ${body}`
     );
   }
 

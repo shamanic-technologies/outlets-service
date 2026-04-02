@@ -37,7 +37,7 @@ describe("resolveWorkflowDynastySlugs", () => {
     expect(result).toEqual(["cold-email", "cold-email-v2", "cold-email-v3"]);
     expect(fetchSpy).toHaveBeenCalledWith(
       "http://workflow-service/workflows/dynasty/slugs?dynastySlug=cold-email",
-      { headers: { "x-api-key": "wf-key" } }
+      expect.objectContaining({ headers: { "x-api-key": "wf-key" } })
     );
   });
 
@@ -59,7 +59,7 @@ describe("resolveFeatureDynastySlugs", () => {
     expect(result).toEqual(["feat-alpha", "feat-alpha-v2"]);
     expect(fetchSpy).toHaveBeenCalledWith(
       "http://features-service/features/dynasty/slugs?dynastySlug=feat-alpha",
-      { headers: { "x-api-key": "feat-key" } }
+      expect.objectContaining({ headers: { "x-api-key": "feat-key" } })
     );
   });
 
