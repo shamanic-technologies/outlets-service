@@ -393,6 +393,8 @@ router.post(
         collected.push(claimed);
       }
 
+      console.log(`[outlets-service] buffer/next: returning ${collected.length}/${count} outlets for campaign ${ctx.campaignId}`);
+
       const response = { outlets: collected };
       if (idempotencyKey) {
         await saveIdempotencyCache(idempotencyKey, response);
