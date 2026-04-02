@@ -10,6 +10,7 @@ export interface CompleteRequest {
   responseFormat?: "json";
   temperature?: number;
   maxTokens?: number;
+  thinkingBudget?: number;
 }
 
 export interface CompleteResponse {

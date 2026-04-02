@@ -528,6 +528,14 @@ describe("POST /buffer/next", () => {
     for (const call of mockChatComplete.mock.calls) {
       expect(call[0]).toMatchObject({ provider: "google", model: "flash-lite" });
     }
+
+    // Scoring call (2nd) must include thinkingBudget
+    const scoringCall = mockChatComplete.mock.calls[1][0];
+    expect(scoringCall).toMatchObject({ thinkingBudget: 8000, maxTokens: 16000 });
+
+    // Query gen call (1st) must NOT include thinkingBudget
+    const queryGenCall = mockChatComplete.mock.calls[0][0];
+    expect(queryGenCall.thinkingBudget).toBeUndefined();
   });
 
   it("does not refill twice if first refill was empty", async () => {

@@ -257,7 +257,8 @@ export async function discoverOutlets(ctx: OrgContext, options: DiscoverOptions)
       systemPrompt: SCORE_OUTLETS_SYSTEM_PROMPT,
       responseFormat: "json",
       temperature: 0.3,
-      maxTokens: 4096,
+      maxTokens: 16000,
+      thinkingBudget: 8000,
     },
     ctx
   );
