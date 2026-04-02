@@ -376,16 +376,21 @@ router.post(
           // Buffer empty — try mini-discover once
           if (didRefill) break;
 
+          console.log(`[outlets-service] buffer/next: buffer empty for campaign ${ctx.campaignId}, triggering mini-discover`);
           const filled = await miniDiscover(ctx);
           didRefill = true;
 
-          if (filled === 0) break;
+          if (filled === 0) {
+            console.log(`[outlets-service] buffer/next: mini-discover found 0 outlets for campaign ${ctx.campaignId}`);
+            break;
+          }
           continue; // retry claim from freshly filled buffer
         }
 
         // Check if outlet is blocked (contacted / in cooldown) via journalists-service
         const blocked = await isBlocked(claimed.outletId, ctx.orgId, ctx.brandIds, ctx);
         if (blocked) {
+          console.log(`[outlets-service] buffer/next: skipping blocked outlet ${claimed.outletName} (${claimed.outletId}) for campaign ${ctx.campaignId}`);
           await markSkipped(claimed.campaignId, claimed.outletId);
           continue; // try next outlet
         }
