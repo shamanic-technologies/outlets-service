@@ -2,7 +2,7 @@ import { config } from "../config";
 import type { OrgContext } from "../middleware/org-context";
 import { buildServiceHeaders } from "./headers";
 
-const BRAND_TIMEOUT_MS = 60_000; // 60 seconds
+const BRAND_TIMEOUT_MS = 120_000; // 120 seconds — brand extraction involves scraping + LLM for multiple brands
 
 export interface BrandFieldValue {
   value: string | string[] | Record<string, unknown> | null;
