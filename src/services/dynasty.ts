@@ -14,9 +14,20 @@ export async function resolveWorkflowDynastySlugs(
   apiKey: string
 ): Promise<string[]> {
   const url = `${config.workflowServiceUrl}/workflows/dynasty/slugs?dynastySlug=${encodeURIComponent(dynastySlug)}`;
-  const res = await fetch(url, {
-    headers: { "x-api-key": apiKey },
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: { "x-api-key": apiKey },
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      console.error(`[outlets-service] workflow-service /workflows/dynasty/slugs timed out after 30s`);
+    } else {
+      console.error(`[outlets-service] workflow-service /workflows/dynasty/slugs fetch failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    return [];
+  }
   if (!res.ok) {
     console.error(`[outlets-service] Failed to resolve workflow dynasty slug: ${res.status}`);
     return [];
@@ -34,9 +45,20 @@ export async function resolveFeatureDynastySlugs(
   apiKey: string
 ): Promise<string[]> {
   const url = `${config.featuresServiceUrl}/features/dynasty/slugs?dynastySlug=${encodeURIComponent(dynastySlug)}`;
-  const res = await fetch(url, {
-    headers: { "x-api-key": apiKey },
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: { "x-api-key": apiKey },
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      console.error(`[outlets-service] features-service /features/dynasty/slugs timed out after 30s`);
+    } else {
+      console.error(`[outlets-service] features-service /features/dynasty/slugs fetch failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    return [];
+  }
   if (!res.ok) {
     console.error(`[outlets-service] Failed to resolve feature dynasty slug: ${res.status}`);
     return [];
@@ -52,9 +74,20 @@ export async function getWorkflowDynastyMap(
   apiKey: string
 ): Promise<Map<string, string>> {
   const url = `${config.workflowServiceUrl}/workflows/dynasties`;
-  const res = await fetch(url, {
-    headers: { "x-api-key": apiKey },
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: { "x-api-key": apiKey },
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      console.error(`[outlets-service] workflow-service /workflows/dynasties timed out after 30s`);
+    } else {
+      console.error(`[outlets-service] workflow-service /workflows/dynasties fetch failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    return new Map();
+  }
   if (!res.ok) {
     console.error(`[outlets-service] Failed to fetch workflow dynasties: ${res.status}`);
     return new Map();
@@ -70,9 +103,20 @@ export async function getFeatureDynastyMap(
   apiKey: string
 ): Promise<Map<string, string>> {
   const url = `${config.featuresServiceUrl}/features/dynasties`;
-  const res = await fetch(url, {
-    headers: { "x-api-key": apiKey },
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: { "x-api-key": apiKey },
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      console.error(`[outlets-service] features-service /features/dynasties timed out after 30s`);
+    } else {
+      console.error(`[outlets-service] features-service /features/dynasties fetch failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    return new Map();
+  }
   if (!res.ok) {
     console.error(`[outlets-service] Failed to fetch feature dynasties: ${res.status}`);
     return new Map();

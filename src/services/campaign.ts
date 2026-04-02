@@ -23,12 +23,21 @@ export async function getFeatureInputs(
   const cached = featureInputsCache.get(campaignId);
   if (cached !== undefined) return cached;
 
-  const res = await fetch(`${config.campaignServiceUrl}/campaigns/${campaignId}`, {
-    headers: buildServiceHeaders(config.campaignServiceApiKey, ctx),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${config.campaignServiceUrl}/campaigns/${campaignId}`, {
+      headers: buildServiceHeaders(config.campaignServiceApiKey, ctx),
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      throw new Error(`[outlets-service] campaign-service /campaigns/${campaignId} timed out after 30s`);
+    }
+    throw new Error(`[outlets-service] campaign-service /campaigns/${campaignId} fetch failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`campaign-service /campaigns/${campaignId} failed (${res.status}): ${body}`);
+    throw new Error(`[outlets-service] campaign-service /campaigns/${campaignId} failed (${res.status}): ${body}`);
   }
 
   const data = (await res.json()) as { campaign: Campaign };

@@ -6,18 +6,27 @@ export async function createChildRun(
   taskName: string,
   ctx: OrgContext
 ): Promise<string> {
-  const res = await fetch(`${config.runsServiceUrl}/v1/runs`, {
-    method: "POST",
-    headers: buildServiceHeaders(config.runsServiceApiKey, ctx),
-    body: JSON.stringify({
-      serviceName: "outlets-service",
-      taskName,
-    }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${config.runsServiceUrl}/v1/runs`, {
+      method: "POST",
+      headers: buildServiceHeaders(config.runsServiceApiKey, ctx),
+      body: JSON.stringify({
+        serviceName: "outlets-service",
+        taskName,
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      throw new Error(`[outlets-service] runs-service POST /v1/runs timed out after 30s`);
+    }
+    throw new Error(`[outlets-service] runs-service POST /v1/runs fetch failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
 
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`runs-service POST /v1/runs failed (${res.status}): ${body}`);
+    throw new Error(`[outlets-service] runs-service POST /v1/runs failed (${res.status}): ${body}`);
   }
 
   const data = (await res.json()) as { id: string };
@@ -37,15 +46,24 @@ export async function batchRunCosts(
 ): Promise<RunCost[]> {
   if (runIds.length === 0) return [];
 
-  const res = await fetch(`${config.runsServiceUrl}/v1/runs/costs/batch`, {
-    method: "POST",
-    headers: buildServiceHeaders(config.runsServiceApiKey, ctx),
-    body: JSON.stringify({ runIds }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${config.runsServiceUrl}/v1/runs/costs/batch`, {
+      method: "POST",
+      headers: buildServiceHeaders(config.runsServiceApiKey, ctx),
+      body: JSON.stringify({ runIds }),
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      throw new Error(`[outlets-service] runs-service POST /v1/runs/costs/batch timed out after 30s`);
+    }
+    throw new Error(`[outlets-service] runs-service POST /v1/runs/costs/batch fetch failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
 
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`runs-service POST /v1/runs/costs/batch failed (${res.status}): ${body}`);
+    throw new Error(`[outlets-service] runs-service POST /v1/runs/costs/batch failed (${res.status}): ${body}`);
   }
 
   const data = (await res.json()) as {
@@ -70,14 +88,23 @@ export async function closeRun(
   status: "completed" | "failed",
   ctx: OrgContext
 ): Promise<void> {
-  const res = await fetch(`${config.runsServiceUrl}/v1/runs/${runId}`, {
-    method: "PATCH",
-    headers: buildServiceHeaders(config.runsServiceApiKey, ctx),
-    body: JSON.stringify({ status }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${config.runsServiceUrl}/v1/runs/${runId}`, {
+      method: "PATCH",
+      headers: buildServiceHeaders(config.runsServiceApiKey, ctx),
+      body: JSON.stringify({ status }),
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      throw new Error(`[outlets-service] runs-service PATCH /v1/runs/${runId} timed out after 30s`);
+    }
+    throw new Error(`[outlets-service] runs-service PATCH /v1/runs/${runId} fetch failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
 
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`runs-service PATCH /v1/runs/${runId} failed (${res.status}): ${body}`);
+    throw new Error(`[outlets-service] runs-service PATCH /v1/runs/${runId} failed (${res.status}): ${body}`);
   }
 }
