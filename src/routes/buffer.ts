@@ -175,7 +175,7 @@ async function markSkipped(campaignId: string, outletId: string): Promise<void> 
 export async function discoverOutlets(ctx: OrgContext, options: DiscoverOptions): Promise<number> {
   const [extractedFields, featureInputs] = await Promise.all([
     extractFields(BRAND_FIELDS, ctx),
-    getFeatureInputs(ctx.campaignId!, ctx),
+    getFeatureInputs(ctx.campaignId, ctx),
   ]);
 
   const brandContext: BrandPromptContext = {
@@ -274,7 +274,7 @@ export async function discoverOutlets(ctx: OrgContext, options: DiscoverOptions)
   if (outlets.length === 0) return 0;
 
   // Step 4: Bulk upsert into DB
-  const featureSlug = ctx.featureSlug || null;
+  const featureSlug = ctx.featureSlug;
   const client = await pool.connect();
   let inserted = 0;
 
@@ -306,7 +306,7 @@ export async function discoverOutlets(ctx: OrgContext, options: DiscoverOptions)
           ctx.orgId,
           ctx.brandIds,
           featureSlug,
-          ctx.workflowSlug || null,
+          ctx.workflowSlug,
           o.whyRelevant,
           o.whyNotRelevant,
           o.relevanceScore,
@@ -346,12 +346,6 @@ router.post(
   validateBody(bufferNextSchema),
   async (req: Request, res: Response): Promise<void> => {
     const ctx = req.orgContext!;
-
-    if (!ctx.campaignId || ctx.brandIds.length === 0) {
-      res.status(400).json({ error: "x-campaign-id and x-brand-id headers are required" });
-      return;
-    }
-
     const { count, idempotencyKey } = req.body as { count: number; idempotencyKey?: string };
 
     try {

@@ -69,7 +69,9 @@ function withHeaders(req: request.Test): request.Test {
     .set("x-user-id", USER_ID)
     .set("x-run-id", RUN_ID)
     .set("x-campaign-id", CAMPAIGN_ID)
-    .set("x-brand-id", BRAND_ID);
+    .set("x-brand-id", BRAND_ID)
+    .set("x-feature-slug", "outlets")
+    .set("x-workflow-slug", "discover");
 }
 
 const extractFieldsResponse = {
@@ -187,29 +189,19 @@ describe("POST /outlets/discover", () => {
     expect(mockCloseRun).toHaveBeenCalledWith(CHILD_RUN_ID, "failed", expect.anything());
   });
 
-  it("returns 400 when x-campaign-id is missing", async () => {
+  it("returns 400 listing all missing identity headers", async () => {
     const res = await request(app)
       .post("/outlets/discover")
       .set("x-org-id", ORG_ID)
       .set("x-user-id", USER_ID)
       .set("x-run-id", RUN_ID)
-      .set("x-brand-id", BRAND_ID)
       .send({ count: 10 });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toContain("x-campaign-id");
-  });
-
-  it("returns 400 when x-brand-id is missing", async () => {
-    const res = await request(app)
-      .post("/outlets/discover")
-      .set("x-org-id", ORG_ID)
-      .set("x-user-id", USER_ID)
-      .set("x-run-id", RUN_ID)
-      .set("x-campaign-id", CAMPAIGN_ID)
-      .send({ count: 10 });
-
-    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("x-brand-id");
+    expect(res.body.error).toContain("x-feature-slug");
+    expect(res.body.error).toContain("x-workflow-slug");
     expect(res.body.error).toContain("x-brand-id");
   });
 

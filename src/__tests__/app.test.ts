@@ -26,13 +26,18 @@ const CAMPAIGN_ID = "22222222-2222-2222-2222-222222222222";
 const BRAND_ID = "55555555-5555-5555-5555-555555555555";
 
 function withIdentity(req: request.Test): request.Test {
-  return req.set("x-org-id", ORG_ID).set("x-user-id", USER_ID).set("x-run-id", RUN_ID);
+  return req
+    .set("x-org-id", ORG_ID)
+    .set("x-user-id", USER_ID)
+    .set("x-run-id", RUN_ID)
+    .set("x-campaign-id", CAMPAIGN_ID)
+    .set("x-brand-id", BRAND_ID)
+    .set("x-feature-slug", "outlets")
+    .set("x-workflow-slug", "discover");
 }
 
 function withFullHeaders(req: request.Test): request.Test {
-  return withIdentity(req)
-    .set("x-campaign-id", CAMPAIGN_ID)
-    .set("x-brand-id", BRAND_ID);
+  return withIdentity(req);
 }
 
 let app: Express;
@@ -126,9 +131,12 @@ describe("POST /outlets", () => {
     expect(res.body.id).toBe(outletRow.id);
   });
 
-  it("returns 400 when x-campaign-id header is missing", async () => {
-    const res = await withIdentity(request(app).post("/outlets"))
-      .set("x-brand-id", BRAND_ID)
+  it("returns 400 when identity headers are missing", async () => {
+    const res = await request(app)
+      .post("/outlets")
+      .set("x-org-id", ORG_ID)
+      .set("x-user-id", USER_ID)
+      .set("x-run-id", RUN_ID)
       .send({
         outletName: "TechCrunch",
         outletUrl: "https://techcrunch.com",
@@ -139,6 +147,9 @@ describe("POST /outlets", () => {
       });
     expect(res.status).toBe(400);
     expect(res.body.error).toContain("x-campaign-id");
+    expect(res.body.error).toContain("x-brand-id");
+    expect(res.body.error).toContain("x-feature-slug");
+    expect(res.body.error).toContain("x-workflow-slug");
   });
 
   it("returns 400 for invalid body", async () => {
@@ -280,12 +291,13 @@ describe("PATCH /outlets/:id/status", () => {
     expect(res.body.status).toBe("ended");
   });
 
-  it("returns 400 without x-campaign-id header", async () => {
-    const res = await withIdentity(
-      request(app).patch(
-        "/outlets/11111111-1111-1111-1111-111111111111/status"
-      )
-    ).send({ status: "ended" });
+  it("returns 400 when identity headers are missing", async () => {
+    const res = await request(app)
+      .patch("/outlets/11111111-1111-1111-1111-111111111111/status")
+      .set("x-org-id", ORG_ID)
+      .set("x-user-id", USER_ID)
+      .set("x-run-id", RUN_ID)
+      .send({ status: "ended" });
     expect(res.status).toBe(400);
     expect(res.body.error).toContain("x-campaign-id");
   });
@@ -349,19 +361,24 @@ describe("POST /outlets/bulk", () => {
     expect(res.body.outlets[0].campaignId).toBe(CAMPAIGN_ID);
   });
 
-  it("returns 400 without x-campaign-id and x-brand-id headers", async () => {
-    const res = await withIdentity(request(app).post("/outlets/bulk")).send({
-      outlets: [
-        {
-          outletName: "Outlet1",
-          outletUrl: "https://outlet1.com",
-          outletDomain: "outlet1.com",
-          whyRelevant: "Good",
-          whyNotRelevant: "None",
-          relevanceScore: 90,
-        },
-      ],
-    });
+  it("returns 400 when identity headers are missing", async () => {
+    const res = await request(app)
+      .post("/outlets/bulk")
+      .set("x-org-id", ORG_ID)
+      .set("x-user-id", USER_ID)
+      .set("x-run-id", RUN_ID)
+      .send({
+        outlets: [
+          {
+            outletName: "Outlet1",
+            outletUrl: "https://outlet1.com",
+            outletDomain: "outlet1.com",
+            whyRelevant: "Good",
+            whyNotRelevant: "None",
+            relevanceScore: 90,
+          },
+        ],
+      });
     expect(res.status).toBe(400);
     expect(res.body.error).toContain("x-campaign-id");
   });
@@ -515,9 +532,15 @@ describe("Multi-brand x-brand-id CSV header", () => {
     expect(campaignInsertCall[1][3]).toEqual([BRAND_ID, BRAND_ID_2]);
   });
 
-  it("returns 400 when x-brand-id header is empty for mutating endpoints", async () => {
-    const res = await withIdentity(request(app).post("/outlets"))
+  it("returns 400 when x-brand-id header is empty", async () => {
+    const res = await request(app)
+      .post("/outlets")
+      .set("x-org-id", ORG_ID)
+      .set("x-user-id", USER_ID)
+      .set("x-run-id", RUN_ID)
       .set("x-campaign-id", CAMPAIGN_ID)
+      .set("x-feature-slug", "outlets")
+      .set("x-workflow-slug", "discover")
       .send({
         outletName: "TechCrunch",
         outletUrl: "https://techcrunch.com",

@@ -42,9 +42,18 @@ const mockedGetFeatureMap = vi.mocked(getFeatureDynastyMap);
 const ORG_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const USER_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 const RUN_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc";
+const CAMPAIGN_ID = "dddddddd-dddd-dddd-dddd-dddddddddddd";
+const BRAND_ID = "55555555-5555-5555-5555-555555555555";
 
 function withIdentity(req: request.Test): request.Test {
-  return req.set("x-org-id", ORG_ID).set("x-user-id", USER_ID).set("x-run-id", RUN_ID);
+  return req
+    .set("x-org-id", ORG_ID)
+    .set("x-user-id", USER_ID)
+    .set("x-run-id", RUN_ID)
+    .set("x-campaign-id", CAMPAIGN_ID)
+    .set("x-brand-id", BRAND_ID)
+    .set("x-feature-slug", "outlets")
+    .set("x-workflow-slug", "discover");
 }
 
 let app: Express;
@@ -469,8 +478,6 @@ describe("GET /outlets/stats with empty dynasty filter + groupBy", () => {
 // ========================
 // Stats Costs
 // ========================
-const BRAND_ID = "55555555-5555-5555-5555-555555555555";
-const CAMPAIGN_ID = "22222222-2222-2222-2222-222222222222";
 const RUN_ID_1 = "aaaa1111-1111-1111-1111-111111111111";
 const RUN_ID_2 = "aaaa2222-2222-2222-2222-222222222222";
 const OUTLET_ID_1 = "bbbb1111-1111-1111-1111-111111111111";
