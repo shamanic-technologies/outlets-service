@@ -84,6 +84,15 @@ export const errorResponseSchema = z.object({
   error: z.string(),
 });
 
+// --- Internal ---
+
+export const internalOutletsQuerySchema = z.object({
+  ids: z.string().optional(),
+  campaignId: z.string().uuid().optional(),
+}).refine((data) => data.ids || data.campaignId, {
+  message: "At least one of ids or campaignId is required",
+});
+
 // --- Stats ---
 
 const statsGroupByEnum = z.enum([

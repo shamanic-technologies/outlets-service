@@ -586,7 +586,7 @@
     "/outlets": {
       "post": {
         "summary": "Create outlet (upsert by outlet_url)",
-        "description": "Requires x-campaign-id and x-brand-id headers. Upserts by outlet_domain — if the domain already exists, updates the name/url.",
+        "description": "Requires all 7 identity headers. Upserts by outlet_domain — if the domain already exists, updates the name/url.",
         "parameters": [
           {
             "in": "header",
@@ -621,7 +621,7 @@
           {
             "in": "header",
             "name": "x-feature-slug",
-            "required": false,
+            "required": true,
             "schema": {
               "type": "string"
             },
@@ -630,26 +630,26 @@
           {
             "in": "header",
             "name": "x-campaign-id",
-            "required": false,
+            "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "Campaign ID (required for mutating endpoints)"
+            "description": "Campaign ID"
           },
           {
             "in": "header",
             "name": "x-brand-id",
-            "required": false,
+            "required": true,
             "schema": {
               "type": "string"
             },
-            "description": "Brand ID(s) — single UUID or comma-separated UUIDs for multi-brand campaigns (required for mutating endpoints). Example: uuid1,uuid2,uuid3"
+            "description": "Brand ID(s) — single UUID or comma-separated UUIDs for multi-brand campaigns. Example: uuid1,uuid2,uuid3"
           },
           {
             "in": "header",
             "name": "x-workflow-slug",
-            "required": false,
+            "required": true,
             "schema": {
               "type": "string"
             },
@@ -756,7 +756,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Feature slug for tracking (propagated downstream)"
+            "description": "Feature slug for tracking (optional, propagated downstream)"
           },
           {
             "in": "header",
@@ -766,7 +766,7 @@
               "type": "string",
               "format": "uuid"
             },
-            "description": "Campaign ID (required for mutating endpoints)"
+            "description": "Campaign ID (optional for read endpoints)"
           },
           {
             "in": "header",
@@ -775,7 +775,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Brand ID(s) — single UUID or comma-separated UUIDs for multi-brand campaigns (required for mutating endpoints). Example: uuid1,uuid2,uuid3"
+            "description": "Brand ID(s) — optional for read endpoints"
           },
           {
             "in": "header",
@@ -784,7 +784,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Workflow slug for tracking (propagated downstream)"
+            "description": "Workflow slug for tracking (optional, propagated downstream)"
           },
           {
             "in": "query",
@@ -948,7 +948,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Feature slug for tracking (propagated downstream)"
+            "description": "Feature slug for tracking (optional, propagated downstream)"
           },
           {
             "in": "header",
@@ -958,7 +958,7 @@
               "type": "string",
               "format": "uuid"
             },
-            "description": "Campaign ID (required for mutating endpoints)"
+            "description": "Campaign ID (optional for read endpoints)"
           },
           {
             "in": "header",
@@ -967,7 +967,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Brand ID(s) — single UUID or comma-separated UUIDs for multi-brand campaigns (required for mutating endpoints). Example: uuid1,uuid2,uuid3"
+            "description": "Brand ID(s) — optional for read endpoints"
           },
           {
             "in": "header",
@@ -976,7 +976,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Workflow slug for tracking (propagated downstream)"
+            "description": "Workflow slug for tracking (optional, propagated downstream)"
           }
         ],
         "responses": {
@@ -1044,7 +1044,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Feature slug for tracking (propagated downstream)"
+            "description": "Feature slug for tracking (optional, propagated downstream)"
           },
           {
             "in": "header",
@@ -1054,7 +1054,7 @@
               "type": "string",
               "format": "uuid"
             },
-            "description": "Campaign ID (required for mutating endpoints)"
+            "description": "Campaign ID (optional for read endpoints)"
           },
           {
             "in": "header",
@@ -1063,7 +1063,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Brand ID(s) — single UUID or comma-separated UUIDs for multi-brand campaigns (required for mutating endpoints). Example: uuid1,uuid2,uuid3"
+            "description": "Brand ID(s) — optional for read endpoints"
           },
           {
             "in": "header",
@@ -1072,7 +1072,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Workflow slug for tracking (propagated downstream)"
+            "description": "Workflow slug for tracking (optional, propagated downstream)"
           }
         ],
         "requestBody": {
@@ -1104,7 +1104,7 @@
     "/outlets/{id}/status": {
       "patch": {
         "summary": "Update outlet status",
-        "description": "Updates the status of an outlet within a campaign. Requires x-campaign-id header to identify the campaign_outlets row. Setting status to 'ended' also sets ended_at timestamp.",
+        "description": "Updates the status of an outlet within a campaign. Requires all 7 identity headers. Setting status to 'ended' also sets ended_at timestamp.",
         "parameters": [
           {
             "in": "path",
@@ -1149,7 +1149,7 @@
           {
             "in": "header",
             "name": "x-feature-slug",
-            "required": false,
+            "required": true,
             "schema": {
               "type": "string"
             },
@@ -1158,26 +1158,26 @@
           {
             "in": "header",
             "name": "x-campaign-id",
-            "required": false,
+            "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "Campaign ID (required for mutating endpoints)"
+            "description": "Campaign ID"
           },
           {
             "in": "header",
             "name": "x-brand-id",
-            "required": false,
+            "required": true,
             "schema": {
               "type": "string"
             },
-            "description": "Brand ID(s) — single UUID or comma-separated UUIDs for multi-brand campaigns (required for mutating endpoints). Example: uuid1,uuid2,uuid3"
+            "description": "Brand ID(s) — single UUID or comma-separated UUIDs for multi-brand campaigns. Example: uuid1,uuid2,uuid3"
           },
           {
             "in": "header",
             "name": "x-workflow-slug",
-            "required": false,
+            "required": true,
             "schema": {
               "type": "string"
             },
@@ -1275,7 +1275,7 @@
     "/outlets/bulk": {
       "post": {
         "summary": "Bulk upsert outlets",
-        "description": "Requires x-campaign-id and x-brand-id headers. All outlets in the batch share the same campaign and brand. Max 500 outlets per request.",
+        "description": "Requires all 7 identity headers. All outlets in the batch share the same campaign and brand. Max 500 outlets per request.",
         "parameters": [
           {
             "in": "header",
@@ -1310,7 +1310,7 @@
           {
             "in": "header",
             "name": "x-feature-slug",
-            "required": false,
+            "required": true,
             "schema": {
               "type": "string"
             },
@@ -1319,26 +1319,26 @@
           {
             "in": "header",
             "name": "x-campaign-id",
-            "required": false,
+            "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "Campaign ID (required for mutating endpoints)"
+            "description": "Campaign ID"
           },
           {
             "in": "header",
             "name": "x-brand-id",
-            "required": false,
+            "required": true,
             "schema": {
               "type": "string"
             },
-            "description": "Brand ID(s) — single UUID or comma-separated UUIDs for multi-brand campaigns (required for mutating endpoints). Example: uuid1,uuid2,uuid3"
+            "description": "Brand ID(s) — single UUID or comma-separated UUIDs for multi-brand campaigns. Example: uuid1,uuid2,uuid3"
           },
           {
             "in": "header",
             "name": "x-workflow-slug",
-            "required": false,
+            "required": true,
             "schema": {
               "type": "string"
             },
@@ -1454,7 +1454,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Feature slug for tracking (propagated downstream)"
+            "description": "Feature slug for tracking (optional, propagated downstream)"
           },
           {
             "in": "header",
@@ -1464,7 +1464,7 @@
               "type": "string",
               "format": "uuid"
             },
-            "description": "Campaign ID (required for mutating endpoints)"
+            "description": "Campaign ID (optional for read endpoints)"
           },
           {
             "in": "header",
@@ -1473,7 +1473,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Brand ID(s) — single UUID or comma-separated UUIDs for multi-brand campaigns (required for mutating endpoints). Example: uuid1,uuid2,uuid3"
+            "description": "Brand ID(s) — optional for read endpoints"
           },
           {
             "in": "header",
@@ -1482,7 +1482,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Workflow slug for tracking (propagated downstream)"
+            "description": "Workflow slug for tracking (optional, propagated downstream)"
           }
         ],
         "requestBody": {
@@ -1570,7 +1570,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Feature slug for tracking (propagated downstream)"
+            "description": "Feature slug for tracking (optional, propagated downstream)"
           },
           {
             "in": "header",
@@ -1580,7 +1580,7 @@
               "type": "string",
               "format": "uuid"
             },
-            "description": "Campaign ID (required for mutating endpoints)"
+            "description": "Campaign ID (optional for read endpoints)"
           },
           {
             "in": "header",
@@ -1589,7 +1589,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Brand ID(s) — single UUID or comma-separated UUIDs for multi-brand campaigns (required for mutating endpoints). Example: uuid1,uuid2,uuid3"
+            "description": "Brand ID(s) — optional for read endpoints"
           },
           {
             "in": "header",
@@ -1598,7 +1598,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Workflow slug for tracking (propagated downstream)"
+            "description": "Workflow slug for tracking (optional, propagated downstream)"
           },
           {
             "in": "query",
@@ -1746,7 +1746,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Feature slug for tracking (propagated downstream)"
+            "description": "Feature slug for tracking (optional, propagated downstream)"
           },
           {
             "in": "header",
@@ -1756,7 +1756,7 @@
               "type": "string",
               "format": "uuid"
             },
-            "description": "Campaign ID (required for mutating endpoints)"
+            "description": "Campaign ID (optional for read endpoints)"
           },
           {
             "in": "header",
@@ -1765,7 +1765,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Brand ID(s) — single UUID or comma-separated UUIDs for multi-brand campaigns (required for mutating endpoints). Example: uuid1,uuid2,uuid3"
+            "description": "Brand ID(s) — optional for read endpoints"
           },
           {
             "in": "header",
@@ -1774,7 +1774,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Workflow slug for tracking (propagated downstream)"
+            "description": "Workflow slug for tracking (optional, propagated downstream)"
           },
           {
             "in": "query",
@@ -1847,7 +1847,7 @@
     "/outlets/discover": {
       "post": {
         "summary": "Discover outlets for a campaign",
-        "description": "Runs parameterized outlet discovery: generates search queries via LLM, searches Google, scores results, and inserts into the campaign buffer. Creates a child run in runs-service for cost tracking. Requires x-campaign-id and x-brand-id headers.",
+        "description": "Runs parameterized outlet discovery: generates search queries via LLM, searches Google, scores results, and inserts into the campaign buffer. Creates a child run in runs-service for cost tracking. Requires all 7 identity headers.",
         "parameters": [
           {
             "in": "header",
@@ -1882,7 +1882,7 @@
           {
             "in": "header",
             "name": "x-feature-slug",
-            "required": false,
+            "required": true,
             "schema": {
               "type": "string"
             },
@@ -1891,26 +1891,26 @@
           {
             "in": "header",
             "name": "x-campaign-id",
-            "required": false,
+            "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "Campaign ID (required for mutating endpoints)"
+            "description": "Campaign ID"
           },
           {
             "in": "header",
             "name": "x-brand-id",
-            "required": false,
+            "required": true,
             "schema": {
               "type": "string"
             },
-            "description": "Brand ID(s) — single UUID or comma-separated UUIDs for multi-brand campaigns (required for mutating endpoints). Example: uuid1,uuid2,uuid3"
+            "description": "Brand ID(s) — single UUID or comma-separated UUIDs for multi-brand campaigns. Example: uuid1,uuid2,uuid3"
           },
           {
             "in": "header",
             "name": "x-workflow-slug",
-            "required": false,
+            "required": true,
             "schema": {
               "type": "string"
             },
@@ -1970,7 +1970,7 @@
     "/buffer/next": {
       "post": {
         "summary": "Pull the next best outlet(s) from the buffer",
-        "description": "Returns up to `count` (default 1, max 50) highest-scored open outlets for the campaign. If the buffer is empty, triggers a lightweight mini-discover (3 queries × 5 Google results, LLM scoring) to refill it. Supports idempotency via optional idempotencyKey. Requires x-campaign-id and x-brand-id headers.",
+        "description": "Returns up to `count` (default 1, max 50) highest-scored open outlets for the campaign. If the buffer is empty, triggers a lightweight mini-discover (3 queries × 5 Google results, LLM scoring) to refill it. Supports idempotency via optional idempotencyKey. Requires all 7 identity headers.",
         "parameters": [
           {
             "in": "header",
@@ -2005,7 +2005,7 @@
           {
             "in": "header",
             "name": "x-feature-slug",
-            "required": false,
+            "required": true,
             "schema": {
               "type": "string"
             },
@@ -2014,26 +2014,26 @@
           {
             "in": "header",
             "name": "x-campaign-id",
-            "required": false,
+            "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "Campaign ID (required for mutating endpoints)"
+            "description": "Campaign ID"
           },
           {
             "in": "header",
             "name": "x-brand-id",
-            "required": false,
+            "required": true,
             "schema": {
               "type": "string"
             },
-            "description": "Brand ID(s) — single UUID or comma-separated UUIDs for multi-brand campaigns (required for mutating endpoints). Example: uuid1,uuid2,uuid3"
+            "description": "Brand ID(s) — single UUID or comma-separated UUIDs for multi-brand campaigns. Example: uuid1,uuid2,uuid3"
           },
           {
             "in": "header",
             "name": "x-workflow-slug",
-            "required": false,
+            "required": true,
             "schema": {
               "type": "string"
             },
@@ -2083,9 +2083,10 @@
         }
       }
     },
-    "/internal/outlets/by-ids": {
+    "/internal/outlets": {
       "get": {
-        "summary": "Batch lookup outlets by IDs",
+        "summary": "Lookup outlets by IDs and/or campaignId",
+        "description": "Unified internal endpoint. At least one of `ids` or `campaignId` must be provided. When `campaignId` is provided, returns campaign-enriched outlet data (relevance, status, etc.). When only `ids` is provided, returns base outlet data.",
         "parameters": [
           {
             "in": "header",
@@ -2124,7 +2125,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Feature slug for tracking (propagated downstream)"
+            "description": "Feature slug for tracking (optional, propagated downstream)"
           },
           {
             "in": "header",
@@ -2134,7 +2135,7 @@
               "type": "string",
               "format": "uuid"
             },
-            "description": "Campaign ID (required for mutating endpoints)"
+            "description": "Campaign ID (optional for read endpoints)"
           },
           {
             "in": "header",
@@ -2143,7 +2144,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Brand ID(s) — single UUID or comma-separated UUIDs for multi-brand campaigns (required for mutating endpoints). Example: uuid1,uuid2,uuid3"
+            "description": "Brand ID(s) — optional for read endpoints"
           },
           {
             "in": "header",
@@ -2152,21 +2153,31 @@
             "schema": {
               "type": "string"
             },
-            "description": "Workflow slug for tracking (propagated downstream)"
+            "description": "Workflow slug for tracking (optional, propagated downstream)"
           },
           {
             "in": "query",
             "name": "ids",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             },
             "description": "Comma-separated outlet IDs"
+          },
+          {
+            "in": "query",
+            "name": "campaignId",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Filter by campaign ID — includes campaign-specific fields in response"
           }
         ],
         "responses": {
           "200": {
-            "description": "Outlets found",
+            "description": "Outlets found. Shape depends on whether campaignId was provided.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2175,7 +2186,14 @@
                     "outlets": {
                       "type": "array",
                       "items": {
-                        "$ref": "#/components/schemas/OutletResponse"
+                        "oneOf": [
+                          {
+                            "$ref": "#/components/schemas/OutletResponse"
+                          },
+                          {
+                            "$ref": "#/components/schemas/CampaignOutletResponse"
+                          }
+                        ]
                       }
                     }
                   },
@@ -2185,109 +2203,13 @@
                 }
               }
             }
-          }
-        }
-      }
-    },
-    "/internal/outlets/by-campaign/{campaignId}": {
-      "get": {
-        "summary": "All outlets for a campaign, sorted by relevance score descending",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "x-org-id",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "description": "Organization ID (from client-service)"
           },
-          {
-            "in": "header",
-            "name": "x-user-id",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "description": "User ID (from client-service)"
-          },
-          {
-            "in": "header",
-            "name": "x-run-id",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "description": "Run ID (caller's run from runs-service)"
-          },
-          {
-            "in": "header",
-            "name": "x-feature-slug",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Feature slug for tracking (propagated downstream)"
-          },
-          {
-            "in": "header",
-            "name": "x-campaign-id",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "description": "Campaign ID (required for mutating endpoints)"
-          },
-          {
-            "in": "header",
-            "name": "x-brand-id",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Brand ID(s) — single UUID or comma-separated UUIDs for multi-brand campaigns (required for mutating endpoints). Example: uuid1,uuid2,uuid3"
-          },
-          {
-            "in": "header",
-            "name": "x-workflow-slug",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Workflow slug for tracking (propagated downstream)"
-          },
-          {
-            "in": "path",
-            "name": "campaignId",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Campaign outlets sorted by relevance score (descending)",
+          "400": {
+            "description": "Neither ids nor campaignId provided",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "outlets": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/CampaignOutletResponse"
-                      }
-                    }
-                  },
-                  "required": [
-                    "outlets"
-                  ]
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }

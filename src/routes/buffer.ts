@@ -1,6 +1,8 @@
 import { Router, Request, Response } from "express";
 import { z } from "zod";
 import { validateBody } from "../middleware/validate";
+import { requireFullOrgContext } from "../middleware/org-context";
+import type { FullOrgContext } from "../middleware/org-context";
 import { pool } from "../db/pool";
 import { chatComplete } from "../services/chat";
 import { searchBatch } from "../services/google";
@@ -172,7 +174,7 @@ async function markSkipped(campaignId: string, outletId: string): Promise<void> 
  * scores results with LLM, and inserts into the campaign buffer.
  * Returns number of outlets inserted.
  */
-export async function discoverOutlets(ctx: OrgContext, options: DiscoverOptions): Promise<number> {
+export async function discoverOutlets(ctx: FullOrgContext, options: DiscoverOptions): Promise<number> {
   const [extractedFields, featureInputs] = await Promise.all([
     extractFields(BRAND_FIELDS, ctx),
     getFeatureInputs(ctx.campaignId, ctx),
@@ -330,7 +332,7 @@ export async function discoverOutlets(ctx: OrgContext, options: DiscoverOptions)
 }
 
 /** Mini-discover: lightweight wrapper around discoverOutlets with default params. */
-async function miniDiscover(ctx: OrgContext): Promise<number> {
+async function miniDiscover(ctx: FullOrgContext): Promise<number> {
   return discoverOutlets(ctx, {
     queryCount: MINI_DISCOVER_QUERY_COUNT,
     resultsPerQuery: MINI_DISCOVER_RESULTS_PER_QUERY,
@@ -343,9 +345,10 @@ const router = Router();
 // POST /buffer/next — pull the next best outlet(s) from the buffer
 router.post(
   "/next",
+  requireFullOrgContext,
   validateBody(bufferNextSchema),
   async (req: Request, res: Response): Promise<void> => {
-    const ctx = req.orgContext!;
+    const ctx = req.orgContext! as FullOrgContext;
     const { count, idempotencyKey } = req.body as { count: number; idempotencyKey?: string };
 
     try {
