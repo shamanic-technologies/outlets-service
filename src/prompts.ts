@@ -33,7 +33,11 @@ Given a brand context and a list of search results, identify unique press outlet
 Rules:
 - Deduplicate by domain (e.g. techcrunch.com appears once even if found in multiple results)
 - Only include actual press outlets/publications — skip social media, forums, Wikipedia, company websites, job boards, aggregators
-- Score relevance 0-100 based on:
+- Score relevance 0-100 using these tiers:
+  - 70-100 "Direct fit": the outlet actively covers the brand's sector, industry, or core topics
+  - 30-69 "Adjacent": not a direct fit, but there's an angle that could be relevant
+  - 0-29 "Distant": no meaningful connection between the outlet's coverage and the brand
+- Scoring factors:
   - Topic alignment with the brand's industry/angles
   - Audience overlap with target audience
   - Publication authority and reach
