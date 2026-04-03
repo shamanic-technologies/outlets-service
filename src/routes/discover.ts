@@ -3,10 +3,8 @@ import { validateBody } from "../middleware/validate";
 import { requireFullOrgContext } from "../middleware/org-context";
 import type { FullOrgContext } from "../middleware/org-context";
 import { discoverSchema } from "../schemas";
-import { discoverOutlets } from "./buffer";
+import { discoverCycle } from "../services/category-discovery";
 import { createChildRun, closeRun } from "../services/runs";
-
-const BATCH_SIZE = 15;
 
 const router = Router();
 
@@ -23,21 +21,9 @@ router.post(
     try {
       childRunId = await createChildRun("discover", ctx);
 
-      const batches = Math.ceil(count / BATCH_SIZE);
       let totalDiscovered = 0;
-
-      for (let i = 0; i < batches; i++) {
-        const remaining = count - totalDiscovered;
-        const batchTarget = Math.min(remaining, BATCH_SIZE);
-        const queryCount = Math.max(3, Math.ceil(batchTarget / 5));
-        const resultsPerQuery = Math.min(10, Math.ceil(batchTarget / queryCount));
-
-        const discovered = await discoverOutlets(ctx, {
-          queryCount,
-          resultsPerQuery,
-          runId: childRunId,
-        });
-
+      while (totalDiscovered < count) {
+        const discovered = await discoverCycle(ctx);
         totalDiscovered += discovered;
         if (discovered === 0) break;
       }

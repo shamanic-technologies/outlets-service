@@ -107,4 +107,45 @@ export async function searchBatch(
   return res.json() as Promise<BatchSearchResponse>;
 }
 
+/**
+ * Validate an outlet exists by searching Google for `site:domain "Outlet Name"`.
+ * Returns true if at least 1 result is found.
+ */
+export async function validateOutletDomain(
+  domain: string,
+  outletName: string,
+  ctx: OrgContext
+): Promise<boolean> {
+  const query = `site:${domain} "${outletName}"`;
+  const response = await searchSingle(query, "web", ctx, { num: 1 });
+  return response.results.length > 0;
+}
+
+/**
+ * Validate a batch of outlets in parallel using searchBatch.
+ * Returns the input array with a `valid` boolean added to each.
+ */
+export async function validateOutletBatch(
+  outlets: Array<{ name: string; domain: string }>,
+  ctx: OrgContext
+): Promise<Array<{ name: string; domain: string; valid: boolean }>> {
+  if (outlets.length === 0) return [];
+
+  const response = await searchBatch(
+    {
+      queries: outlets.map((o) => ({
+        query: `site:${o.domain} "${o.name}"`,
+        type: "web" as const,
+        num: 1,
+      })),
+    },
+    ctx
+  );
+
+  return outlets.map((o, i) => ({
+    ...o,
+    valid: (response.results[i]?.results.length ?? 0) > 0,
+  }));
+}
+
 export { searchSingle };
