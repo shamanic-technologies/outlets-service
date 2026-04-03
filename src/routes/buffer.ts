@@ -20,6 +20,7 @@ import type { OrgContext } from "../middleware/org-context";
 const MINI_DISCOVER_QUERY_COUNT = 3;
 const MINI_DISCOVER_RESULTS_PER_QUERY = 5;
 const MAX_CLAIM_ITERATIONS = 50;
+const MIN_RELEVANCE_SCORE = 30;
 const IDEMPOTENCY_TTL_DAYS = 60;
 
 export interface DiscoverOptions {
@@ -385,6 +386,13 @@ router.post(
             break;
           }
           continue; // retry claim from freshly filled buffer
+        }
+
+        // Skip low-relevance ("distant") outlets — score < 30 means no meaningful connection
+        if (claimed.relevanceScore < MIN_RELEVANCE_SCORE) {
+          console.log(`[outlets-service] buffer/next: skipping low-relevance outlet ${claimed.outletName} (${claimed.outletId}, score=${claimed.relevanceScore}) for campaign ${ctx.campaignId}`);
+          await markSkipped(claimed.campaignId, claimed.outletId);
+          continue;
         }
 
         // Check if outlet is blocked (contacted / in cooldown) via journalists-service

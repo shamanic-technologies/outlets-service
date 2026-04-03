@@ -250,6 +250,48 @@ describe("POST /buffer/next", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
+  it("skips low-relevance outlets (score < 30) and tries the next one", async () => {
+    const OUTLET_ID_2 = "22222222-2222-2222-2222-222222222222";
+
+    // claimNext iteration 1 → found outlet with low relevance score
+    mockQuery.mockResolvedValueOnce({
+      rows: [makeOutletRow({
+        outlet_name: "Distant Outlet",
+        outlet_url: "https://distant.com",
+        outlet_domain: "distant.com",
+        relevance_score: "15.00",
+      })],
+    });
+    // markSkipped
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    // claimNext iteration 2 → found a good outlet
+    mockQuery.mockResolvedValueOnce({
+      rows: [makeOutletRow({
+        outlet_id: OUTLET_ID_2,
+        outlet_name: "Good Outlet",
+        outlet_url: "https://good.com",
+        outlet_domain: "good.com",
+        relevance_score: "85.00",
+      })],
+    });
+    // block cache check → no cache hit
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    // journalists-service → not blocked
+    mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
+
+    const res = await withHeaders(
+      request(app).post("/buffer/next")
+    ).send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.outlets).toHaveLength(1);
+    expect(res.body.outlets[0].outletId).toBe(OUTLET_ID_2);
+    expect(res.body.outlets[0].outletName).toBe("Good Outlet");
+    // Should NOT have called journalists-service for the low-score outlet
+    expect(mockIsOutletBlocked).toHaveBeenCalledTimes(1);
+  });
+
   it("skips blocked outlets and tries the next one", async () => {
     const OUTLET_ID_2 = "22222222-2222-2222-2222-222222222222";
 
