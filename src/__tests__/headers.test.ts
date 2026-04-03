@@ -12,8 +12,15 @@ const FULL_CTX: OrgContext = {
   workflowSlug: "discover",
 };
 
+const BASE_CTX: OrgContext = {
+  orgId: "org-1",
+  userId: "user-1",
+  runId: "run-1",
+  brandIds: [],
+};
+
 describe("buildServiceHeaders", () => {
-  it("always includes all 7 identity headers", () => {
+  it("includes all 7 identity headers when full context provided", () => {
     const h = buildServiceHeaders("sk-test", FULL_CTX);
     expect(h).toEqual({
       "Content-Type": "application/json",
@@ -35,5 +42,35 @@ describe("buildServiceHeaders", () => {
     };
     const h = buildServiceHeaders("sk-test", ctx);
     expect(h["x-brand-id"]).toBe("brand-1,brand-2,brand-3");
+  });
+
+  it("omits optional headers when not present in context", () => {
+    const h = buildServiceHeaders("sk-test", BASE_CTX);
+    expect(h).toEqual({
+      "Content-Type": "application/json",
+      "x-api-key": "sk-test",
+      "x-org-id": "org-1",
+      "x-user-id": "user-1",
+      "x-run-id": "run-1",
+    });
+    expect(h).not.toHaveProperty("x-campaign-id");
+    expect(h).not.toHaveProperty("x-brand-id");
+    expect(h).not.toHaveProperty("x-feature-slug");
+    expect(h).not.toHaveProperty("x-workflow-slug");
+  });
+
+  it("includes only the headers that are set", () => {
+    const ctx: OrgContext = {
+      orgId: "org-1",
+      userId: "user-1",
+      runId: "run-1",
+      campaignId: "camp-1",
+      brandIds: [],
+    };
+    const h = buildServiceHeaders("sk-test", ctx);
+    expect(h["x-campaign-id"]).toBe("camp-1");
+    expect(h).not.toHaveProperty("x-brand-id");
+    expect(h).not.toHaveProperty("x-feature-slug");
+    expect(h).not.toHaveProperty("x-workflow-slug");
   });
 });

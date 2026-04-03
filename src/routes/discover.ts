@@ -1,5 +1,7 @@
 import { Router, Request, Response } from "express";
 import { validateBody } from "../middleware/validate";
+import { requireFullOrgContext } from "../middleware/org-context";
+import type { FullOrgContext } from "../middleware/org-context";
 import { discoverSchema } from "../schemas";
 import { discoverOutlets } from "./buffer";
 import { createChildRun, closeRun } from "../services/runs";
@@ -11,9 +13,10 @@ const router = Router();
 // POST /outlets/discover — on-demand outlet discovery for a campaign
 router.post(
   "/discover",
+  requireFullOrgContext,
   validateBody(discoverSchema),
   async (req: Request, res: Response): Promise<void> => {
-    const ctx = req.orgContext!;
+    const ctx = req.orgContext! as FullOrgContext;
     const { count } = req.body as { count: number };
 
     let childRunId: string | undefined;

@@ -25,11 +25,17 @@ const RUN_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc";
 const CAMPAIGN_ID = "22222222-2222-2222-2222-222222222222";
 const BRAND_ID = "55555555-5555-5555-5555-555555555555";
 
-function withIdentity(req: request.Test): request.Test {
+/** Base 3 headers only — for read/stats/internal endpoints */
+function withBaseIdentity(req: request.Test): request.Test {
   return req
     .set("x-org-id", ORG_ID)
     .set("x-user-id", USER_ID)
-    .set("x-run-id", RUN_ID)
+    .set("x-run-id", RUN_ID);
+}
+
+/** All 7 headers — for write/workflow endpoints */
+function withIdentity(req: request.Test): request.Test {
+  return withBaseIdentity(req)
     .set("x-campaign-id", CAMPAIGN_ID)
     .set("x-brand-id", BRAND_ID)
     .set("x-feature-slug", "outlets")
@@ -411,9 +417,9 @@ describe("POST /outlets/search", () => {
 });
 
 // ========================
-// Internal
+// Internal (unified GET /internal/outlets)
 // ========================
-describe("GET /internal/outlets/by-ids", () => {
+describe("GET /internal/outlets", () => {
   it("returns outlets by IDs", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [
@@ -428,8 +434,8 @@ describe("GET /internal/outlets/by-ids", () => {
       ],
     });
 
-    const res = await withIdentity(
-      request(app).get("/internal/outlets/by-ids")
+    const res = await withBaseIdentity(
+      request(app).get("/internal/outlets")
     ).query({ ids: "11111111-1111-1111-1111-111111111111" });
 
     expect(res.status).toBe(200);
@@ -437,16 +443,14 @@ describe("GET /internal/outlets/by-ids", () => {
     expect(res.body.outlets[0].outletName).toBe("TechCrunch");
   });
 
-  it("returns 400 without ids", async () => {
-    const res = await withIdentity(
-      request(app).get("/internal/outlets/by-ids")
+  it("returns 400 without ids or campaignId", async () => {
+    const res = await withBaseIdentity(
+      request(app).get("/internal/outlets")
     );
     expect(res.status).toBe(400);
   });
-});
 
-describe("GET /internal/outlets/by-campaign/:campaignId", () => {
-  it("returns campaign outlets sorted by relevance", async () => {
+  it("returns campaign outlets by campaignId", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
@@ -467,15 +471,77 @@ describe("GET /internal/outlets/by-campaign/:campaignId", () => {
       ],
     });
 
-    const res = await withIdentity(
-      request(app).get(`/internal/outlets/by-campaign/${CAMPAIGN_ID}`)
-    );
+    const res = await withBaseIdentity(
+      request(app).get("/internal/outlets")
+    ).query({ campaignId: CAMPAIGN_ID });
 
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(1);
     expect(res.body.outlets[0].outletName).toBe("TechCrunch");
     expect(res.body.outlets[0].brandIds).toEqual([BRAND_ID]);
     expect(res.body.outlets[0].relevanceScore).toBe(85);
+    expect(res.body.outlets[0].campaignId).toBe(CAMPAIGN_ID);
+  });
+
+  it("filters by both ids and campaignId", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: "11111111-1111-1111-1111-111111111111",
+          outlet_name: "TechCrunch",
+          outlet_url: "https://techcrunch.com",
+          outlet_domain: "techcrunch.com",
+          brand_ids: [BRAND_ID],
+          why_relevant: "Top tech",
+          why_not_relevant: "Competitive",
+          relevance_score: "85.00",
+          outlet_status: "open",
+          overall_relevance: null,
+          relevance_rationale: null,
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z",
+        },
+      ],
+    });
+
+    const res = await withBaseIdentity(
+      request(app).get("/internal/outlets")
+    ).query({ ids: "11111111-1111-1111-1111-111111111111", campaignId: CAMPAIGN_ID });
+
+    expect(res.status).toBe(200);
+    expect(res.body.outlets).toHaveLength(1);
+    // Has campaign fields because campaignId was provided
+    expect(res.body.outlets[0].campaignId).toBe(CAMPAIGN_ID);
+    // Verify SQL used both filters
+    const sql = mockQuery.mock.calls[0][0] as string;
+    expect(sql).toContain("co.campaign_id = $1");
+    expect(sql).toContain("o.id IN");
+  });
+
+  it("works with only base identity headers (no workflow headers)", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: "11111111-1111-1111-1111-111111111111",
+          outlet_name: "TechCrunch",
+          outlet_url: "https://techcrunch.com",
+          outlet_domain: "techcrunch.com",
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z",
+        },
+      ],
+    });
+
+    // Only base 3 headers — no x-campaign-id, x-brand-id, x-feature-slug, x-workflow-slug
+    const res = await request(app)
+      .get("/internal/outlets")
+      .set("x-org-id", ORG_ID)
+      .set("x-user-id", USER_ID)
+      .set("x-run-id", RUN_ID)
+      .query({ ids: "11111111-1111-1111-1111-111111111111" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.outlets).toHaveLength(1);
   });
 });
 
@@ -483,10 +549,32 @@ describe("GET /internal/outlets/by-campaign/:campaignId", () => {
 // Identity headers
 // ========================
 describe("Identity headers", () => {
-  it("returns 400 without identity headers", async () => {
+  it("returns 400 without any identity headers", async () => {
     const res = await request(app).get("/outlets");
     expect(res.status).toBe(400);
     expect(res.body.error).toContain("x-org-id");
+  });
+
+  it("read endpoints work with only base 3 headers", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    const res = await withBaseIdentity(request(app).get("/outlets"));
+    expect(res.status).toBe(200);
+  });
+
+  it("write endpoints return 400 with only base 3 headers", async () => {
+    const res = await withBaseIdentity(request(app).post("/outlets")).send({
+      outletName: "TechCrunch",
+      outletUrl: "https://techcrunch.com",
+      outletDomain: "techcrunch.com",
+      whyRelevant: "Good",
+      whyNotRelevant: "None",
+      relevanceScore: 85,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("x-campaign-id");
+    expect(res.body.error).toContain("x-brand-id");
+    expect(res.body.error).toContain("x-feature-slug");
+    expect(res.body.error).toContain("x-workflow-slug");
   });
 });
 

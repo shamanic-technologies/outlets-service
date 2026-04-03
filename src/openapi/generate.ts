@@ -24,14 +24,26 @@ function ref(name: string) {
   return { $ref: `#/components/schemas/${name}` };
 }
 
-const orgContextHeaders = [
+/** Base headers — only the 3 required headers. For read/stats/internal endpoints. */
+const baseOrgContextHeaders = [
   { in: "header", name: "x-org-id", required: true, schema: { type: "string", format: "uuid" }, description: "Organization ID (from client-service)" },
   { in: "header", name: "x-user-id", required: true, schema: { type: "string", format: "uuid" }, description: "User ID (from client-service)" },
   { in: "header", name: "x-run-id", required: true, schema: { type: "string", format: "uuid" }, description: "Run ID (caller's run from runs-service)" },
-  { in: "header", name: "x-feature-slug", required: false, schema: { type: "string" }, description: "Feature slug for tracking (propagated downstream)" },
-  { in: "header", name: "x-campaign-id", required: false, schema: { type: "string", format: "uuid" }, description: "Campaign ID (required for mutating endpoints)" },
-  { in: "header", name: "x-brand-id", required: false, schema: { type: "string" }, description: "Brand ID(s) — single UUID or comma-separated UUIDs for multi-brand campaigns (required for mutating endpoints). Example: uuid1,uuid2,uuid3" },
-  { in: "header", name: "x-workflow-slug", required: false, schema: { type: "string" }, description: "Workflow slug for tracking (propagated downstream)" },
+  { in: "header", name: "x-feature-slug", required: false, schema: { type: "string" }, description: "Feature slug for tracking (optional, propagated downstream)" },
+  { in: "header", name: "x-campaign-id", required: false, schema: { type: "string", format: "uuid" }, description: "Campaign ID (optional for read endpoints)" },
+  { in: "header", name: "x-brand-id", required: false, schema: { type: "string" }, description: "Brand ID(s) — optional for read endpoints" },
+  { in: "header", name: "x-workflow-slug", required: false, schema: { type: "string" }, description: "Workflow slug for tracking (optional, propagated downstream)" },
+];
+
+/** Full headers — all 7 required. For write/workflow endpoints. */
+const fullOrgContextHeaders = [
+  { in: "header", name: "x-org-id", required: true, schema: { type: "string", format: "uuid" }, description: "Organization ID (from client-service)" },
+  { in: "header", name: "x-user-id", required: true, schema: { type: "string", format: "uuid" }, description: "User ID (from client-service)" },
+  { in: "header", name: "x-run-id", required: true, schema: { type: "string", format: "uuid" }, description: "Run ID (caller's run from runs-service)" },
+  { in: "header", name: "x-feature-slug", required: true, schema: { type: "string" }, description: "Feature slug for tracking (propagated downstream)" },
+  { in: "header", name: "x-campaign-id", required: true, schema: { type: "string", format: "uuid" }, description: "Campaign ID" },
+  { in: "header", name: "x-brand-id", required: true, schema: { type: "string" }, description: "Brand ID(s) — single UUID or comma-separated UUIDs for multi-brand campaigns. Example: uuid1,uuid2,uuid3" },
+  { in: "header", name: "x-workflow-slug", required: true, schema: { type: "string" }, description: "Workflow slug for tracking (propagated downstream)" },
 ];
 
 const spec = {
@@ -83,8 +95,8 @@ const spec = {
     "/outlets": {
       post: {
         summary: "Create outlet (upsert by outlet_url)",
-        description: "Requires x-campaign-id and x-brand-id headers. Upserts by outlet_domain — if the domain already exists, updates the name/url.",
-        parameters: [...orgContextHeaders],
+        description: "Requires all 7 identity headers. Upserts by outlet_domain — if the domain already exists, updates the name/url.",
+        parameters: [...fullOrgContextHeaders],
         requestBody: {
           content: {
             "application/json": {
@@ -133,7 +145,7 @@ const spec = {
         summary: "List outlets with filters",
         description: "Returns outlets joined with their campaign data. Filter by campaignId, brandId, and/or status.",
         parameters: [
-          ...orgContextHeaders,
+          ...baseOrgContextHeaders,
           { in: "query", name: "campaignId", schema: { type: "string", format: "uuid" }, description: "Filter by campaign ID" },
           { in: "query", name: "brandId", schema: { type: "string", format: "uuid" }, description: "Filter by brand ID" },
           { in: "query", name: "status", schema: { type: "string", enum: ["open", "ended", "denied", "served", "skipped"] }, description: "Filter by outlet status" },
@@ -184,7 +196,7 @@ const spec = {
     "/outlets/{id}": {
       get: {
         summary: "Get outlet by ID",
-        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }, ...orgContextHeaders],
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }, ...baseOrgContextHeaders],
         responses: {
           "200": { description: "Outlet found", content: { "application/json": { schema: ref("OutletResponse") } } },
           "404": { description: "Outlet not found" },
@@ -192,7 +204,7 @@ const spec = {
       },
       patch: {
         summary: "Update outlet",
-        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }, ...orgContextHeaders],
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }, ...baseOrgContextHeaders],
         requestBody: { content: { "application/json": { schema: ref("UpdateOutlet") } } },
         responses: {
           "200": { description: "Outlet updated", content: { "application/json": { schema: ref("OutletResponse") } } },
@@ -203,10 +215,10 @@ const spec = {
     "/outlets/{id}/status": {
       patch: {
         summary: "Update outlet status",
-        description: "Updates the status of an outlet within a campaign. Requires x-campaign-id header to identify the campaign_outlets row. Setting status to 'ended' also sets ended_at timestamp.",
+        description: "Updates the status of an outlet within a campaign. Requires all 7 identity headers. Setting status to 'ended' also sets ended_at timestamp.",
         parameters: [
           { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" }, description: "Outlet ID" },
-          ...orgContextHeaders,
+          ...fullOrgContextHeaders,
         ],
         requestBody: {
           content: {
@@ -250,8 +262,8 @@ const spec = {
     "/outlets/bulk": {
       post: {
         summary: "Bulk upsert outlets",
-        description: "Requires x-campaign-id and x-brand-id headers. All outlets in the batch share the same campaign and brand. Max 500 outlets per request.",
-        parameters: [...orgContextHeaders],
+        description: "Requires all 7 identity headers. All outlets in the batch share the same campaign and brand. Max 500 outlets per request.",
+        parameters: [...fullOrgContextHeaders],
         requestBody: {
           content: {
             "application/json": {
@@ -302,7 +314,7 @@ const spec = {
       post: {
         summary: "Search outlets by name/url",
         description: "Full-text search (ILIKE) on outlet name and URL. Optionally scoped to a campaign.",
-        parameters: [...orgContextHeaders],
+        parameters: [...baseOrgContextHeaders],
         requestBody: {
           content: {
             "application/json": {
@@ -335,7 +347,7 @@ const spec = {
         summary: "Aggregated outlet discovery metrics",
         description: "Returns outlet discovery stats (count, avg relevance, search queries used). Supports filtering by brandId, campaignId, workflowSlug, featureSlug, and dynasty slugs. Dynasty slug filters resolve to all versioned slugs via workflow-service / features-service.",
         parameters: [
-          ...orgContextHeaders,
+          ...baseOrgContextHeaders,
           { in: "query", name: "brandId", schema: { type: "string", format: "uuid" }, description: "Filter by brand ID" },
           { in: "query", name: "campaignId", schema: { type: "string", format: "uuid" }, description: "Filter by campaign ID" },
           { in: "query", name: "workflowSlug", schema: { type: "string" }, description: "Filter by exact workflow slug" },
@@ -365,7 +377,7 @@ const spec = {
         summary: "Cost stats for outlet discovery",
         description: "Returns aggregated discovery costs by querying runs-service for all runs associated with outlets. Supports filters (brandId, campaignId) and optional groupBy (outletId, runId). Without groupBy returns flat totals; with groupBy=outletId returns cost-per-outlet (run cost / outlets in that run); with groupBy=runId returns one row per discovery run.",
         parameters: [
-          ...orgContextHeaders,
+          ...baseOrgContextHeaders,
           { in: "query", name: "brandId", schema: { type: "string", format: "uuid" }, description: "Filter by brand ID" },
           { in: "query", name: "campaignId", schema: { type: "string", format: "uuid" }, description: "Filter by campaign ID" },
           { in: "query", name: "groupBy", schema: { type: "string", enum: ["outletId", "runId"] }, description: "Group results by dimension. Omit for flat totals." },
@@ -395,8 +407,8 @@ const spec = {
     "/outlets/discover": {
       post: {
         summary: "Discover outlets for a campaign",
-        description: "Runs parameterized outlet discovery: generates search queries via LLM, searches Google, scores results, and inserts into the campaign buffer. Creates a child run in runs-service for cost tracking. Requires x-campaign-id and x-brand-id headers.",
-        parameters: [...orgContextHeaders],
+        description: "Runs parameterized outlet discovery: generates search queries via LLM, searches Google, scores results, and inserts into the campaign buffer. Creates a child run in runs-service for cost tracking. Requires all 7 identity headers.",
+        parameters: [...fullOrgContextHeaders],
         requestBody: {
           content: {
             "application/json": {
@@ -423,8 +435,8 @@ const spec = {
     "/buffer/next": {
       post: {
         summary: "Pull the next best outlet(s) from the buffer",
-        description: "Returns up to `count` (default 1, max 50) highest-scored open outlets for the campaign. If the buffer is empty, triggers a lightweight mini-discover (3 queries × 5 Google results, LLM scoring) to refill it. Supports idempotency via optional idempotencyKey. Requires x-campaign-id and x-brand-id headers.",
-        parameters: [...orgContextHeaders],
+        description: "Returns up to `count` (default 1, max 50) highest-scored open outlets for the campaign. If the buffer is empty, triggers a lightweight mini-discover (3 queries × 5 Google results, LLM scoring) to refill it. Supports idempotency via optional idempotencyKey. Requires all 7 identity headers.",
+        parameters: [...fullOrgContextHeaders],
         requestBody: { content: { "application/json": { schema: ref("BufferNext") } } },
         responses: {
           "200": { description: "Array of outlets (may be empty if none available)", content: { "application/json": { schema: ref("BufferNextResponse") } } },
@@ -433,47 +445,31 @@ const spec = {
         },
       },
     },
-    "/internal/outlets/by-ids": {
+    "/internal/outlets": {
       get: {
-        summary: "Batch lookup outlets by IDs",
-        parameters: [...orgContextHeaders, { in: "query", name: "ids", required: true, schema: { type: "string" }, description: "Comma-separated outlet IDs" }],
+        summary: "Lookup outlets by IDs and/or campaignId",
+        description: "Unified internal endpoint. At least one of `ids` or `campaignId` must be provided. When `campaignId` is provided, returns campaign-enriched outlet data (relevance, status, etc.). When only `ids` is provided, returns base outlet data.",
+        parameters: [
+          ...baseOrgContextHeaders,
+          { in: "query", name: "ids", required: false, schema: { type: "string" }, description: "Comma-separated outlet IDs" },
+          { in: "query", name: "campaignId", required: false, schema: { type: "string", format: "uuid" }, description: "Filter by campaign ID — includes campaign-specific fields in response" },
+        ],
         responses: {
           "200": {
-            description: "Outlets found",
+            description: "Outlets found. Shape depends on whether campaignId was provided.",
             content: {
               "application/json": {
                 schema: {
                   type: "object",
                   properties: {
-                    outlets: { type: "array", items: ref("OutletResponse") },
+                    outlets: { type: "array", items: { oneOf: [ref("OutletResponse"), ref("CampaignOutletResponse")] } },
                   },
                   required: ["outlets"],
                 },
               },
             },
           },
-        },
-      },
-    },
-    "/internal/outlets/by-campaign/{campaignId}": {
-      get: {
-        summary: "All outlets for a campaign, sorted by relevance score descending",
-        parameters: [...orgContextHeaders, { in: "path", name: "campaignId", required: true, schema: { type: "string", format: "uuid" } }],
-        responses: {
-          "200": {
-            description: "Campaign outlets sorted by relevance score (descending)",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    outlets: { type: "array", items: ref("CampaignOutletResponse") },
-                  },
-                  required: ["outlets"],
-                },
-              },
-            },
-          },
+          "400": { description: "Neither ids nor campaignId provided", content: { "application/json": { schema: ref("ErrorResponse") } } },
         },
       },
     },

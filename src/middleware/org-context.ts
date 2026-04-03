@@ -1,6 +1,18 @@
 import { Request, Response, NextFunction } from "express";
 
+/** Base context — only the 3 always-required headers. Workflow headers are optional. */
 export interface OrgContext {
+  orgId: string;
+  userId: string;
+  runId: string;
+  featureSlug?: string;
+  campaignId?: string;
+  brandIds: string[];
+  workflowSlug?: string;
+}
+
+/** Full context — all 7 headers required. Used by write/workflow endpoints. */
+export interface FullOrgContext {
   orgId: string;
   userId: string;
   runId: string;
@@ -20,6 +32,11 @@ declare global {
 
 const EXEMPT_PATHS = ["/health", "/openapi.json"];
 
+/**
+ * Extracts org context from headers. Only the 3 base headers (x-org-id,
+ * x-user-id, x-run-id) are required. The 4 workflow headers are parsed
+ * if present but not enforced — use requireFullOrgContext for that.
+ */
 export function extractOrgContext(
   req: Request,
   res: Response,
@@ -42,10 +59,6 @@ export function extractOrgContext(
     !orgId && "x-org-id",
     !userId && "x-user-id",
     !runId && "x-run-id",
-    !campaignId && "x-campaign-id",
-    !rawBrandId && "x-brand-id",
-    !featureSlug && "x-feature-slug",
-    !workflowSlug && "x-workflow-slug",
   ].filter(Boolean);
 
   if (missing.length > 0) {
@@ -53,6 +66,44 @@ export function extractOrgContext(
     return;
   }
 
-  req.orgContext = { orgId: orgId!, userId: userId!, runId: runId!, featureSlug: featureSlug!, campaignId: campaignId!, brandIds, workflowSlug: workflowSlug! };
+  req.orgContext = {
+    orgId: orgId!,
+    userId: userId!,
+    runId: runId!,
+    featureSlug: featureSlug || undefined,
+    campaignId: campaignId || undefined,
+    brandIds,
+    workflowSlug: workflowSlug || undefined,
+  };
+  next();
+}
+
+/**
+ * Guard middleware for write/workflow endpoints that require all 7 identity
+ * headers. Must be applied AFTER extractOrgContext.
+ */
+export function requireFullOrgContext(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  const ctx = req.orgContext;
+  if (!ctx) {
+    res.status(400).json({ error: "Missing org context" });
+    return;
+  }
+
+  const missing = [
+    !ctx.campaignId && "x-campaign-id",
+    !ctx.brandIds.length && "x-brand-id",
+    !ctx.featureSlug && "x-feature-slug",
+    !ctx.workflowSlug && "x-workflow-slug",
+  ].filter(Boolean);
+
+  if (missing.length > 0) {
+    res.status(400).json({ error: `Missing required headers: ${missing.join(", ")}` });
+    return;
+  }
+
   next();
 }

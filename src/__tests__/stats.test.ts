@@ -45,11 +45,15 @@ const RUN_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc";
 const CAMPAIGN_ID = "dddddddd-dddd-dddd-dddd-dddddddddddd";
 const BRAND_ID = "55555555-5555-5555-5555-555555555555";
 
-function withIdentity(req: request.Test): request.Test {
+function withBaseIdentity(req: request.Test): request.Test {
   return req
     .set("x-org-id", ORG_ID)
     .set("x-user-id", USER_ID)
-    .set("x-run-id", RUN_ID)
+    .set("x-run-id", RUN_ID);
+}
+
+function withIdentity(req: request.Test): request.Test {
+  return withBaseIdentity(req)
     .set("x-campaign-id", CAMPAIGN_ID)
     .set("x-brand-id", BRAND_ID)
     .set("x-feature-slug", "outlets")
@@ -638,5 +642,30 @@ describe("GET /outlets/stats/costs", () => {
     expect(res.status).toBe(200);
     expect(res.body.groups[0].totalCostInUsdCents).toBe(0);
     expect(res.body.groups[0].runCount).toBe(1);
+  });
+});
+
+// ========================
+// Base headers only (no workflow context)
+// ========================
+describe("Stats endpoints with base headers only", () => {
+  it("GET /outlets/stats works with only 3 base headers", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ outlets_discovered: 5, avg_relevance_score: "72.50", search_queries_used: 10 }],
+    });
+
+    const res = await withBaseIdentity(request(app).get("/outlets/stats"));
+
+    expect(res.status).toBe(200);
+    expect(res.body.outletsDiscovered).toBe(5);
+  });
+
+  it("GET /outlets/stats/costs works with only 3 base headers", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await withBaseIdentity(request(app).get("/outlets/stats/costs"));
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ groups: [] });
   });
 });

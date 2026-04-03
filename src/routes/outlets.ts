@@ -1,6 +1,8 @@
 import { Router, Request, Response } from "express";
 import { pool } from "../db/pool";
 import { validateBody, validateQuery } from "../middleware/validate";
+import { requireFullOrgContext } from "../middleware/org-context";
+import type { FullOrgContext } from "../middleware/org-context";
 import {
   createOutletSchema,
   updateOutletSchema,
@@ -23,9 +25,10 @@ function extractDomain(url: string): string {
 // POST /outlets — create outlet (upsert by outlet_url)
 router.post(
   "/",
+  requireFullOrgContext,
   validateBody(createOutletSchema),
   async (req: Request, res: Response): Promise<void> => {
-    const ctx = req.orgContext!;
+    const ctx = req.orgContext! as FullOrgContext;
 
     try {
       const b = req.body;
@@ -238,9 +241,10 @@ router.patch(
 // PATCH /outlets/:id/status
 router.patch(
   "/:id/status",
+  requireFullOrgContext,
   validateBody(updateOutletStatusSchema),
   async (req: Request, res: Response): Promise<void> => {
-    const ctx = req.orgContext!;
+    const ctx = req.orgContext! as FullOrgContext;
 
     try {
       const { status, reason } = req.body;
@@ -278,9 +282,10 @@ router.patch(
 // POST /outlets/bulk — upsert many outlets
 router.post(
   "/bulk",
+  requireFullOrgContext,
   validateBody(bulkCreateOutletsSchema),
   async (req: Request, res: Response): Promise<void> => {
-    const ctx = req.orgContext!;
+    const ctx = req.orgContext! as FullOrgContext;
 
     try {
       const { outlets } = req.body;
