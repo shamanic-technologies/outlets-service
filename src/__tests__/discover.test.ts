@@ -27,32 +27,10 @@ vi.mock("../services/runs", () => ({
   closeRun: (...args: unknown[]) => mockCloseRun(...args),
 }));
 
-// Mock chat service
-const mockChatComplete = vi.fn();
-vi.mock("../services/chat", () => ({
-  chatComplete: (...args: unknown[]) => mockChatComplete(...args),
-}));
-
-// Mock google service
-const mockSearchBatch = vi.fn();
-vi.mock("../services/google", () => ({
-  searchBatch: (...args: unknown[]) => mockSearchBatch(...args),
-}));
-
-// Mock brand service
-const mockExtractFields = vi.fn();
-vi.mock("../services/brand", async () => {
-  const actual = await vi.importActual("../services/brand");
-  return {
-    ...actual,
-    extractFields: (...args: unknown[]) => mockExtractFields(...args),
-  };
-});
-
-// Mock campaign service
-const mockGetFeatureInputs = vi.fn();
-vi.mock("../services/campaign", () => ({
-  getFeatureInputs: (...args: unknown[]) => mockGetFeatureInputs(...args),
+// Mock category discovery
+const mockDiscoverCycle = vi.fn();
+vi.mock("../services/category-discovery", () => ({
+  discoverCycle: (...args: unknown[]) => mockDiscoverCycle(...args),
 }));
 
 const ORG_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
@@ -61,7 +39,6 @@ const RUN_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc";
 const CHILD_RUN_ID = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee";
 const CAMPAIGN_ID = "dddddddd-dddd-dddd-dddd-dddddddddddd";
 const BRAND_ID = "55555555-5555-5555-5555-555555555555";
-const OUTLET_ID = "11111111-1111-1111-1111-111111111111";
 
 function withHeaders(req: request.Test): request.Test {
   return req
@@ -72,68 +49,6 @@ function withHeaders(req: request.Test): request.Test {
     .set("x-brand-id", BRAND_ID)
     .set("x-feature-slug", "outlets")
     .set("x-workflow-slug", "discover");
-}
-
-const extractFieldsResponse = {
-  brand_name: { value: "Acme Corp", byBrand: { "acme.com": { value: "Acme Corp", cached: true, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: ["https://acme.com"] } } },
-  elevator_pitch: { value: "SaaS platform for HR automation", byBrand: { "acme.com": { value: "SaaS platform for HR automation", cached: true, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: ["https://acme.com"] } } },
-  categories: { value: "HR Tech", byBrand: { "acme.com": { value: "HR Tech", cached: true, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: ["https://acme.com"] } } },
-  target_geo: { value: "US", byBrand: { "acme.com": { value: "US", cached: true, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: null } } },
-  target_audience: { value: "HR directors", byBrand: { "acme.com": { value: "HR directors", cached: true, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: null } } },
-  angles: { value: null, byBrand: { "acme.com": { value: null, cached: false, extractedAt: "2026-03-01T00:00:00Z", expiresAt: null, sourceUrls: null } } },
-};
-
-const queryResponse = {
-  content: "",
-  json: {
-    queries: [
-      { query: "HR tech publications", type: "web", rationale: "Find HR outlets" },
-      { query: "HR technology news", type: "news", rationale: "Find news outlets" },
-      { query: "HR SaaS blogs", type: "web", rationale: "Niche outlets" },
-    ],
-  },
-  tokensInput: 150,
-  tokensOutput: 100,
-  model: "claude-sonnet-4-6",
-};
-
-const searchResponse = {
-  results: [
-    { query: "HR tech publications", type: "web", results: [{ title: "HR Tech Weekly", url: "https://hrtechweekly.com", snippet: "HR tech news", domain: "hrtechweekly.com" }] },
-    { query: "HR technology news", type: "news", results: [{ title: "TechCrunch HR", url: "https://techcrunch.com/hr", snippet: "TC HR", domain: "techcrunch.com" }] },
-    { query: "HR SaaS blogs", type: "web", results: [{ title: "SaaS HR Blog", url: "https://saashrblog.com", snippet: "SaaS blog", domain: "saashrblog.com" }] },
-  ],
-};
-
-const scoringResponse = {
-  content: "",
-  json: {
-    outlets: [
-      { name: "HR Tech Weekly", url: "https://hrtechweekly.com", domain: "hrtechweekly.com", relevanceScore: 92, whyRelevant: "Perfect fit", whyNotRelevant: "Small reach", overallRelevance: "high" },
-      { name: "TechCrunch", url: "https://techcrunch.com", domain: "techcrunch.com", relevanceScore: 75, whyRelevant: "Big tech pub", whyNotRelevant: "Not HR-specific", overallRelevance: "medium" },
-    ],
-  },
-  tokensInput: 400,
-  tokensOutput: 200,
-  model: "claude-sonnet-4-6",
-};
-
-function setupDiscoverMocks() {
-  mockExtractFields.mockResolvedValue(extractFieldsResponse);
-  mockGetFeatureInputs.mockResolvedValue(null);
-  mockChatComplete
-    .mockResolvedValueOnce(queryResponse)
-    .mockResolvedValueOnce(scoringResponse);
-  mockSearchBatch.mockResolvedValueOnce(searchResponse);
-}
-
-function setupDbInsertMocks(outletCount: number) {
-  mockQuery.mockResolvedValueOnce({}); // BEGIN
-  for (let i = 0; i < outletCount; i++) {
-    mockQuery.mockResolvedValueOnce({ rows: [{ id: `${OUTLET_ID.slice(0, -1)}${i}` }] }); // INSERT outlet
-    mockQuery.mockResolvedValueOnce({ rowCount: 1 }); // INSERT campaign_outlet
-  }
-  mockQuery.mockResolvedValueOnce({}); // COMMIT
 }
 
 let app: Express;
@@ -147,9 +62,12 @@ beforeEach(() => {
 });
 
 describe("POST /outlets/discover", () => {
-  it("creates a child run, discovers outlets, closes run as completed", async () => {
-    setupDiscoverMocks();
-    setupDbInsertMocks(2);
+  it("creates a child run, discovers outlets via discoverCycle, closes run as completed", async () => {
+    // discoverCycle returns 5 outlets on first call, 3 on second, then 0 (done)
+    mockDiscoverCycle
+      .mockResolvedValueOnce(5)
+      .mockResolvedValueOnce(3)
+      .mockResolvedValueOnce(0);
 
     const res = await withHeaders(
       request(app).post("/outlets/discover")
@@ -157,7 +75,7 @@ describe("POST /outlets/discover", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.runId).toBe(CHILD_RUN_ID);
-    expect(res.body.discovered).toBe(2);
+    expect(res.body.discovered).toBe(8);
 
     // Verify child run was created
     expect(mockCreateChildRun).toHaveBeenCalledWith("discover", expect.objectContaining({ orgId: ORG_ID, runId: RUN_ID }));
@@ -166,20 +84,34 @@ describe("POST /outlets/discover", () => {
   });
 
   it("uses default count of 15 when not specified", async () => {
-    setupDiscoverMocks();
-    setupDbInsertMocks(2);
+    // Returns 15 in two batches, then stops because count reached
+    mockDiscoverCycle
+      .mockResolvedValueOnce(10)
+      .mockResolvedValueOnce(5);
 
     const res = await withHeaders(
       request(app).post("/outlets/discover")
     ).send({});
 
     expect(res.status).toBe(200);
-    expect(res.body.discovered).toBe(2);
+    expect(res.body.discovered).toBe(15);
+  });
+
+  it("stops when discoverCycle returns 0", async () => {
+    mockDiscoverCycle.mockResolvedValueOnce(0);
+
+    const res = await withHeaders(
+      request(app).post("/outlets/discover")
+    ).send({ count: 50 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.discovered).toBe(0);
+    expect(mockDiscoverCycle).toHaveBeenCalledTimes(1);
+    expect(mockCloseRun).toHaveBeenCalledWith(CHILD_RUN_ID, "completed", expect.anything());
   });
 
   it("closes run as failed on error", async () => {
-    mockCreateChildRun.mockResolvedValue(CHILD_RUN_ID);
-    mockExtractFields.mockRejectedValueOnce(new Error("brand-service /brands/extract-fields failed (503): down"));
+    mockDiscoverCycle.mockRejectedValueOnce(new Error("brand-service /brands/extract-fields failed (503): down"));
 
     const res = await withHeaders(
       request(app).post("/outlets/discover")
@@ -202,7 +134,6 @@ describe("POST /outlets/discover", () => {
     expect(res.body.error).toContain("x-brand-id");
     expect(res.body.error).toContain("x-feature-slug");
     expect(res.body.error).toContain("x-workflow-slug");
-    expect(res.body.error).toContain("x-brand-id");
   });
 
   it("returns 400 for count > 200", async () => {
@@ -221,83 +152,5 @@ describe("POST /outlets/discover", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBe("Validation error");
-  });
-
-  it("stops batching when a batch returns 0 discovered", async () => {
-    // First batch: LLM returns invalid format → 0 discovered
-    mockExtractFields.mockResolvedValue(extractFieldsResponse);
-    mockGetFeatureInputs.mockResolvedValue(null);
-    mockChatComplete.mockResolvedValueOnce({
-      content: "bad",
-      json: { invalid: true },
-      tokensInput: 50,
-      tokensOutput: 20,
-      model: "claude-sonnet-4-6",
-    });
-
-    const res = await withHeaders(
-      request(app).post("/outlets/discover")
-    ).send({ count: 50 });
-
-    expect(res.status).toBe(200);
-    expect(res.body.discovered).toBe(0);
-    // Only 1 LLM call — stopped after first batch returned 0
-    expect(mockChatComplete).toHaveBeenCalledTimes(1);
-    expect(mockCloseRun).toHaveBeenCalledWith(CHILD_RUN_ID, "completed", expect.anything());
-  });
-
-  it("passes the child run ID to the inserted campaign_outlets", async () => {
-    setupDiscoverMocks();
-    setupDbInsertMocks(2);
-
-    await withHeaders(
-      request(app).post("/outlets/discover")
-    ).send({ count: 10 });
-
-    // Find the campaign_outlet INSERT calls (they contain 'campaign_outlets')
-    const campaignOutletInserts = mockQuery.mock.calls.filter(
-      (call) => typeof call[0] === "string" && call[0].includes("INTO campaign_outlets")
-    );
-    expect(campaignOutletInserts.length).toBe(2);
-    // The run_id parameter (last param, $11) should be the child run ID
-    for (const call of campaignOutletInserts) {
-      const params = call[1] as unknown[];
-      expect(params[params.length - 1]).toBe(CHILD_RUN_ID);
-    }
-  });
-
-  it("runs multiple batches for large count", async () => {
-    // count=30 → 2 batches of 15
-    // Batch 1: discovers 2 outlets
-    mockExtractFields.mockResolvedValue(extractFieldsResponse);
-    mockGetFeatureInputs.mockResolvedValue(null);
-    mockChatComplete
-      .mockResolvedValueOnce(queryResponse)
-      .mockResolvedValueOnce(scoringResponse);
-    mockSearchBatch.mockResolvedValueOnce(searchResponse);
-    setupDbInsertMocks(2);
-
-    // Batch 2: discovers 2 more outlets
-    mockChatComplete
-      .mockResolvedValueOnce(queryResponse)
-      .mockResolvedValueOnce(scoringResponse);
-    mockSearchBatch.mockResolvedValueOnce(searchResponse);
-    // Need new DB mocks for batch 2
-    mockQuery.mockResolvedValueOnce({}); // BEGIN
-    mockQuery.mockResolvedValueOnce({ rows: [{ id: "33333333-3333-3333-3333-333333333333" }] });
-    mockQuery.mockResolvedValueOnce({ rowCount: 1 });
-    mockQuery.mockResolvedValueOnce({ rows: [{ id: "44444444-4444-4444-4444-444444444444" }] });
-    mockQuery.mockResolvedValueOnce({ rowCount: 1 });
-    mockQuery.mockResolvedValueOnce({}); // COMMIT
-
-    const res = await withHeaders(
-      request(app).post("/outlets/discover")
-    ).send({ count: 30 });
-
-    expect(res.status).toBe(200);
-    expect(res.body.discovered).toBe(4); // 2 + 2
-    // 4 LLM calls: 2 batches × (query gen + scoring)
-    expect(mockChatComplete).toHaveBeenCalledTimes(4);
-    expect(mockSearchBatch).toHaveBeenCalledTimes(2);
   });
 });

@@ -1,62 +1,52 @@
-export const GENERATE_QUERIES_SYSTEM_PROMPT = `You are a PR research assistant specializing in press outlet discovery.
+// --- Category generation ---
 
-Given a brand brief, generate Google search queries that will surface relevant press outlets (publications, blogs, news sites) where this brand could get coverage.
+export const GENERATE_CATEGORIES_SYSTEM_PROMPT = `You are a PR research assistant specializing in press outlet discovery.
 
-Generate a mix of:
-- Direct outlet discovery queries (e.g. "best [industry] publications", "top [topic] blogs")
-- News-style queries to find outlets that cover similar topics (e.g. "[competitor] press coverage", "[industry] news [year]")
-- Niche/vertical queries for specialized outlets
-- Geographic queries if a target region is specified
+Given a brand brief, generate outlet categories. Each category is a pair: (outlet type, geography).
+
+Outlet types are broad publication categories like: "Tech News", "Business News", "SaaS Blogs", "Industry Trade Publications", "Startup Media", "Lifestyle Magazines", "Real Estate Publications", "Finance & Investment News", "Marketing Blogs", etc.
+
+Geography is a region or country like: "US", "UK", "Europe", "Australia", "Global", "DACH", "Nordics", "Southeast Asia", etc.
 
 Rules:
-- Generate 8-12 queries
-- Mark each as "web" or "news" type
-- Include a brief rationale for each query
-- Focus on finding the OUTLETS (publications), not individual articles
-- Vary query specificity: some broad, some niche
+- Generate exactly 10 categories
+- Rank them by relevance to the brand (rank 1 = most relevant)
+- Include a brief rationale for each
+- Mix broad and niche categories
+- Mix geographies relevant to the brand's target markets
+- Do NOT repeat categories that were already generated (see "already used" list)
 
 Respond with JSON matching this schema:
 {
-  "queries": [
+  "categories": [
     {
-      "query": "the search query string",
-      "type": "web" | "news",
-      "rationale": "why this query will surface relevant outlets"
+      "name": "Tech News",
+      "geo": "US",
+      "rank": 1,
+      "rationale": "Brand is a US tech company, tech news outlets are the primary target"
     }
   ]
 }`;
 
-export const SCORE_OUTLETS_SYSTEM_PROMPT = `You are a PR research assistant that evaluates press outlets for brand relevance.
+// --- Outlet generation within a category ---
 
-Given a brand context and a list of search results, identify unique press outlets and score their relevance.
+export const GENERATE_OUTLETS_SYSTEM_PROMPT = `You are a PR research assistant. Given a brand context and a specific outlet category, suggest press outlets (publications, blogs, news sites) that belong to this category.
 
 Rules:
-- Deduplicate by domain (e.g. techcrunch.com appears once even if found in multiple results)
+- Suggest exactly 10 outlets
+- Each outlet must have a name and a domain (e.g. "techcrunch.com")
+- Only suggest REAL, well-known outlets — do not invent or hallucinate publications
+- Do NOT repeat outlets already listed in the "known domains" list
 - Only include actual press outlets/publications — skip social media, forums, Wikipedia, company websites, job boards, aggregators
-- Score relevance 0-100 using these tiers:
-  - 70-100 "Direct fit": the outlet actively covers the brand's sector, industry, or core topics
-  - 30-69 "Adjacent": not a direct fit, but there's an angle that could be relevant
-  - 0-29 "Distant": no meaningful connection between the outlet's coverage and the brand
-- Scoring factors:
-  - Topic alignment with the brand's industry/angles
-  - Audience overlap with target audience
-  - Publication authority and reach
-  - Geographic relevance if specified
-- Provide a clear "whyRelevant" (what makes this outlet a good fit)
-- Provide a clear "whyNotRelevant" (any concerns or mismatches)
-- Include an "overallRelevance" summary: "high", "medium", or "low"
+- Provide a brief "whyRelevant" for each (why this outlet is a good fit for the brand in this category)
 
 Respond with JSON matching this schema:
 {
   "outlets": [
     {
-      "name": "Publication Name",
-      "url": "https://domain.com",
-      "domain": "domain.com",
-      "relevanceScore": 85,
-      "whyRelevant": "Covers HR tech extensively, reaches CTOs and HR directors",
-      "whyNotRelevant": "US-focused, limited European readership",
-      "overallRelevance": "high"
+      "name": "TechCrunch",
+      "domain": "techcrunch.com",
+      "whyRelevant": "Leading tech news outlet covering startups and SaaS"
     }
   ]
 }`;
@@ -70,10 +60,7 @@ export interface BrandPromptContext {
   angles?: string[];
 }
 
-export function buildQueryGenerationMessage(
-  brand: BrandPromptContext,
-  featureInput?: Record<string, unknown>
-): string {
+function buildBrandParts(brand: BrandPromptContext): string[] {
   const parts = [
     `Brand: ${brand.brandName}`,
     `Description: ${brand.brandDescription}`,
@@ -82,40 +69,46 @@ export function buildQueryGenerationMessage(
   if (brand.targetGeo) parts.push(`Target Geography: ${brand.targetGeo}`);
   if (brand.targetAudience) parts.push(`Target Audience: ${brand.targetAudience}`);
   if (brand.angles?.length) parts.push(`PR Angles: ${brand.angles.join(", ")}`);
+  return parts;
+}
 
-  let msg = `Generate Google search queries to find relevant press outlets for this brand:\n\n${parts.join("\n")}`;
-
+function appendFeatureInput(msg: string, featureInput?: Record<string, unknown>): string {
   if (featureInput && Object.keys(featureInput).length > 0) {
-    msg += `\n\n## Additional Context\n${JSON.stringify(featureInput, null, 2)}`;
+    return msg + `\n\n## Additional Context\n${JSON.stringify(featureInput, null, 2)}`;
   }
-
   return msg;
 }
 
-export function buildScoringMessage(
+export function buildCategoryGenerationMessage(
   brand: BrandPromptContext,
-  searchResults: Array<{ query: string; results: Array<{ title: string; url: string; snippet: string; domain: string }> }>,
+  alreadyUsed: Array<{ name: string; geo: string }>,
   featureInput?: Record<string, unknown>
 ): string {
-  const contextParts = [
-    `Brand: ${brand.brandName}`,
-    `Description: ${brand.brandDescription}`,
-    `Industry: ${brand.industry}`,
-  ];
-  if (brand.targetGeo) contextParts.push(`Target Geography: ${brand.targetGeo}`);
-  if (brand.targetAudience) contextParts.push(`Target Audience: ${brand.targetAudience}`);
+  const parts = buildBrandParts(brand);
 
-  let msg = `Evaluate these search results and identify relevant press outlets for this brand:
+  let msg = `Generate outlet categories for this brand:\n\n${parts.join("\n")}`;
 
-## Brand Context
-${contextParts.join("\n")}
-
-## Search Results
-${JSON.stringify(searchResults, null, 2)}`;
-
-  if (featureInput && Object.keys(featureInput).length > 0) {
-    msg += `\n\n## Additional Context\n${JSON.stringify(featureInput, null, 2)}`;
+  if (alreadyUsed.length > 0) {
+    msg += `\n\n## Already Used Categories (do NOT repeat these)\n${alreadyUsed.map((c) => `- ${c.name} / ${c.geo}`).join("\n")}`;
   }
 
-  return msg;
+  return appendFeatureInput(msg, featureInput);
+}
+
+export function buildOutletGenerationMessage(
+  brand: BrandPromptContext,
+  categoryName: string,
+  categoryGeo: string,
+  knownDomains: string[],
+  featureInput?: Record<string, unknown>
+): string {
+  const parts = buildBrandParts(brand);
+
+  let msg = `Suggest 10 press outlets in the category "${categoryName}" for the geography "${categoryGeo}" for this brand:\n\n${parts.join("\n")}`;
+
+  if (knownDomains.length > 0) {
+    msg += `\n\n## Known Domains (do NOT suggest these)\n${knownDomains.map((d) => `- ${d}`).join("\n")}`;
+  }
+
+  return appendFeatureInput(msg, featureInput);
 }

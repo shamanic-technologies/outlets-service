@@ -193,6 +193,32 @@ export async function runMigration(): Promise<void> {
     ALTER TABLE campaign_outlets DROP COLUMN IF EXISTS brand_id;
   `);
 
+  // Step 11: Create campaign_categories table for category-based discovery
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS campaign_categories (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      campaign_id UUID NOT NULL,
+      category_name TEXT NOT NULL,
+      category_geo TEXT NOT NULL,
+      relevance_rank INT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'exhausted', 'capped')),
+      outlets_found INT NOT NULL DEFAULT 0,
+      batch_number INT NOT NULL DEFAULT 1,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (campaign_id, category_name, category_geo)
+    );
+    CREATE INDEX IF NOT EXISTS idx_campaign_categories_campaign ON campaign_categories(campaign_id);
+    CREATE INDEX IF NOT EXISTS idx_campaign_categories_active ON campaign_categories(campaign_id, relevance_rank) WHERE status = 'active';
+    CREATE INDEX IF NOT EXISTS idx_campaign_categories_batch ON campaign_categories(campaign_id, batch_number);
+  `);
+
+  // Step 12: Add category_id FK to campaign_outlets (nullable for backward compat)
+  await pool.query(`
+    ALTER TABLE campaign_outlets ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES campaign_categories(id);
+    CREATE INDEX IF NOT EXISTS idx_campaign_outlets_category ON campaign_outlets(category_id);
+  `);
+
   console.log("[outlets-service] Migration complete.");
 }
 

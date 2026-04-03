@@ -1,77 +1,17 @@
 import { Router, Request, Response } from "express";
-import { z } from "zod";
 import { validateBody } from "../middleware/validate";
 import { requireFullOrgContext } from "../middleware/org-context";
 import type { FullOrgContext } from "../middleware/org-context";
 import { pool } from "../db/pool";
-import { chatComplete } from "../services/chat";
-import { searchBatch } from "../services/google";
-import { extractFields, findField } from "../services/brand";
-import { getFeatureInputs } from "../services/campaign";
 import { isOutletBlocked } from "../services/journalists";
-import {
-  GENERATE_QUERIES_SYSTEM_PROMPT,
-  SCORE_OUTLETS_SYSTEM_PROMPT,
-  buildQueryGenerationMessage,
-  buildScoringMessage,
-  type BrandPromptContext,
-} from "../prompts";
+import { discoverCycle } from "../services/category-discovery";
 import { bufferNextSchema } from "../schemas";
 import type { OrgContext } from "../middleware/org-context";
 
-const MINI_DISCOVER_QUERY_COUNT = 3;
-const MINI_DISCOVER_RESULTS_PER_QUERY = 5;
 const MAX_CLAIM_ITERATIONS = 50;
+const MAX_DISCOVER_ATTEMPTS = 5;
 const MIN_RELEVANCE_SCORE = 30;
 const IDEMPOTENCY_TTL_DAYS = 60;
-
-export interface DiscoverOptions {
-  queryCount: number;
-  resultsPerQuery: number;
-  runId?: string;
-}
-
-const querySchema = z.object({
-  queries: z.array(
-    z.object({
-      query: z.string(),
-      type: z.enum(["web", "news"]),
-      rationale: z.string(),
-    })
-  ),
-});
-
-const scoringSchema = z.object({
-  outlets: z.array(
-    z.object({
-      name: z.string(),
-      url: z.string(),
-      domain: z.string(),
-      relevanceScore: z.number().min(0).max(100),
-      whyRelevant: z.string(),
-      whyNotRelevant: z.string(),
-      overallRelevance: z.string(),
-    })
-  ),
-});
-
-/** Fields we need from brand-service for mini-discover */
-const BRAND_FIELDS = [
-  { key: "brand_name", description: "The brand's display name" },
-  { key: "elevator_pitch", description: "A concise elevator pitch describing what the brand does" },
-  { key: "categories", description: "The brand's primary industry vertical or categories" },
-  { key: "target_geo", description: "Priority geographic markets for outreach" },
-  { key: "target_audience", description: "Target audience for the brand's products or services" },
-  { key: "angles", description: "PR angles and editorial hooks the brand can leverage" },
-];
-
-function extractDomain(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return url;
-  }
-}
 
 interface ClaimedOutlet {
   outletId: string;
@@ -169,177 +109,6 @@ async function markSkipped(campaignId: string, outletId: string): Promise<void> 
   );
 }
 
-/**
- * Parameterized outlet discovery. Generates search queries, runs Google search,
- * scores results with LLM, and inserts into the campaign buffer.
- * Returns number of outlets inserted.
- */
-export async function discoverOutlets(ctx: FullOrgContext, options: DiscoverOptions): Promise<number> {
-  const [extractedFields, featureInputs] = await Promise.all([
-    extractFields(BRAND_FIELDS, ctx),
-    getFeatureInputs(ctx.campaignId, ctx),
-  ]);
-
-  const brandContext: BrandPromptContext = {
-    brandName: findField(extractedFields, "brand_name") || "Unknown",
-    brandDescription:
-      findField(extractedFields, "elevator_pitch") ||
-      "No description available",
-    industry: findField(extractedFields, "categories") || "General",
-    targetGeo: findField(extractedFields, "target_geo") || undefined,
-    targetAudience: findField(extractedFields, "target_audience") || undefined,
-    angles: (() => {
-      const raw = findField(extractedFields, "angles");
-      return raw ? raw.split(", ") : undefined;
-    })(),
-  };
-
-  const featureInput = featureInputs ?? undefined;
-
-  // Step 1: Generate a small set of search queries
-  const queryGenResponse = await chatComplete(
-    {
-      provider: "google",
-      model: "flash-lite",
-      message: buildQueryGenerationMessage(brandContext, featureInput),
-      systemPrompt:
-        GENERATE_QUERIES_SYSTEM_PROMPT.replace(
-          "Generate 8-12 queries",
-          `Generate exactly ${options.queryCount} queries`
-        ),
-      responseFormat: "json",
-      temperature: 0.7,
-      maxTokens: 800,
-    },
-    ctx
-  );
-
-  const queryJson = queryGenResponse.json;
-  if (queryJson && Array.isArray(queryJson.queries)) {
-    queryJson.queries = (queryJson.queries as Array<Record<string, unknown>>)
-      .filter((q) => q.query && q.type && q.rationale)
-      .slice(0, options.queryCount);
-  }
-
-  const parsedQueries = querySchema.safeParse(queryJson);
-  if (!parsedQueries.success || parsedQueries.data.queries.length === 0) {
-    console.error("[outlets-service] Mini-discover: LLM returned invalid query format:", queryGenResponse.content);
-    return 0;
-  }
-
-  // Step 2: Search with small result count
-  const searchResponse = await searchBatch(
-    {
-      queries: parsedQueries.data.queries.map((q) => ({
-        query: q.query,
-        type: q.type,
-        num: options.resultsPerQuery,
-      })),
-    },
-    ctx
-  );
-
-  // Step 3: Score results
-  const scoringResponse = await chatComplete(
-    {
-      provider: "google",
-      model: "flash-lite",
-      message: buildScoringMessage(
-        brandContext,
-        searchResponse.results.map((r) => ({
-          query: r.query,
-          results: r.results.map((sr) => ({
-            title: sr.title,
-            url: sr.url,
-            snippet: sr.snippet,
-            domain: sr.domain,
-          })),
-        })),
-        featureInput
-      ),
-      systemPrompt: SCORE_OUTLETS_SYSTEM_PROMPT,
-      responseFormat: "json",
-      temperature: 0.3,
-      maxTokens: 16000,
-      thinkingBudget: 8000,
-    },
-    ctx
-  );
-
-  const parsedOutlets = scoringSchema.safeParse(scoringResponse.json);
-  if (!parsedOutlets.success) {
-    console.error("[outlets-service] Mini-discover: LLM returned invalid scoring format:", scoringResponse.content);
-    return 0;
-  }
-
-  const outlets = parsedOutlets.data.outlets;
-  if (outlets.length === 0) return 0;
-
-  // Step 4: Bulk upsert into DB
-  const featureSlug = ctx.featureSlug;
-  const client = await pool.connect();
-  let inserted = 0;
-
-  try {
-    await client.query("BEGIN");
-
-    for (const o of outlets) {
-      const domain = extractDomain(o.url);
-      const url = o.url.startsWith("http") ? o.url : `https://${o.url}`;
-
-      const outletResult = await client.query(
-        `INSERT INTO outlets (outlet_name, outlet_url, outlet_domain)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (outlet_domain)
-         DO UPDATE SET outlet_name = EXCLUDED.outlet_name, outlet_url = EXCLUDED.outlet_url, updated_at = CURRENT_TIMESTAMP
-         RETURNING id`,
-        [o.name, url, domain]
-      );
-      const outletId = outletResult.rows[0].id;
-
-      // Only insert if not already in this campaign's buffer
-      const insertResult = await client.query(
-        `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_ids, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, overall_relevance, run_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'open', $10, $11)
-         ON CONFLICT (campaign_id, outlet_id) DO NOTHING`,
-        [
-          ctx.campaignId,
-          outletId,
-          ctx.orgId,
-          ctx.brandIds,
-          featureSlug,
-          ctx.workflowSlug,
-          o.whyRelevant,
-          o.whyNotRelevant,
-          o.relevanceScore,
-          o.overallRelevance,
-          options.runId || null,
-        ]
-      );
-      if (insertResult.rowCount && insertResult.rowCount > 0) inserted++;
-    }
-
-    await client.query("COMMIT");
-  } catch (err) {
-    await client.query("ROLLBACK");
-    throw err;
-  } finally {
-    client.release();
-  }
-
-  console.log(`[outlets-service] Discover: inserted ${inserted} outlets into buffer for campaign ${ctx.campaignId}`);
-  return inserted;
-}
-
-/** Mini-discover: lightweight wrapper around discoverOutlets with default params. */
-async function miniDiscover(ctx: FullOrgContext): Promise<number> {
-  return discoverOutlets(ctx, {
-    queryCount: MINI_DISCOVER_QUERY_COUNT,
-    resultsPerQuery: MINI_DISCOVER_RESULTS_PER_QUERY,
-    runId: ctx.runId,
-  });
-}
-
 const router = Router();
 
 // POST /buffer/next — pull the next best outlet(s) from the buffer
@@ -365,21 +134,21 @@ router.post(
       }
 
       const collected: ClaimedOutlet[] = [];
-      let didRefill = false;
+      let discoverAttempts = 0;
 
       for (let i = 0; i < MAX_CLAIM_ITERATIONS && collected.length < count; i++) {
         const claimed = await claimNext(ctx.campaignId);
 
         if (!claimed) {
-          // Buffer empty — try mini-discover once
-          if (didRefill) break;
+          // Buffer empty — try category-based discovery
+          if (discoverAttempts >= MAX_DISCOVER_ATTEMPTS) break;
+          discoverAttempts++;
 
-          console.log(`[outlets-service] buffer/next: buffer empty for campaign ${ctx.campaignId}, triggering mini-discover`);
-          const filled = await miniDiscover(ctx);
-          didRefill = true;
+          console.log(`[outlets-service] buffer/next: buffer empty for campaign ${ctx.campaignId}, triggering discover cycle (attempt ${discoverAttempts}/${MAX_DISCOVER_ATTEMPTS})`);
+          const filled = await discoverCycle(ctx);
 
           if (filled === 0) {
-            console.log(`[outlets-service] buffer/next: mini-discover found 0 outlets for campaign ${ctx.campaignId}`);
+            console.log(`[outlets-service] buffer/next: discover cycle found 0 outlets for campaign ${ctx.campaignId}`);
             break;
           }
           continue; // retry claim from freshly filled buffer
