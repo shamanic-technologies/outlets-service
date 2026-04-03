@@ -60,13 +60,18 @@ const CAMPAIGN_ID = "dddddddd-dddd-dddd-dddd-dddddddddddd";
 const BRAND_ID = "55555555-5555-5555-5555-555555555555";
 const OUTLET_ID = "11111111-1111-1111-1111-111111111111";
 
+const FEATURE_SLUG = "outlets";
+const WORKFLOW_SLUG = "discover";
+
 function withHeaders(req: request.Test): request.Test {
   return req
     .set("x-org-id", ORG_ID)
     .set("x-user-id", USER_ID)
     .set("x-run-id", RUN_ID)
     .set("x-campaign-id", CAMPAIGN_ID)
-    .set("x-brand-id", BRAND_ID);
+    .set("x-brand-id", BRAND_ID)
+    .set("x-feature-slug", FEATURE_SLUG)
+    .set("x-workflow-slug", WORKFLOW_SLUG);
 }
 
 function makeOutletRow(overrides: Record<string, unknown> = {}) {
@@ -478,30 +483,30 @@ describe("POST /buffer/next", () => {
     expect(res.body.outlets[0].outletId).toBe(OUTLET_ID);
   });
 
-  it("returns 400 when x-campaign-id header is missing", async () => {
+  it("returns 400 listing all missing identity headers", async () => {
     const res = await request(app)
       .post("/buffer/next")
       .set("x-org-id", ORG_ID)
       .set("x-user-id", USER_ID)
       .set("x-run-id", RUN_ID)
-      .set("x-brand-id", BRAND_ID)
       .send({});
 
     expect(res.status).toBe(400);
     expect(res.body.error).toContain("x-campaign-id");
+    expect(res.body.error).toContain("x-brand-id");
+    expect(res.body.error).toContain("x-feature-slug");
+    expect(res.body.error).toContain("x-workflow-slug");
   });
 
-  it("returns 400 when x-brand-id header is missing", async () => {
+  it("returns 400 when no headers are sent", async () => {
     const res = await request(app)
       .post("/buffer/next")
-      .set("x-org-id", ORG_ID)
-      .set("x-user-id", USER_ID)
-      .set("x-run-id", RUN_ID)
-      .set("x-campaign-id", CAMPAIGN_ID)
       .send({});
 
     expect(res.status).toBe(400);
-    expect(res.body.error).toContain("x-brand-id");
+    expect(res.body.error).toContain("x-org-id");
+    expect(res.body.error).toContain("x-user-id");
+    expect(res.body.error).toContain("x-run-id");
   });
 
   it("returns 502 when brand-service is down during mini-discover", async () => {

@@ -27,15 +27,9 @@ router.post(
   async (req: Request, res: Response): Promise<void> => {
     const ctx = req.orgContext!;
 
-    if (!ctx.campaignId || ctx.brandIds.length === 0) {
-      res.status(400).json({ error: "x-campaign-id and x-brand-id headers are required" });
-      return;
-    }
-
     try {
       const b = req.body;
       const domain = b.outletDomain || extractDomain(b.outletUrl);
-      const featureSlug = ctx.featureSlug || null;
 
       const client = await pool.connect();
       try {
@@ -62,7 +56,7 @@ router.post(
              brand_ids = EXCLUDED.brand_ids, workflow_slug = EXCLUDED.workflow_slug,
              run_id = EXCLUDED.run_id,
              updated_at = CURRENT_TIMESTAMP`,
-          [ctx.campaignId, outlet.id, ctx.orgId, ctx.brandIds, featureSlug, ctx.workflowSlug || null, b.whyRelevant, b.whyNotRelevant, b.relevanceScore, b.status || "open", b.overallRelevance || null, b.relevanceRationale || null, ctx.runId]
+          [ctx.campaignId, outlet.id, ctx.orgId, ctx.brandIds, ctx.featureSlug, ctx.workflowSlug, b.whyRelevant, b.whyNotRelevant, b.relevanceScore, b.status || "open", b.overallRelevance || null, b.relevanceRationale || null, ctx.runId]
         );
 
         await client.query("COMMIT");
@@ -248,11 +242,6 @@ router.patch(
   async (req: Request, res: Response): Promise<void> => {
     const ctx = req.orgContext!;
 
-    if (!ctx.campaignId) {
-      res.status(400).json({ error: "x-campaign-id header is required" });
-      return;
-    }
-
     try {
       const { status, reason } = req.body;
 
@@ -293,14 +282,8 @@ router.post(
   async (req: Request, res: Response): Promise<void> => {
     const ctx = req.orgContext!;
 
-    if (!ctx.campaignId || ctx.brandIds.length === 0) {
-      res.status(400).json({ error: "x-campaign-id and x-brand-id headers are required" });
-      return;
-    }
-
     try {
       const { outlets } = req.body;
-      const featureSlug = ctx.featureSlug || null;
       const client = await pool.connect();
       const results: any[] = [];
 
@@ -331,7 +314,7 @@ router.post(
                brand_ids = EXCLUDED.brand_ids, workflow_slug = EXCLUDED.workflow_slug,
                run_id = EXCLUDED.run_id,
                updated_at = CURRENT_TIMESTAMP`,
-            [ctx.campaignId, outlet.id, ctx.orgId, ctx.brandIds, featureSlug, ctx.workflowSlug || null, b.whyRelevant, b.whyNotRelevant, b.relevanceScore, b.status || "open", b.overallRelevance || null, b.relevanceRationale || null, ctx.runId]
+            [ctx.campaignId, outlet.id, ctx.orgId, ctx.brandIds, ctx.featureSlug, ctx.workflowSlug, b.whyRelevant, b.whyNotRelevant, b.relevanceScore, b.status || "open", b.overallRelevance || null, b.relevanceRationale || null, ctx.runId]
           );
 
           results.push({

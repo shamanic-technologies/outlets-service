@@ -8,16 +8,15 @@ export function buildServiceHeaders(
   apiKey: string,
   ctx: OrgContext
 ): Record<string, string> {
-  const h: Record<string, string> = {
+  return {
     "Content-Type": "application/json",
     "x-api-key": apiKey,
     "x-org-id": ctx.orgId,
     "x-user-id": ctx.userId,
     "x-run-id": ctx.runId,
+    "x-campaign-id": ctx.campaignId,
+    "x-brand-id": ctx.brandIds.join(","),
+    "x-feature-slug": ctx.featureSlug,
+    "x-workflow-slug": ctx.workflowSlug,
   };
-  if (ctx.featureSlug) h["x-feature-slug"] = ctx.featureSlug;
-  if (ctx.campaignId) h["x-campaign-id"] = ctx.campaignId;
-  if (ctx.brandIds.length > 0) h["x-brand-id"] = ctx.brandIds.join(",");
-  if (ctx.workflowSlug) h["x-workflow-slug"] = ctx.workflowSlug;
-  return h;
 }
