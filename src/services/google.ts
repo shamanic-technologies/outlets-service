@@ -125,10 +125,10 @@ export async function validateOutletDomain(
  * Validate a batch of outlets in parallel using searchBatch.
  * Returns the input array with a `valid` boolean added to each.
  */
-export async function validateOutletBatch(
-  outlets: Array<{ name: string; domain: string }>,
+export async function validateOutletBatch<T extends { name: string; domain: string }>(
+  outlets: T[],
   ctx: OrgContext
-): Promise<Array<{ name: string; domain: string; valid: boolean }>> {
+): Promise<Array<T & { valid: boolean }>> {
   if (outlets.length === 0) return [];
 
   const response = await searchBatch(
