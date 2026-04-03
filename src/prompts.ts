@@ -39,6 +39,7 @@ Rules:
 - Do NOT repeat outlets already listed in the "known domains" list
 - Only include actual press outlets/publications — skip social media, forums, Wikipedia, company websites, job boards, aggregators
 - Provide a brief "whyRelevant" for each (why this outlet is a good fit for the brand in this category)
+- Provide a "relevanceScore" (integer 1–100) for each outlet indicating how relevant it is to the brand. Score based on: audience overlap, editorial focus alignment, geographic match, and likelihood of covering this brand. Use the full range — a niche blog with perfect audience fit might score 85, a major outlet with tangential coverage might score 40.
 
 Respond with JSON matching this schema:
 {
@@ -46,6 +47,7 @@ Respond with JSON matching this schema:
     {
       "name": "TechCrunch",
       "domain": "techcrunch.com",
+      "relevanceScore": 82,
       "whyRelevant": "Leading tech news outlet covering startups and SaaS"
     }
   ]

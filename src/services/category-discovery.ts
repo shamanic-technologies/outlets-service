@@ -43,6 +43,7 @@ const outletGenerationSchema = z.object({
       name: z.string(),
       domain: z.string(),
       whyRelevant: z.string(),
+      relevanceScore: z.number().int().min(1).max(100),
     })
   ),
 });
@@ -285,9 +286,7 @@ export async function discoverOutletsInCategory(
       );
       const outletId = outletResult.rows[0].id;
 
-      // Relevance score: derived from category rank (higher rank = higher score)
-      // Rank 1 → 98, rank 2 → 96, etc. Minimum 50.
-      const relevanceScore = Math.max(50, 100 - category.relevanceRank * 2);
+      const relevanceScore = o.relevanceScore;
 
       const insertResult = await client.query(
         `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_ids, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, overall_relevance, run_id, category_id)
