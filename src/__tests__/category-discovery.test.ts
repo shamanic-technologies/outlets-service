@@ -243,9 +243,9 @@ describe("discoverOutletsInCategory", () => {
       content: "",
       json: {
         outlets: [
-          { name: "TechCrunch", domain: "techcrunch.com", whyRelevant: "Major tech pub" },
-          { name: "The Verge", domain: "theverge.com", whyRelevant: "Tech culture" },
-          { name: "Fake Outlet", domain: "fakeoutlet.xyz", whyRelevant: "Not real" },
+          { name: "TechCrunch", domain: "techcrunch.com", whyRelevant: "Major tech pub", relevanceScore: 85 },
+          { name: "The Verge", domain: "theverge.com", whyRelevant: "Tech culture", relevanceScore: 62 },
+          { name: "Fake Outlet", domain: "fakeoutlet.xyz", whyRelevant: "Not real", relevanceScore: 40 },
         ],
       },
       tokensInput: 200,
@@ -282,6 +282,62 @@ describe("discoverOutletsInCategory", () => {
     expect(mockValidateOutletBatch.mock.calls[0][0]).toHaveLength(3);
   });
 
+  it("stores per-outlet relevanceScore from LLM instead of flat category-rank score", async () => {
+    setupBrandMocks();
+
+    // Get known domains for category → none
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    // LLM returns outlets with distinct relevance scores
+    mockChatComplete.mockResolvedValueOnce({
+      content: "",
+      json: {
+        outlets: [
+          { name: "TechCrunch", domain: "techcrunch.com", whyRelevant: "Perfect audience fit", relevanceScore: 92 },
+          { name: "Niche Blog", domain: "nicheblog.io", whyRelevant: "Tangential coverage", relevanceScore: 45 },
+        ],
+      },
+      tokensInput: 200,
+      tokensOutput: 150,
+      model: "flash-lite",
+    });
+
+    // Both pass validation
+    mockValidateOutletBatch.mockResolvedValueOnce([
+      { name: "TechCrunch", domain: "techcrunch.com", relevanceScore: 92, valid: true },
+      { name: "Niche Blog", domain: "nicheblog.io", relevanceScore: 45, valid: true },
+    ]);
+
+    // DB inserts
+    mockClientQuery
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({ rows: [{ id: "outlet-1" }] }) // INSERT outlets (TechCrunch)
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_outlets
+      .mockResolvedValueOnce({ rows: [{ id: "outlet-2" }] }) // INSERT outlets (Niche Blog)
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_outlets
+      .mockResolvedValueOnce({}); // COMMIT
+
+    // Update outlets_found counter
+    mockQuery.mockResolvedValueOnce({});
+    // Check cap
+    mockQuery.mockResolvedValueOnce({ rows: [{ outlets_found: 2 }] });
+
+    const result = await discoverOutletsInCategory(category, ctx);
+
+    expect(result).toBe(2);
+
+    // Extract the campaign_outlets INSERT calls — they are the 3rd and 5th mockClientQuery calls (indices 2 and 4)
+    const campaignOutletInserts = mockClientQuery.mock.calls.filter(
+      (call) => typeof call[0] === "string" && call[0].includes("INTO campaign_outlets")
+    );
+    expect(campaignOutletInserts).toHaveLength(2);
+
+    // First outlet (TechCrunch) should have relevanceScore 92
+    expect(campaignOutletInserts[0][1][8]).toBe(92);
+    // Second outlet (Niche Blog) should have relevanceScore 45
+    expect(campaignOutletInserts[1][1][8]).toBe(45);
+  });
+
   it("marks category exhausted when all outlets fail validation", async () => {
     setupBrandMocks();
 
@@ -293,8 +349,8 @@ describe("discoverOutletsInCategory", () => {
       content: "",
       json: {
         outlets: [
-          { name: "Fake 1", domain: "fake1.xyz", whyRelevant: "Not real" },
-          { name: "Fake 2", domain: "fake2.xyz", whyRelevant: "Not real" },
+          { name: "Fake 1", domain: "fake1.xyz", whyRelevant: "Not real", relevanceScore: 30 },
+          { name: "Fake 2", domain: "fake2.xyz", whyRelevant: "Not real", relevanceScore: 25 },
         ],
       },
       tokensInput: 100,
@@ -338,8 +394,8 @@ describe("discoverOutletsInCategory", () => {
       content: "",
       json: {
         outlets: [
-          { name: "TechCrunch", domain: "techcrunch.com", whyRelevant: "Already known" },
-          { name: "The Verge", domain: "theverge.com", whyRelevant: "Already known" },
+          { name: "TechCrunch", domain: "techcrunch.com", whyRelevant: "Already known", relevanceScore: 80 },
+          { name: "The Verge", domain: "theverge.com", whyRelevant: "Already known", relevanceScore: 70 },
         ],
       },
       tokensInput: 100,
@@ -370,9 +426,9 @@ describe("discoverOutletsInCategory", () => {
       content: "",
       json: {
         outlets: [
-          { name: "Outlet A", domain: "outleta.com", whyRelevant: "Good" },
-          { name: "Outlet B", domain: "outletb.com", whyRelevant: "Good" },
-          { name: "Outlet C", domain: "outletc.com", whyRelevant: "Good" },
+          { name: "Outlet A", domain: "outleta.com", whyRelevant: "Good", relevanceScore: 75 },
+          { name: "Outlet B", domain: "outletb.com", whyRelevant: "Good", relevanceScore: 60 },
+          { name: "Outlet C", domain: "outletc.com", whyRelevant: "Good", relevanceScore: 55 },
         ],
       },
       tokensInput: 100,
@@ -469,7 +525,7 @@ describe("discoverCycle", () => {
       content: "",
       json: {
         outlets: [
-          { name: "TechCrunch", domain: "techcrunch.com", whyRelevant: "Tech news" },
+          { name: "TechCrunch", domain: "techcrunch.com", whyRelevant: "Tech news", relevanceScore: 88 },
         ],
       },
       tokensInput: 100,
@@ -550,7 +606,7 @@ describe("discoverCycle", () => {
       content: "",
       json: {
         outlets: [
-          { name: "SHRM", domain: "shrm.org", whyRelevant: "HR professional org" },
+          { name: "SHRM", domain: "shrm.org", whyRelevant: "HR professional org", relevanceScore: 72 },
         ],
       },
       tokensInput: 100,
