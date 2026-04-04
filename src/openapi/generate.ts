@@ -17,6 +17,7 @@ import {
   discoverSchema,
   discoverResponseSchema,
   statsCostsResponseSchema,
+  enrichedOutletStatusEnum,
 } from "../schemas";
 import { zodToJsonSchema } from "./zod-to-json";
 
@@ -173,7 +174,7 @@ const spec = {
                           outletUrl: { type: "string" },
                           outletDomain: { type: "string" },
                           createdAt: { type: "string", format: "date-time" },
-                          latestStatus: { type: "string", enum: ["open", "ended", "denied", "served", "skipped"] },
+                          latestStatus: { type: "string", enum: ["open", "ended", "denied", "served", "contacted", "delivered", "replied", "skipped"], description: "Enriched status — 'served' outlets may be overridden to contacted/delivered/replied based on email delivery data from journalists-service" },
                           latestRelevanceScore: { type: "number" },
                           campaigns: {
                             type: "array",
@@ -186,9 +187,10 @@ const spec = {
                                 whyRelevant: { type: "string" },
                                 whyNotRelevant: { type: "string" },
                                 relevanceScore: { type: "number" },
-                                status: { type: "string", enum: ["open", "ended", "denied", "served", "skipped"] },
+                                status: { type: "string", enum: ["open", "ended", "denied", "served", "contacted", "delivered", "replied", "skipped"], description: "Enriched status — 'served' may be overridden based on email delivery data" },
                                 overallRelevance: { type: "string", nullable: true },
                                 relevanceRationale: { type: "string", nullable: true },
+                                replyClassification: { type: "string", nullable: true, enum: ["positive", "negative", "neutral"], description: "Best reply classification among journalists at this outlet. Non-null only when status is 'replied'." },
                                 runId: { type: "string", nullable: true },
                                 updatedAt: { type: "string", format: "date-time" },
                               },

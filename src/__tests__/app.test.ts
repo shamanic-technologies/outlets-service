@@ -19,6 +19,12 @@ vi.mock("../db/pool", () => ({
   },
 }));
 
+// Mock outlet-status service (used by GET /outlets for status enrichment)
+const mockFetchOutletStatuses = vi.fn();
+vi.mock("../services/outlet-status", () => ({
+  fetchOutletStatuses: (...args: unknown[]) => mockFetchOutletStatuses(...args),
+}));
+
 const ORG_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const USER_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 const RUN_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc";
@@ -51,6 +57,7 @@ let app: Express;
 beforeEach(() => {
   vi.clearAllMocks();
   mockConnect.mockResolvedValue(undefined);
+  mockFetchOutletStatuses.mockResolvedValue(new Map());
   app = createApp();
 });
 

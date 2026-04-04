@@ -10,6 +10,7 @@ import {
   getWorkflowDynastyMap,
   getFeatureDynastyMap,
 } from "../services/dynasty";
+import { fetchOutletStatuses } from "../services/outlet-status";
 
 const router = Router();
 
@@ -241,11 +242,52 @@ router.get(
           params
         );
 
+        // --- byStatus breakdown with enrichment from journalists-service ---
+        const statusResult = await pool.query(
+          `SELECT co.status, array_agg(DISTINCT co.outlet_id) AS outlet_ids
+           FROM campaign_outlets co
+           WHERE ${where}
+           GROUP BY co.status`,
+          params
+        );
+
+        const byStatus: Record<string, number> = {};
+        const servedOutletIds: string[] = [];
+
+        for (const r of statusResult.rows) {
+          const status = r.status as string;
+          const ids = r.outlet_ids as string[];
+          if (status === "served") {
+            servedOutletIds.push(...ids);
+          } else {
+            byStatus[status] = ids.length;
+          }
+        }
+
+        // Enrich "served" outlets via journalists-service
+        if (servedOutletIds.length > 0) {
+          const enriched = await fetchOutletStatuses(servedOutletIds, ctx);
+          let remainingServed = 0;
+          for (const outletId of servedOutletIds) {
+            const e = enriched.get(outletId);
+            const enrichedStatus = e?.status ?? "served";
+            if (enrichedStatus === "served") {
+              remainingServed++;
+            } else {
+              byStatus[enrichedStatus] = (byStatus[enrichedStatus] ?? 0) + 1;
+            }
+          }
+          if (remainingServed > 0) {
+            byStatus["served"] = remainingServed;
+          }
+        }
+
         const row = result.rows[0];
         res.json({
           outletsDiscovered: row.outlets_discovered ?? 0,
           avgRelevanceScore: Number(row.avg_relevance_score ?? 0),
           searchQueriesUsed: row.search_queries_used ?? 0,
+          byStatus,
         });
       }
     } catch (err) {
