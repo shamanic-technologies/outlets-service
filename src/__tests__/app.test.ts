@@ -225,6 +225,51 @@ describe("GET /outlets", () => {
     expect(outlet.campaigns[0].brandIds).toEqual([BRAND_ID]);
   });
 
+  it("skips enrichment when workflow headers are missing (base identity only)", async () => {
+    // Step 1: one distinct outlet ID
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: "11111111-1111-1111-1111-111111111111" }],
+      rowCount: 1,
+    });
+    // Step 2: count
+    mockQuery.mockResolvedValueOnce({ rows: [{ total: 1 }] });
+    // Step 3: data
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: "11111111-1111-1111-1111-111111111111",
+          outlet_name: "TechCrunch",
+          outlet_url: "https://techcrunch.com",
+          outlet_domain: "techcrunch.com",
+          campaign_id: CAMPAIGN_ID,
+          feature_slug: "pr-outreach",
+          brand_ids: [BRAND_ID],
+          why_relevant: "Top tech",
+          why_not_relevant: "Competitive",
+          relevance_score: "85.00",
+          outlet_status: "served",
+          overall_relevance: null,
+          relevance_rationale: null,
+          run_id: RUN_ID,
+          created_at: "2026-01-01T00:00:00Z",
+          campaign_updated_at: "2026-01-02T00:00:00Z",
+        },
+      ],
+    });
+
+    // Only base identity (3 headers) — no campaign/brand/feature/workflow headers
+    const res = await withBaseIdentity(request(app).get("/outlets")).query({
+      campaignId: CAMPAIGN_ID,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.outlets).toHaveLength(1);
+    const outlet = res.body.outlets[0];
+    expect(outlet.latestStatus).toBe("served"); // stays "served", no enrichment
+    // fetchOutletStatuses should NOT have been called
+    expect(mockFetchOutletStatuses).not.toHaveBeenCalled();
+  });
+
   it("deduplicates same outlet across multiple campaigns", async () => {
     const OUTLET_ID = "11111111-1111-1111-1111-111111111111";
     const CAMPAIGN_ID_2 = "33333333-3333-3333-3333-333333333333";
