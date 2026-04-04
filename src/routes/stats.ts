@@ -32,7 +32,8 @@ router.get(
   validateQuery(statsQuerySchema),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const orgId = req.orgContext!.orgId;
+      const ctx = req.orgContext!;
+      const orgId = ctx.orgId;
       const q = req.query as Record<string, string | undefined>;
 
       const conditions: string[] = ["co.org_id = $1"];
@@ -53,7 +54,8 @@ router.get(
       if (q.workflowDynastySlug) {
         const slugs = await resolveWorkflowDynastySlugs(
           q.workflowDynastySlug,
-          config.workflowServiceApiKey
+          config.workflowServiceApiKey,
+          ctx
         );
         if (slugs.length === 0) {
           res.json(q.groupBy ? { groups: [] } : EMPTY_STATS);
@@ -82,7 +84,8 @@ router.get(
       if (q.featureDynastySlug) {
         const slugs = await resolveFeatureDynastySlugs(
           q.featureDynastySlug,
-          config.featuresServiceApiKey
+          config.featuresServiceApiKey,
+          ctx
         );
         if (slugs.length === 0) {
           res.json(q.groupBy ? { groups: [] } : EMPTY_STATS);
@@ -134,8 +137,8 @@ router.get(
         // Build reverse map: slug → dynastySlug
         const dynastyMap =
           groupBy === "workflowDynastySlug"
-            ? await getWorkflowDynastyMap(config.workflowServiceApiKey)
-            : await getFeatureDynastyMap(config.featuresServiceApiKey);
+            ? await getWorkflowDynastyMap(config.workflowServiceApiKey, ctx)
+            : await getFeatureDynastyMap(config.featuresServiceApiKey, ctx);
 
         // Re-aggregate rows by dynasty slug
         const aggregated = new Map<
