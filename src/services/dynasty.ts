@@ -1,4 +1,6 @@
 import { config } from "../config";
+import type { OrgContext } from "../middleware/org-context";
+import { buildServiceHeaders } from "./headers";
 
 interface DynastyEntry {
   dynastySlug: string;
@@ -11,13 +13,14 @@ interface DynastyEntry {
  */
 export async function resolveWorkflowDynastySlugs(
   dynastySlug: string,
-  apiKey: string
+  apiKey: string,
+  ctx: OrgContext
 ): Promise<string[]> {
   const url = `${config.workflowServiceUrl}/workflows/dynasty/slugs?dynastySlug=${encodeURIComponent(dynastySlug)}`;
   let res: Response;
   try {
     res = await fetch(url, {
-      headers: { "x-api-key": apiKey },
+      headers: buildServiceHeaders(apiKey, ctx),
       signal: AbortSignal.timeout(30_000),
     });
   } catch (err) {
@@ -42,13 +45,14 @@ export async function resolveWorkflowDynastySlugs(
  */
 export async function resolveFeatureDynastySlugs(
   dynastySlug: string,
-  apiKey: string
+  apiKey: string,
+  ctx: OrgContext
 ): Promise<string[]> {
   const url = `${config.featuresServiceUrl}/features/dynasty/slugs?dynastySlug=${encodeURIComponent(dynastySlug)}`;
   let res: Response;
   try {
     res = await fetch(url, {
-      headers: { "x-api-key": apiKey },
+      headers: buildServiceHeaders(apiKey, ctx),
       signal: AbortSignal.timeout(30_000),
     });
   } catch (err) {
@@ -71,13 +75,14 @@ export async function resolveFeatureDynastySlugs(
  * Get all workflow dynasties and build a reverse map: slug → dynastySlug.
  */
 export async function getWorkflowDynastyMap(
-  apiKey: string
+  apiKey: string,
+  ctx: OrgContext
 ): Promise<Map<string, string>> {
   const url = `${config.workflowServiceUrl}/workflows/dynasties`;
   let res: Response;
   try {
     res = await fetch(url, {
-      headers: { "x-api-key": apiKey },
+      headers: buildServiceHeaders(apiKey, ctx),
       signal: AbortSignal.timeout(30_000),
     });
   } catch (err) {
@@ -100,13 +105,14 @@ export async function getWorkflowDynastyMap(
  * Get all feature dynasties and build a reverse map: slug → dynastySlug.
  */
 export async function getFeatureDynastyMap(
-  apiKey: string
+  apiKey: string,
+  ctx: OrgContext
 ): Promise<Map<string, string>> {
   const url = `${config.featuresServiceUrl}/features/dynasties`;
   let res: Response;
   try {
     res = await fetch(url, {
-      headers: { "x-api-key": apiKey },
+      headers: buildServiceHeaders(apiKey, ctx),
       signal: AbortSignal.timeout(30_000),
     });
   } catch (err) {

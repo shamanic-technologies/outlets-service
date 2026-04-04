@@ -102,6 +102,7 @@ router.get(
   validateQuery(listOutletsQuerySchema),
   async (req: Request, res: Response): Promise<void> => {
     try {
+      const ctx = req.orgContext!;
       const q = req.query as any;
       const conditions: string[] = [];
       const params: unknown[] = [];
@@ -128,7 +129,8 @@ router.get(
       if (q.featureDynastySlug) {
         const slugs = await resolveFeatureDynastySlugs(
           q.featureDynastySlug,
-          config.featuresServiceApiKey
+          config.featuresServiceApiKey,
+          ctx
         );
         if (slugs.length === 0) {
           res.json({ outlets: [], total: 0 });
@@ -206,7 +208,8 @@ router.get(
       if (q.featureDynastySlug) {
         const slugs = await resolveFeatureDynastySlugs(
           q.featureDynastySlug,
-          config.featuresServiceApiKey
+          config.featuresServiceApiKey,
+          ctx
         );
         const placeholders = slugs.map((_, i) => `$${dataIdx + i}`).join(", ");
         dataConditions.push(`co.feature_slug IN (${placeholders})`);
