@@ -716,8 +716,8 @@
         }
       },
       "get": {
-        "summary": "List outlets with filters",
-        "description": "Returns outlets joined with their campaign data. Filter by campaignId, brandId, and/or status.",
+        "summary": "List outlets with filters (deduplicated)",
+        "description": "Returns outlets deduplicated by outlet_id with nested campaign data. Each outlet appears once with a `campaigns` array containing per-campaign details. Filter by campaignId, brandId, status, featureSlug(s), or featureDynastySlug. Supports pagination on distinct outlets.",
         "parameters": [
           {
             "in": "header",
@@ -829,12 +829,36 @@
           },
           {
             "in": "query",
+            "name": "featureSlug",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by exact feature slug"
+          },
+          {
+            "in": "query",
+            "name": "featureSlugs",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by multiple feature slugs (comma-separated). Takes priority over featureSlug."
+          },
+          {
+            "in": "query",
+            "name": "featureDynastySlug",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by feature dynasty slug (resolved to all versioned slugs). Takes priority over featureSlug/featureSlugs."
+          },
+          {
+            "in": "query",
             "name": "limit",
             "schema": {
               "type": "integer",
               "default": 100
             },
-            "description": "Max results (default 100, max 1000)"
+            "description": "Max distinct outlets (default 100, max 1000)"
           },
           {
             "in": "query",
@@ -843,12 +867,12 @@
               "type": "integer",
               "default": 0
             },
-            "description": "Pagination offset"
+            "description": "Pagination offset (on distinct outlets)"
           }
         ],
         "responses": {
           "200": {
-            "description": "List of outlets",
+            "description": "List of deduplicated outlets with nested campaigns",
             "content": {
               "application/json": {
                 "schema": {
@@ -857,11 +881,119 @@
                     "outlets": {
                       "type": "array",
                       "items": {
-                        "$ref": "#/components/schemas/CampaignOutletResponse"
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "outletName": {
+                            "type": "string"
+                          },
+                          "outletUrl": {
+                            "type": "string"
+                          },
+                          "outletDomain": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "latestStatus": {
+                            "type": "string",
+                            "enum": [
+                              "open",
+                              "ended",
+                              "denied",
+                              "served",
+                              "skipped"
+                            ]
+                          },
+                          "latestRelevanceScore": {
+                            "type": "number"
+                          },
+                          "campaigns": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "campaignId": {
+                                  "type": "string",
+                                  "format": "uuid"
+                                },
+                                "featureSlug": {
+                                  "type": "string"
+                                },
+                                "brandIds": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "format": "uuid"
+                                  }
+                                },
+                                "whyRelevant": {
+                                  "type": "string"
+                                },
+                                "whyNotRelevant": {
+                                  "type": "string"
+                                },
+                                "relevanceScore": {
+                                  "type": "number"
+                                },
+                                "status": {
+                                  "type": "string",
+                                  "enum": [
+                                    "open",
+                                    "ended",
+                                    "denied",
+                                    "served",
+                                    "skipped"
+                                  ]
+                                },
+                                "overallRelevance": {
+                                  "type": "string",
+                                  "nullable": true
+                                },
+                                "relevanceRationale": {
+                                  "type": "string",
+                                  "nullable": true
+                                },
+                                "runId": {
+                                  "type": "string",
+                                  "nullable": true
+                                },
+                                "updatedAt": {
+                                  "type": "string",
+                                  "format": "date-time"
+                                }
+                              },
+                              "required": [
+                                "campaignId",
+                                "featureSlug",
+                                "brandIds",
+                                "relevanceScore",
+                                "status",
+                                "updatedAt"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "outletName",
+                          "outletUrl",
+                          "outletDomain",
+                          "createdAt",
+                          "latestStatus",
+                          "latestRelevanceScore",
+                          "campaigns"
+                        ]
                       }
                     },
                     "total": {
-                      "type": "integer"
+                      "type": "integer",
+                      "description": "Total number of distinct outlets matching filters"
                     }
                   },
                   "required": [
@@ -876,18 +1008,26 @@
                       "outletName": "TechCrunch",
                       "outletUrl": "https://techcrunch.com",
                       "outletDomain": "techcrunch.com",
-                      "campaignId": "11111111-2222-3333-4444-555555555555",
-                      "brandIds": [
-                        "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-                      ],
-                      "whyRelevant": "Top tech publication",
-                      "whyNotRelevant": "Competitive",
-                      "relevanceScore": 85,
-                      "status": "open",
-                      "overallRelevance": "high",
-                      "relevanceRationale": null,
                       "createdAt": "2026-01-15T10:30:00.000Z",
-                      "updatedAt": "2026-01-15T10:30:00.000Z"
+                      "latestStatus": "served",
+                      "latestRelevanceScore": 85,
+                      "campaigns": [
+                        {
+                          "campaignId": "11111111-2222-3333-4444-555555555555",
+                          "featureSlug": "pr-cold-email-outreach",
+                          "brandIds": [
+                            "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+                          ],
+                          "whyRelevant": "Top tech publication",
+                          "whyNotRelevant": "Competitive",
+                          "relevanceScore": 85,
+                          "status": "served",
+                          "overallRelevance": "high",
+                          "relevanceRationale": null,
+                          "runId": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+                          "updatedAt": "2026-01-16T14:00:00.000Z"
+                        }
+                      ]
                     }
                   ],
                   "total": 1
