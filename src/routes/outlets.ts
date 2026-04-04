@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { pool } from "../db/pool";
+import { config } from "../config";
 import { validateBody, validateQuery } from "../middleware/validate";
 import { requireFullOrgContext } from "../middleware/org-context";
 import type { FullOrgContext } from "../middleware/org-context";
@@ -11,6 +12,7 @@ import {
   bulkCreateOutletsSchema,
   searchOutletsSchema,
 } from "../schemas";
+import { resolveFeatureDynastySlugs } from "../services/dynasty";
 
 const router = Router();
 
@@ -94,7 +96,7 @@ router.post(
   }
 );
 
-// GET /outlets — list with filters
+// GET /outlets — list with filters, deduplicated by outlet with nested campaigns
 router.get(
   "/",
   validateQuery(listOutletsQuerySchema),
@@ -122,28 +124,161 @@ router.get(
         params.push(q.runId);
       }
 
+      // Feature filter: dynasty > plural slugs > exact slug (same precedence as stats)
+      if (q.featureDynastySlug) {
+        const slugs = await resolveFeatureDynastySlugs(
+          q.featureDynastySlug,
+          config.featuresServiceApiKey
+        );
+        if (slugs.length === 0) {
+          res.json({ outlets: [], total: 0 });
+          return;
+        }
+        const placeholders = slugs.map((_, i) => `$${paramIdx + i}`).join(", ");
+        conditions.push(`co.feature_slug IN (${placeholders})`);
+        params.push(...slugs);
+        paramIdx += slugs.length;
+      } else if (q.featureSlugs) {
+        const slugs = q.featureSlugs.split(",").map((s: string) => s.trim()).filter(Boolean);
+        if (slugs.length === 0) {
+          res.json({ outlets: [], total: 0 });
+          return;
+        }
+        const placeholders = slugs.map((_: string, i: number) => `$${paramIdx + i}`).join(", ");
+        conditions.push(`co.feature_slug IN (${placeholders})`);
+        params.push(...slugs);
+        paramIdx += slugs.length;
+      } else if (q.featureSlug) {
+        conditions.push(`co.feature_slug = $${paramIdx++}`);
+        params.push(q.featureSlug);
+      }
+
       const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
-      const result = await pool.query(
-        `SELECT o.id, o.outlet_name, o.outlet_url, o.outlet_domain,
-                co.campaign_id, co.brand_ids, co.why_relevant, co.why_not_relevant, co.relevance_score,
-                co.status AS outlet_status, co.overall_relevance, co.relevance_rationale, co.run_id,
-                o.created_at, o.updated_at
+      // Step 1: Get paginated distinct outlet IDs + total count
+      const idsResult = await pool.query(
+        `SELECT DISTINCT o.id
          FROM outlets o
          JOIN campaign_outlets co ON o.id = co.outlet_id
          ${where}
-         ORDER BY o.created_at DESC
-         LIMIT $${paramIdx++} OFFSET $${paramIdx}`,
+         ORDER BY o.id
+         LIMIT $${paramIdx++} OFFSET $${paramIdx++}`,
         [...params, q.limit, q.offset]
       );
 
-      res.json({
-        outlets: result.rows.map((r: any) => ({
-          id: r.id,
-          outletName: r.outlet_name,
-          outletUrl: r.outlet_url,
-          outletDomain: r.outlet_domain,
+      if (idsResult.rows.length === 0) {
+        res.json({ outlets: [], total: 0 });
+        return;
+      }
+
+      const outletIds = idsResult.rows.map((r: any) => r.id as string);
+
+      // Step 2: Count total distinct outlets matching filters
+      const countResult = await pool.query(
+        `SELECT COUNT(DISTINCT o.id)::int AS total
+         FROM outlets o
+         JOIN campaign_outlets co ON o.id = co.outlet_id
+         ${where}`,
+        params
+      );
+      const total = countResult.rows[0]?.total ?? 0;
+
+      // Step 3: Fetch all campaign_outlet rows for the paginated outlet IDs (with filters)
+      // Re-apply filters so we only get matching campaign_outlet rows
+      const dataParams: unknown[] = [outletIds];
+      let dataIdx = 2;
+      const dataConditions: string[] = ["o.id = ANY($1)"];
+
+      if (q.campaignId) {
+        dataConditions.push(`co.campaign_id = $${dataIdx++}`);
+        dataParams.push(q.campaignId);
+      }
+      if (q.brandId) {
+        dataConditions.push(`$${dataIdx++} = ANY(co.brand_ids)`);
+        dataParams.push(q.brandId);
+      }
+      if (q.status) {
+        dataConditions.push(`co.status = $${dataIdx++}`);
+        dataParams.push(q.status);
+      }
+      if (q.runId) {
+        dataConditions.push(`co.run_id = $${dataIdx++}`);
+        dataParams.push(q.runId);
+      }
+      // Re-apply feature slug filters for the data query
+      if (q.featureDynastySlug) {
+        const slugs = await resolveFeatureDynastySlugs(
+          q.featureDynastySlug,
+          config.featuresServiceApiKey
+        );
+        const placeholders = slugs.map((_, i) => `$${dataIdx + i}`).join(", ");
+        dataConditions.push(`co.feature_slug IN (${placeholders})`);
+        dataParams.push(...slugs);
+        dataIdx += slugs.length;
+      } else if (q.featureSlugs) {
+        const slugs = q.featureSlugs.split(",").map((s: string) => s.trim()).filter(Boolean);
+        const placeholders = slugs.map((_: string, i: number) => `$${dataIdx + i}`).join(", ");
+        dataConditions.push(`co.feature_slug IN (${placeholders})`);
+        dataParams.push(...slugs);
+        dataIdx += slugs.length;
+      } else if (q.featureSlug) {
+        dataConditions.push(`co.feature_slug = $${dataIdx++}`);
+        dataParams.push(q.featureSlug);
+      }
+
+      const dataWhere = `WHERE ${dataConditions.join(" AND ")}`;
+
+      const result = await pool.query(
+        `SELECT o.id, o.outlet_name, o.outlet_url, o.outlet_domain,
+                co.campaign_id, co.feature_slug, co.brand_ids, co.why_relevant, co.why_not_relevant,
+                co.relevance_score, co.status AS outlet_status, co.overall_relevance,
+                co.relevance_rationale, co.run_id,
+                o.created_at, co.updated_at AS campaign_updated_at
+         FROM outlets o
+         JOIN campaign_outlets co ON o.id = co.outlet_id
+         ${dataWhere}
+         ORDER BY co.updated_at DESC`,
+        dataParams
+      );
+
+      // Group rows by outlet_id
+      const outletsMap = new Map<string, {
+        id: string;
+        outletName: string;
+        outletUrl: string;
+        outletDomain: string;
+        createdAt: string;
+        campaigns: Array<{
+          campaignId: string;
+          featureSlug: string;
+          brandIds: string[];
+          whyRelevant: string;
+          whyNotRelevant: string;
+          relevanceScore: number;
+          status: string;
+          overallRelevance: string | null;
+          relevanceRationale: string | null;
+          runId: string | null;
+          updatedAt: string;
+        }>;
+      }>();
+
+      for (const r of result.rows) {
+        let outlet = outletsMap.get(r.id);
+        if (!outlet) {
+          outlet = {
+            id: r.id,
+            outletName: r.outlet_name,
+            outletUrl: r.outlet_url,
+            outletDomain: r.outlet_domain,
+            createdAt: r.created_at,
+            campaigns: [],
+          };
+          outletsMap.set(r.id, outlet);
+        }
+        outlet.campaigns.push({
           campaignId: r.campaign_id,
+          featureSlug: r.feature_slug,
           brandIds: r.brand_ids,
           whyRelevant: r.why_relevant,
           whyNotRelevant: r.why_not_relevant,
@@ -152,13 +287,28 @@ router.get(
           overallRelevance: r.overall_relevance,
           relevanceRationale: r.relevance_rationale,
           runId: r.run_id || null,
-          createdAt: r.created_at,
-          updatedAt: r.updated_at,
-        })),
-        total: result.rowCount,
+          updatedAt: r.campaign_updated_at,
+        });
+      }
+
+      // Build final response — campaigns sorted by updated_at DESC from SQL
+      const outlets = Array.from(outletsMap.values()).map((outlet) => {
+        const latest = outlet.campaigns[0];
+        return {
+          id: outlet.id,
+          outletName: outlet.outletName,
+          outletUrl: outlet.outletUrl,
+          outletDomain: outlet.outletDomain,
+          createdAt: outlet.createdAt,
+          latestStatus: latest.status,
+          latestRelevanceScore: latest.relevanceScore,
+          campaigns: outlet.campaigns,
+        };
       });
+
+      res.json({ outlets, total });
     } catch (err) {
-      console.error("Error listing outlets:", err);
+      console.error("[outlets-service] Error listing outlets:", err);
       res.status(500).json({ error: "Internal server error" });
     }
   }

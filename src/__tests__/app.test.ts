@@ -168,7 +168,17 @@ describe("POST /outlets", () => {
 });
 
 describe("GET /outlets", () => {
-  it("lists outlets with campaign data", async () => {
+  it("returns deduplicated outlets with nested campaigns", async () => {
+    // Step 1: paginated distinct outlet IDs
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: "11111111-1111-1111-1111-111111111111" }],
+      rowCount: 1,
+    });
+    // Step 2: count total
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ total: 1 }],
+    });
+    // Step 3: all campaign_outlet rows for those outlet IDs
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
@@ -177,18 +187,19 @@ describe("GET /outlets", () => {
           outlet_url: "https://techcrunch.com",
           outlet_domain: "techcrunch.com",
           campaign_id: CAMPAIGN_ID,
+          feature_slug: "pr-outreach",
           brand_ids: [BRAND_ID],
           why_relevant: "Top tech",
           why_not_relevant: "Competitive",
           relevance_score: "85.00",
-          outlet_status: "open",
+          outlet_status: "served",
           overall_relevance: null,
           relevance_rationale: null,
+          run_id: RUN_ID,
           created_at: "2026-01-01T00:00:00Z",
-          updated_at: "2026-01-01T00:00:00Z",
+          campaign_updated_at: "2026-01-02T00:00:00Z",
         },
       ],
-      rowCount: 1,
     });
 
     const res = await withIdentity(request(app).get("/outlets")).query({
@@ -197,16 +208,120 @@ describe("GET /outlets", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(1);
-    expect(res.body.outlets[0].outletName).toBe("TechCrunch");
-    expect(res.body.outlets[0].relevanceScore).toBe(85);
-    expect(res.body.outlets[0].brandIds).toEqual([BRAND_ID]);
+    const outlet = res.body.outlets[0];
+    expect(outlet.outletName).toBe("TechCrunch");
+    expect(outlet.latestStatus).toBe("served");
+    expect(outlet.latestRelevanceScore).toBe(85);
+    expect(outlet.campaigns).toHaveLength(1);
+    expect(outlet.campaigns[0].campaignId).toBe(CAMPAIGN_ID);
+    expect(outlet.campaigns[0].relevanceScore).toBe(85);
+    expect(outlet.campaigns[0].brandIds).toEqual([BRAND_ID]);
   });
 
-  it("lists outlets without filters", async () => {
+  it("deduplicates same outlet across multiple campaigns", async () => {
+    const OUTLET_ID = "11111111-1111-1111-1111-111111111111";
+    const CAMPAIGN_ID_2 = "33333333-3333-3333-3333-333333333333";
+
+    // Step 1: one distinct outlet ID
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: OUTLET_ID }],
+      rowCount: 1,
+    });
+    // Step 2: count
+    mockQuery.mockResolvedValueOnce({ rows: [{ total: 1 }] });
+    // Step 3: two campaign_outlet rows for the same outlet
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: OUTLET_ID,
+          outlet_name: "TechCrunch",
+          outlet_url: "https://techcrunch.com",
+          outlet_domain: "techcrunch.com",
+          campaign_id: CAMPAIGN_ID,
+          feature_slug: "pr-outreach-v2",
+          brand_ids: [BRAND_ID],
+          why_relevant: "Top tech",
+          why_not_relevant: "Competitive",
+          relevance_score: "90.00",
+          outlet_status: "served",
+          overall_relevance: "high",
+          relevance_rationale: null,
+          run_id: RUN_ID,
+          created_at: "2026-01-01T00:00:00Z",
+          campaign_updated_at: "2026-01-03T00:00:00Z",
+        },
+        {
+          id: OUTLET_ID,
+          outlet_name: "TechCrunch",
+          outlet_url: "https://techcrunch.com",
+          outlet_domain: "techcrunch.com",
+          campaign_id: CAMPAIGN_ID_2,
+          feature_slug: "pr-outreach",
+          brand_ids: [BRAND_ID],
+          why_relevant: "Good publication",
+          why_not_relevant: "None",
+          relevance_score: "85.00",
+          outlet_status: "open",
+          overall_relevance: null,
+          relevance_rationale: null,
+          run_id: null,
+          created_at: "2026-01-01T00:00:00Z",
+          campaign_updated_at: "2026-01-02T00:00:00Z",
+        },
+      ],
+    });
+
+    const res = await withIdentity(request(app).get("/outlets")).query({
+      brandId: BRAND_ID,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.outlets).toHaveLength(1); // ONE outlet, not two
+    expect(res.body.total).toBe(1);
+    const outlet = res.body.outlets[0];
+    expect(outlet.campaigns).toHaveLength(2);
+    // Latest campaign first (by updated_at DESC)
+    expect(outlet.campaigns[0].campaignId).toBe(CAMPAIGN_ID);
+    expect(outlet.campaigns[1].campaignId).toBe(CAMPAIGN_ID_2);
+    expect(outlet.latestStatus).toBe("served");
+    expect(outlet.latestRelevanceScore).toBe(90);
+  });
+
+  it("filters by featureSlugs (comma-separated)", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    const res = await withIdentity(request(app).get("/outlets")).query({
+      brandId: BRAND_ID,
+      featureSlugs: "pr-outreach,pr-outreach-sophia",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.outlets).toEqual([]);
+    // Verify feature_slug IN filter was applied
+    const sql = mockQuery.mock.calls[0][0] as string;
+    expect(sql).toContain("co.feature_slug IN");
+  });
+
+  it("filters by featureSlug (exact)", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    const res = await withIdentity(request(app).get("/outlets")).query({
+      brandId: BRAND_ID,
+      featureSlug: "pr-outreach",
+    });
+
+    expect(res.status).toBe(200);
+    // Verify exact feature_slug filter
+    const sql = mockQuery.mock.calls[0][0] as string;
+    expect(sql).toContain("co.feature_slug =");
+  });
+
+  it("returns empty array when no outlets match", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const res = await withIdentity(request(app).get("/outlets"));
     expect(res.status).toBe(200);
     expect(res.body.outlets).toEqual([]);
+    expect(res.body.total).toBe(0);
   });
 });
 
@@ -556,7 +671,7 @@ describe("Identity headers", () => {
   });
 
   it("read endpoints work with only base 3 headers", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // empty IDs result
     const res = await withBaseIdentity(request(app).get("/outlets"));
     expect(res.status).toBe(200);
   });
