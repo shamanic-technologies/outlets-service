@@ -225,7 +225,7 @@ describe("GET /outlets", () => {
     expect(outlet.campaigns[0].brandIds).toEqual([BRAND_ID]);
   });
 
-  it("skips enrichment when workflow headers are missing (base identity only)", async () => {
+  it("enriches served outlets even with base identity only (no workflow headers)", async () => {
     // Step 1: one distinct outlet ID
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: "11111111-1111-1111-1111-111111111111" }],
@@ -257,6 +257,10 @@ describe("GET /outlets", () => {
       ],
     });
 
+    mockFetchOutletStatuses.mockResolvedValueOnce(
+      new Map([["11111111-1111-1111-1111-111111111111", { status: "delivered", replyClassification: null }]])
+    );
+
     // Only base identity (3 headers) — no campaign/brand/feature/workflow headers
     const res = await withBaseIdentity(request(app).get("/outlets")).query({
       campaignId: CAMPAIGN_ID,
@@ -265,9 +269,79 @@ describe("GET /outlets", () => {
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(1);
     const outlet = res.body.outlets[0];
-    expect(outlet.latestStatus).toBe("served"); // stays "served", no enrichment
-    // fetchOutletStatuses should NOT have been called
-    expect(mockFetchOutletStatuses).not.toHaveBeenCalled();
+    expect(outlet.latestStatus).toBe("delivered");
+    expect(outlet.campaigns[0].status).toBe("delivered");
+    expect(mockFetchOutletStatuses).toHaveBeenCalledOnce();
+  });
+
+  it("latestStatus reflects the most advanced status across campaigns", async () => {
+    const OUTLET_ID = "11111111-1111-1111-1111-111111111111";
+    const CAMPAIGN_ID_2 = "33333333-3333-3333-3333-333333333333";
+
+    // Step 1: one distinct outlet ID
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: OUTLET_ID }],
+      rowCount: 1,
+    });
+    // Step 2: count
+    mockQuery.mockResolvedValueOnce({ rows: [{ total: 1 }] });
+    // Step 3: two campaign_outlet rows — "open" (most recent) and "served" (older)
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: OUTLET_ID,
+          outlet_name: "TechCrunch",
+          outlet_url: "https://techcrunch.com",
+          outlet_domain: "techcrunch.com",
+          campaign_id: CAMPAIGN_ID,
+          feature_slug: "pr-outreach-v2",
+          brand_ids: [BRAND_ID],
+          why_relevant: "Top tech",
+          why_not_relevant: "Competitive",
+          relevance_score: "90.00",
+          outlet_status: "open",
+          overall_relevance: "high",
+          relevance_rationale: null,
+          run_id: RUN_ID,
+          created_at: "2026-01-01T00:00:00Z",
+          campaign_updated_at: "2026-01-03T00:00:00Z",
+        },
+        {
+          id: OUTLET_ID,
+          outlet_name: "TechCrunch",
+          outlet_url: "https://techcrunch.com",
+          outlet_domain: "techcrunch.com",
+          campaign_id: CAMPAIGN_ID_2,
+          feature_slug: "pr-outreach",
+          brand_ids: [BRAND_ID],
+          why_relevant: "Good publication",
+          why_not_relevant: "None",
+          relevance_score: "85.00",
+          outlet_status: "served",
+          overall_relevance: null,
+          relevance_rationale: null,
+          run_id: null,
+          created_at: "2026-01-01T00:00:00Z",
+          campaign_updated_at: "2026-01-02T00:00:00Z",
+        },
+      ],
+    });
+
+    // Enrichment returns "delivered" for the served campaign
+    mockFetchOutletStatuses.mockResolvedValueOnce(
+      new Map([[OUTLET_ID, { status: "delivered", replyClassification: null }]])
+    );
+
+    const res = await withIdentity(request(app).get("/outlets")).query({
+      brandId: BRAND_ID,
+    });
+
+    expect(res.status).toBe(200);
+    const outlet = res.body.outlets[0];
+    // "delivered" (from enriched served campaign) outranks "open" (most recent campaign)
+    expect(outlet.latestStatus).toBe("delivered");
+    expect(outlet.campaigns[0].status).toBe("open"); // most recent stays open
+    expect(outlet.campaigns[1].status).toBe("delivered"); // served → delivered via enrichment
   });
 
   it("deduplicates same outlet across multiple campaigns", async () => {
@@ -323,6 +397,9 @@ describe("GET /outlets", () => {
       ],
     });
 
+    // Enrichment returns nothing for this outlet (no journalist data)
+    mockFetchOutletStatuses.mockResolvedValueOnce(new Map());
+
     const res = await withIdentity(request(app).get("/outlets")).query({
       brandId: BRAND_ID,
     });
@@ -335,6 +412,7 @@ describe("GET /outlets", () => {
     // Latest campaign first (by updated_at DESC)
     expect(outlet.campaigns[0].campaignId).toBe(CAMPAIGN_ID);
     expect(outlet.campaigns[1].campaignId).toBe(CAMPAIGN_ID_2);
+    // "served" outranks "open" in status priority
     expect(outlet.latestStatus).toBe("served");
     expect(outlet.latestRelevanceScore).toBe(90);
   });
