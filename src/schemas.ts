@@ -38,7 +38,6 @@ export const listOutletsQuerySchema = z.object({
   brandId: z.string().uuid().optional(),
   status: outletStatusEnum.optional(),
   runId: z.string().optional(),
-  featureSlug: z.string().optional(),
   featureSlugs: z.string().optional(),
   featureDynastySlug: z.string().optional(),
   limit: z.coerce.number().int().positive().max(1000).optional().default(100),

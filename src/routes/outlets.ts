@@ -124,7 +124,7 @@ router.get(
         params.push(q.runId);
       }
 
-      // Feature filter: dynasty > plural slugs > exact slug (same precedence as stats)
+      // Feature filter: dynasty > plural slugs
       if (q.featureDynastySlug) {
         const slugs = await resolveFeatureDynastySlugs(
           q.featureDynastySlug,
@@ -148,9 +148,6 @@ router.get(
         conditions.push(`co.feature_slug IN (${placeholders})`);
         params.push(...slugs);
         paramIdx += slugs.length;
-      } else if (q.featureSlug) {
-        conditions.push(`co.feature_slug = $${paramIdx++}`);
-        params.push(q.featureSlug);
       }
 
       const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -221,9 +218,6 @@ router.get(
         dataConditions.push(`co.feature_slug IN (${placeholders})`);
         dataParams.push(...slugs);
         dataIdx += slugs.length;
-      } else if (q.featureSlug) {
-        dataConditions.push(`co.feature_slug = $${dataIdx++}`);
-        dataParams.push(q.featureSlug);
       }
 
       const dataWhere = `WHERE ${dataConditions.join(" AND ")}`;

@@ -302,18 +302,18 @@ describe("GET /outlets", () => {
     expect(sql).toContain("co.feature_slug IN");
   });
 
-  it("filters by featureSlug (exact)", async () => {
+  it("filters by featureSlugs with single slug", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
     const res = await withIdentity(request(app).get("/outlets")).query({
       brandId: BRAND_ID,
-      featureSlug: "pr-outreach",
+      featureSlugs: "pr-outreach",
     });
 
     expect(res.status).toBe(200);
-    // Verify exact feature_slug filter
+    // Single slug still uses IN filter
     const sql = mockQuery.mock.calls[0][0] as string;
-    expect(sql).toContain("co.feature_slug =");
+    expect(sql).toContain("co.feature_slug IN");
   });
 
   it("returns empty array when no outlets match", async () => {
