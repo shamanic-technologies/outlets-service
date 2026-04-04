@@ -829,19 +829,11 @@
           },
           {
             "in": "query",
-            "name": "featureSlug",
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by exact feature slug"
-          },
-          {
-            "in": "query",
             "name": "featureSlugs",
             "schema": {
               "type": "string"
             },
-            "description": "Filter by multiple feature slugs (comma-separated). Takes priority over featureSlug."
+            "description": "Filter by feature slugs (comma-separated). Use a single slug or multiple."
           },
           {
             "in": "query",
@@ -849,7 +841,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Filter by feature dynasty slug (resolved to all versioned slugs). Takes priority over featureSlug/featureSlugs."
+            "description": "Filter by feature dynasty slug (resolved to all versioned slugs via features-service). Takes priority over featureSlugs."
           },
           {
             "in": "query",
