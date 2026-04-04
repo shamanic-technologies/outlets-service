@@ -1,7 +1,15 @@
 import { z } from "zod";
 
 // Enums
+/** DB-level statuses (what gets written to campaign_outlets). */
 export const outletStatusEnum = z.enum(["open", "ended", "denied", "served", "skipped"]);
+
+/** Enriched statuses returned in responses — includes downstream delivery states from journalists-service. */
+export const enrichedOutletStatusEnum = z.enum([
+  "open", "ended", "denied", "served", "contacted", "delivered", "replied", "skipped",
+]);
+
+export const replyClassificationEnum = z.enum(["positive", "negative", "neutral"]);
 
 // --- Outlets ---
 
@@ -122,6 +130,7 @@ export const statsResponseSchema = z.object({
   outletsDiscovered: z.number(),
   avgRelevanceScore: z.number(),
   searchQueriesUsed: z.number(),
+  byStatus: z.record(enrichedOutletStatusEnum, z.number()).optional(),
 });
 
 export const statsGroupedResponseSchema = z.object({

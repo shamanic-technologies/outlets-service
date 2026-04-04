@@ -13,6 +13,7 @@ import {
   searchOutletsSchema,
 } from "../schemas";
 import { resolveFeatureDynastySlugs } from "../services/dynasty";
+import { fetchOutletStatuses } from "../services/outlet-status";
 
 const router = Router();
 
@@ -255,6 +256,7 @@ router.get(
           status: string;
           overallRelevance: string | null;
           relevanceRationale: string | null;
+          replyClassification: string | null;
           runId: string | null;
           updatedAt: string;
         }>;
@@ -283,9 +285,31 @@ router.get(
           status: r.outlet_status,
           overallRelevance: r.overall_relevance,
           relevanceRationale: r.relevance_rationale,
+          replyClassification: null,
           runId: r.run_id || null,
           updatedAt: r.campaign_updated_at,
         });
+      }
+
+      // Enrich statuses from journalists-service for "served" outlets
+      const servedOutletIds = Array.from(outletsMap.entries())
+        .filter(([_, o]) => o.campaigns.some((c) => c.status === "served"))
+        .map(([id]) => id);
+
+      const enrichedStatuses = servedOutletIds.length > 0
+        ? await fetchOutletStatuses(servedOutletIds, ctx)
+        : new Map();
+
+      // Override campaign-level statuses with enriched status
+      for (const outlet of outletsMap.values()) {
+        const enriched = enrichedStatuses.get(outlet.id);
+        if (!enriched) continue;
+        for (const campaign of outlet.campaigns) {
+          if (campaign.status === "served" && enriched.status !== "served") {
+            campaign.status = enriched.status;
+            campaign.replyClassification = enriched.replyClassification;
+          }
+        }
       }
 
       // Build final response — campaigns sorted by updated_at DESC from SQL

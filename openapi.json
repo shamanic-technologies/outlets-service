@@ -422,6 +422,10 @@
           },
           "searchQueriesUsed": {
             "type": "number"
+          },
+          "byStatus": {
+            "type": "object",
+            "additionalProperties": true
           }
         },
         "required": [
@@ -899,8 +903,12 @@
                               "ended",
                               "denied",
                               "served",
+                              "contacted",
+                              "delivered",
+                              "replied",
                               "skipped"
-                            ]
+                            ],
+                            "description": "Enriched status — 'served' outlets may be overridden to contacted/delivered/replied based on email delivery data from journalists-service"
                           },
                           "latestRelevanceScore": {
                             "type": "number"
@@ -940,8 +948,12 @@
                                     "ended",
                                     "denied",
                                     "served",
+                                    "contacted",
+                                    "delivered",
+                                    "replied",
                                     "skipped"
-                                  ]
+                                  ],
+                                  "description": "Enriched status — 'served' may be overridden based on email delivery data"
                                 },
                                 "overallRelevance": {
                                   "type": "string",
@@ -950,6 +962,16 @@
                                 "relevanceRationale": {
                                   "type": "string",
                                   "nullable": true
+                                },
+                                "replyClassification": {
+                                  "type": "string",
+                                  "nullable": true,
+                                  "enum": [
+                                    "positive",
+                                    "negative",
+                                    "neutral"
+                                  ],
+                                  "description": "Best reply classification among journalists at this outlet. Non-null only when status is 'replied'."
                                 },
                                 "runId": {
                                   "type": "string",
