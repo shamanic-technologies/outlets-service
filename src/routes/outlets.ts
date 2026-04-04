@@ -292,13 +292,9 @@ router.get(
       }
 
       // Enrich statuses from journalists-service for "served" outlets
-      // Only enrich when full context is available (journalists-service requires all 7 headers)
-      const hasFullContext = !!(ctx.campaignId && ctx.brandIds.length > 0 && ctx.featureSlug && ctx.workflowSlug);
-      const servedOutletIds = hasFullContext
-        ? Array.from(outletsMap.entries())
-            .filter(([_, o]) => o.campaigns.some((c) => c.status === "served"))
-            .map(([id]) => id)
-        : [];
+      const servedOutletIds = Array.from(outletsMap.entries())
+        .filter(([_, o]) => o.campaigns.some((c) => c.status === "served"))
+        .map(([id]) => id);
 
       const enrichedStatuses = servedOutletIds.length > 0
         ? await fetchOutletStatuses(servedOutletIds, ctx)
@@ -316,16 +312,25 @@ router.get(
         }
       }
 
+      // Status priority: most advanced journalist/delivery status wins
+      const STATUS_PRIORITY: Record<string, number> = {
+        skipped: 0, denied: 0, ended: 0, open: 1, served: 2, contacted: 3, delivered: 4, replied: 5,
+      };
+
       // Build final response — campaigns sorted by updated_at DESC from SQL
       const outlets = Array.from(outletsMap.values()).map((outlet) => {
         const latest = outlet.campaigns[0];
+        const mostAdvancedStatus = outlet.campaigns.reduce(
+          (best, c) => (STATUS_PRIORITY[c.status] ?? 0) > (STATUS_PRIORITY[best] ?? 0) ? c.status : best,
+          outlet.campaigns[0].status,
+        );
         return {
           id: outlet.id,
           outletName: outlet.outletName,
           outletUrl: outlet.outletUrl,
           outletDomain: outlet.outletDomain,
           createdAt: outlet.createdAt,
-          latestStatus: latest.status,
+          latestStatus: mostAdvancedStatus,
           latestRelevanceScore: latest.relevanceScore,
           campaigns: outlet.campaigns,
         };
