@@ -265,7 +265,9 @@ router.get(
         }
 
         // Enrich "served" outlets via journalists-service
-        if (servedOutletIds.length > 0) {
+        // Only enrich when full context is available (journalists-service requires all 7 headers)
+        const hasFullContext = !!(ctx.campaignId && ctx.brandIds.length > 0 && ctx.featureSlug && ctx.workflowSlug);
+        if (hasFullContext && servedOutletIds.length > 0) {
           const enriched = await fetchOutletStatuses(servedOutletIds, ctx);
           let remainingServed = 0;
           for (const outletId of servedOutletIds) {
@@ -280,6 +282,8 @@ router.get(
           if (remainingServed > 0) {
             byStatus["served"] = remainingServed;
           }
+        } else if (servedOutletIds.length > 0) {
+          byStatus["served"] = servedOutletIds.length;
         }
 
         const row = result.rows[0];

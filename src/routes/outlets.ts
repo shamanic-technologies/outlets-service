@@ -292,9 +292,13 @@ router.get(
       }
 
       // Enrich statuses from journalists-service for "served" outlets
-      const servedOutletIds = Array.from(outletsMap.entries())
-        .filter(([_, o]) => o.campaigns.some((c) => c.status === "served"))
-        .map(([id]) => id);
+      // Only enrich when full context is available (journalists-service requires all 7 headers)
+      const hasFullContext = !!(ctx.campaignId && ctx.brandIds.length > 0 && ctx.featureSlug && ctx.workflowSlug);
+      const servedOutletIds = hasFullContext
+        ? Array.from(outletsMap.entries())
+            .filter(([_, o]) => o.campaigns.some((c) => c.status === "served"))
+            .map(([id]) => id)
+        : [];
 
       const enrichedStatuses = servedOutletIds.length > 0
         ? await fetchOutletStatuses(servedOutletIds, ctx)
