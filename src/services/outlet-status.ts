@@ -5,8 +5,6 @@ import { buildServiceHeaders } from "./headers";
 export interface OutletEnrichedStatus {
   status: string;
   replyClassification: "positive" | "negative" | "neutral" | null;
-  journalistCount: number;
-  contactedCount: number;
 }
 
 /**

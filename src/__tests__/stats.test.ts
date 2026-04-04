@@ -717,8 +717,8 @@ describe("GET /outlets/stats byStatus enrichment", () => {
     // Journalists-service returns enriched statuses
     mockFetchOutletStatuses.mockResolvedValueOnce(
       new Map([
-        [OUTLET_B, { status: "contacted", replyClassification: null, journalistCount: 2, contactedCount: 1 }],
-        [OUTLET_C, { status: "replied", replyClassification: "positive", journalistCount: 1, contactedCount: 1 }],
+        [OUTLET_B, { status: "contacted", replyClassification: null }],
+        [OUTLET_C, { status: "replied", replyClassification: "positive" }],
       ])
     );
 
@@ -746,8 +746,8 @@ describe("GET /outlets/stats byStatus enrichment", () => {
     // Journalists-service returns all as "served" (no enrichment)
     mockFetchOutletStatuses.mockResolvedValueOnce(
       new Map([
-        [OUTLET_A, { status: "served", replyClassification: null, journalistCount: 0, contactedCount: 0 }],
-        [OUTLET_B, { status: "served", replyClassification: null, journalistCount: 0, contactedCount: 0 }],
+        [OUTLET_A, { status: "served", replyClassification: null }],
+        [OUTLET_B, { status: "served", replyClassification: null }],
       ])
     );
 
