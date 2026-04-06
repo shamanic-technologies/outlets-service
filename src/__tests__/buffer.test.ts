@@ -80,7 +80,7 @@ beforeEach(() => {
   app = createApp();
 });
 
-describe("POST /org/buffer/next", () => {
+describe("POST /orgs/buffer/next", () => {
   it("returns one outlet by default (count=1)", async () => {
     // claimNext → found an outlet
     mockQuery.mockResolvedValueOnce({ rows: [makeOutletRow()] });
@@ -90,7 +90,7 @@ describe("POST /org/buffer/next", () => {
     mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
 
     const res = await withHeaders(
-      request(app).post("/org/buffer/next")
+      request(app).post("/orgs/buffer/next")
     ).send({});
 
     expect(res.status).toBe(200);
@@ -125,7 +125,7 @@ describe("POST /org/buffer/next", () => {
     mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
 
     const res = await withHeaders(
-      request(app).post("/org/buffer/next")
+      request(app).post("/orgs/buffer/next")
     ).send({ count: 2 });
 
     expect(res.status).toBe(200);
@@ -139,7 +139,7 @@ describe("POST /org/buffer/next", () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ response: cachedResponse }] });
 
     const res = await withHeaders(
-      request(app).post("/org/buffer/next")
+      request(app).post("/orgs/buffer/next")
     ).send({ idempotencyKey: "already-used-key" });
 
     expect(res.status).toBe(200);
@@ -178,7 +178,7 @@ describe("POST /org/buffer/next", () => {
     mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
 
     const res = await withHeaders(
-      request(app).post("/org/buffer/next")
+      request(app).post("/orgs/buffer/next")
     ).send({});
 
     expect(res.status).toBe(200);
@@ -225,7 +225,7 @@ describe("POST /org/buffer/next", () => {
     mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
 
     const res = await withHeaders(
-      request(app).post("/org/buffer/next")
+      request(app).post("/orgs/buffer/next")
     ).send({});
 
     expect(res.status).toBe(200);
@@ -265,7 +265,7 @@ describe("POST /org/buffer/next", () => {
     mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
 
     const res = await withHeaders(
-      request(app).post("/org/buffer/next")
+      request(app).post("/orgs/buffer/next")
     ).send({});
 
     expect(res.status).toBe(200);
@@ -290,7 +290,7 @@ describe("POST /org/buffer/next", () => {
     mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
 
     const res = await withHeaders(
-      request(app).post("/org/buffer/next")
+      request(app).post("/orgs/buffer/next")
     ).send({});
 
     expect(res.status).toBe(200);
@@ -309,7 +309,7 @@ describe("POST /org/buffer/next", () => {
     mockDiscoverCycle.mockResolvedValueOnce(0);
 
     const res = await withHeaders(
-      request(app).post("/org/buffer/next")
+      request(app).post("/orgs/buffer/next")
     ).send({});
 
     expect(res.status).toBe(200);
@@ -341,7 +341,7 @@ describe("POST /org/buffer/next", () => {
     mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
 
     const res = await withHeaders(
-      request(app).post("/org/buffer/next")
+      request(app).post("/orgs/buffer/next")
     ).send({});
 
     expect(res.status).toBe(200);
@@ -363,7 +363,7 @@ describe("POST /org/buffer/next", () => {
     mockDiscoverCycle.mockResolvedValueOnce(0);
 
     const res = await withHeaders(
-      request(app).post("/org/buffer/next")
+      request(app).post("/orgs/buffer/next")
     ).send({ count: 5 });
 
     expect(res.status).toBe(200);
@@ -374,7 +374,7 @@ describe("POST /org/buffer/next", () => {
 
   it("returns 400 when x-org-id is missing", async () => {
     const res = await request(app)
-      .post("/org/buffer/next")
+      .post("/orgs/buffer/next")
       .set("x-api-key", API_KEY)
       .send({});
 
@@ -384,7 +384,7 @@ describe("POST /org/buffer/next", () => {
 
   it("returns 401 when no x-api-key is sent", async () => {
     const res = await request(app)
-      .post("/org/buffer/next")
+      .post("/orgs/buffer/next")
       .send({});
 
     expect(res.status).toBe(401);
@@ -399,7 +399,7 @@ describe("POST /org/buffer/next", () => {
     );
 
     const res = await withHeaders(
-      request(app).post("/org/buffer/next")
+      request(app).post("/orgs/buffer/next")
     ).send({});
 
     expect(res.status).toBe(502);
@@ -415,7 +415,7 @@ describe("POST /org/buffer/next", () => {
     mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
 
     const res = await withHeaders(
-      request(app).post("/org/buffer/next")
+      request(app).post("/orgs/buffer/next")
     ).send({});
 
     expect(res.status).toBe(200);
@@ -432,7 +432,7 @@ describe("POST /org/buffer/next", () => {
     mockDiscoverCycle.mockResolvedValueOnce(0);
 
     const res = await withHeaders(
-      request(app).post("/org/buffer/next")
+      request(app).post("/orgs/buffer/next")
     ).send({});
 
     expect(res.status).toBe(200);

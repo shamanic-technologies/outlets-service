@@ -63,7 +63,7 @@ beforeEach(() => {
   app = createApp();
 });
 
-describe("POST /org/outlets/discover", () => {
+describe("POST /orgs/outlets/discover", () => {
   it("creates a child run, discovers outlets via discoverCycle, closes run as completed", async () => {
     // discoverCycle returns 5 outlets on first call, 3 on second, then 0 (done)
     mockDiscoverCycle
@@ -72,7 +72,7 @@ describe("POST /org/outlets/discover", () => {
       .mockResolvedValueOnce(0);
 
     const res = await withHeaders(
-      request(app).post("/org/outlets/discover")
+      request(app).post("/orgs/outlets/discover")
     ).send({ count: 10 });
 
     expect(res.status).toBe(200);
@@ -92,7 +92,7 @@ describe("POST /org/outlets/discover", () => {
       .mockResolvedValueOnce(5);
 
     const res = await withHeaders(
-      request(app).post("/org/outlets/discover")
+      request(app).post("/orgs/outlets/discover")
     ).send({});
 
     expect(res.status).toBe(200);
@@ -103,7 +103,7 @@ describe("POST /org/outlets/discover", () => {
     mockDiscoverCycle.mockResolvedValueOnce(0);
 
     const res = await withHeaders(
-      request(app).post("/org/outlets/discover")
+      request(app).post("/orgs/outlets/discover")
     ).send({ count: 50 });
 
     expect(res.status).toBe(200);
@@ -116,7 +116,7 @@ describe("POST /org/outlets/discover", () => {
     mockDiscoverCycle.mockRejectedValueOnce(new Error("brand-service /brands/extract-fields failed (503): down"));
 
     const res = await withHeaders(
-      request(app).post("/org/outlets/discover")
+      request(app).post("/orgs/outlets/discover")
     ).send({ count: 10 });
 
     expect(res.status).toBe(502);
@@ -125,7 +125,7 @@ describe("POST /org/outlets/discover", () => {
 
   it("returns 400 when x-org-id is missing", async () => {
     const res = await request(app)
-      .post("/org/outlets/discover")
+      .post("/orgs/outlets/discover")
       .set("x-api-key", API_KEY)
       .send({ count: 10 });
 
@@ -135,7 +135,7 @@ describe("POST /org/outlets/discover", () => {
 
   it("returns 400 for count > 200", async () => {
     const res = await withHeaders(
-      request(app).post("/org/outlets/discover")
+      request(app).post("/orgs/outlets/discover")
     ).send({ count: 201 });
 
     expect(res.status).toBe(400);
@@ -144,7 +144,7 @@ describe("POST /org/outlets/discover", () => {
 
   it("returns 400 for count < 1", async () => {
     const res = await withHeaders(
-      request(app).post("/org/outlets/discover")
+      request(app).post("/orgs/outlets/discover")
     ).send({ count: 0 });
 
     expect(res.status).toBe(400);

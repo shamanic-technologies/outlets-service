@@ -35,19 +35,19 @@ export function createApp() {
   app.use("/internal", internalRouter);
 
   // Org routes — API key + x-org-id required
-  app.use("/org", requireOrgId);
+  app.use("/orgs", requireOrgId);
 
-  // Stats route (must be before /org/outlets/:id to avoid path conflicts)
-  app.use("/org/outlets", statsRouter);
+  // Stats route (must be before /orgs/outlets/:id to avoid path conflicts)
+  app.use("/orgs/outlets", statsRouter);
 
-  // Discover route (must be before /org/outlets/:id to avoid path conflicts)
-  app.use("/org/outlets", discoverRouter);
+  // Discover route (must be before /orgs/outlets/:id to avoid path conflicts)
+  app.use("/orgs/outlets", discoverRouter);
 
   // Buffer route
-  app.use("/org/buffer", bufferRouter);
+  app.use("/orgs/buffer", bufferRouter);
 
   // CRUD routes
-  app.use("/org/outlets", outletsRouter);
+  app.use("/orgs/outlets", outletsRouter);
 
   return app;
 }
