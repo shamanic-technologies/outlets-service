@@ -83,7 +83,7 @@ const spec = {
         },
       },
     },
-    "/org/outlets": {
+    "/orgs/outlets": {
       post: {
         summary: "Create outlet (upsert by outlet_domain)",
         description: "Upserts by outlet_domain — if the domain already exists, updates the name/url. Callers should provide campaign/brand/feature/workflow headers for proper context.",
@@ -181,7 +181,7 @@ const spec = {
         },
       },
     },
-    "/org/outlets/{id}": {
+    "/orgs/outlets/{id}": {
       get: {
         summary: "Get outlet by ID (org-scoped)",
         parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }, ...orgHeaders],
@@ -200,7 +200,7 @@ const spec = {
         },
       },
     },
-    "/org/outlets/{id}/status": {
+    "/orgs/outlets/{id}/status": {
       patch: {
         summary: "Update outlet status (org-scoped)",
         description: "Updates the status of an outlet within a campaign. Requires x-campaign-id to identify the campaign_outlet row.",
@@ -239,7 +239,7 @@ const spec = {
         },
       },
     },
-    "/org/outlets/bulk": {
+    "/orgs/outlets/bulk": {
       post: {
         summary: "Bulk upsert outlets (org-scoped)",
         description: "Callers should provide campaign/brand/feature/workflow headers. Max 500 outlets per request.",
@@ -257,7 +257,7 @@ const spec = {
         },
       },
     },
-    "/org/outlets/search": {
+    "/orgs/outlets/search": {
       post: {
         summary: "Search outlets by name/url (org-scoped)",
         description: "Full-text search (ILIKE) on outlet name and URL, scoped by org.",
@@ -289,7 +289,7 @@ const spec = {
         },
       },
     },
-    "/org/outlets/stats": {
+    "/orgs/outlets/stats": {
       get: {
         summary: "Aggregated outlet discovery metrics (org-scoped)",
         description: "Returns outlet discovery stats. Supports filtering and groupBy.",
@@ -317,7 +317,7 @@ const spec = {
         },
       },
     },
-    "/org/outlets/stats/costs": {
+    "/orgs/outlets/stats/costs": {
       get: {
         summary: "Cost stats for outlet discovery (org-scoped)",
         description: "Returns aggregated discovery costs via runs-service.",
@@ -336,7 +336,7 @@ const spec = {
         },
       },
     },
-    "/org/outlets/discover": {
+    "/orgs/outlets/discover": {
       post: {
         summary: "Discover outlets for a campaign (org-scoped)",
         description: "Runs outlet discovery: generates categories, searches Google, scores results, inserts into buffer.",
@@ -359,7 +359,7 @@ const spec = {
         },
       },
     },
-    "/org/buffer/next": {
+    "/orgs/buffer/next": {
       post: {
         summary: "Pull next outlet(s) from buffer (org-scoped)",
         description: "Returns up to `count` highest-scored open outlets. Auto-discovers if buffer is empty.",

@@ -19,7 +19,7 @@ vi.mock("../db/pool", () => ({
   },
 }));
 
-// Mock outlet-status service (used by GET /org/outlets for status enrichment)
+// Mock outlet-status service (used by GET /orgs/outlets for status enrichment)
 const mockFetchOutletStatuses = vi.fn();
 vi.mock("../services/outlet-status", () => ({
   fetchOutletStatuses: (...args: unknown[]) => mockFetchOutletStatuses(...args),
@@ -77,7 +77,7 @@ describe("GET /health", () => {
 // ========================
 // Outlets CRUD
 // ========================
-describe("POST /org/outlets", () => {
+describe("POST /orgs/outlets", () => {
   it("creates an outlet with upsert", async () => {
     const outletRow = {
       id: "11111111-1111-1111-1111-111111111111",
@@ -95,7 +95,7 @@ describe("POST /org/outlets", () => {
       .mockResolvedValueOnce({ rows: [] }) // INSERT campaign_outlets
       .mockResolvedValueOnce({}); // COMMIT
 
-    const res = await withFullHeaders(request(app).post("/org/outlets")).send({
+    const res = await withFullHeaders(request(app).post("/orgs/outlets")).send({
       outletName: "TechCrunch",
       outletUrl: "https://techcrunch.com",
       outletDomain: "techcrunch.com",
@@ -129,7 +129,7 @@ describe("POST /org/outlets", () => {
       .mockResolvedValueOnce({ rows: [] }) // INSERT campaign_outlets
       .mockResolvedValueOnce({}); // COMMIT
 
-    const res = await withFullHeaders(request(app).post("/org/outlets")).send({
+    const res = await withFullHeaders(request(app).post("/orgs/outlets")).send({
       outletName: "TechCrunch",
       outletUrl: "https://techcrunch.com/different/path",
       outletDomain: "techcrunch.com",
@@ -147,7 +147,7 @@ describe("POST /org/outlets", () => {
   });
 
   it("returns 400 for invalid body", async () => {
-    const res = await withFullHeaders(request(app).post("/org/outlets")).send({
+    const res = await withFullHeaders(request(app).post("/orgs/outlets")).send({
       outletName: "",
     });
     expect(res.status).toBe(400);
@@ -155,7 +155,7 @@ describe("POST /org/outlets", () => {
   });
 });
 
-describe("GET /org/outlets", () => {
+describe("GET /orgs/outlets", () => {
   it("returns deduplicated outlets with nested campaigns", async () => {
     // Step 1: paginated distinct outlet IDs
     mockQuery.mockResolvedValueOnce({
@@ -190,7 +190,7 @@ describe("GET /org/outlets", () => {
       ],
     });
 
-    const res = await withIdentity(request(app).get("/org/outlets")).query({
+    const res = await withIdentity(request(app).get("/orgs/outlets")).query({
       campaignId: CAMPAIGN_ID,
     });
 
@@ -243,7 +243,7 @@ describe("GET /org/outlets", () => {
     );
 
     // Only x-org-id (base identity) — no campaign/brand/feature/workflow headers
-    const res = await withBaseIdentity(request(app).get("/org/outlets")).query({
+    const res = await withBaseIdentity(request(app).get("/orgs/outlets")).query({
       campaignId: CAMPAIGN_ID,
     });
 
@@ -313,7 +313,7 @@ describe("GET /org/outlets", () => {
       new Map([[OUTLET_ID, { status: "delivered", replyClassification: null }]])
     );
 
-    const res = await withIdentity(request(app).get("/org/outlets")).query({
+    const res = await withIdentity(request(app).get("/orgs/outlets")).query({
       brandId: BRAND_ID,
     });
 
@@ -381,7 +381,7 @@ describe("GET /org/outlets", () => {
     // Enrichment returns nothing for this outlet (no journalist data)
     mockFetchOutletStatuses.mockResolvedValueOnce(new Map());
 
-    const res = await withIdentity(request(app).get("/org/outlets")).query({
+    const res = await withIdentity(request(app).get("/orgs/outlets")).query({
       brandId: BRAND_ID,
     });
 
@@ -401,7 +401,7 @@ describe("GET /org/outlets", () => {
   it("filters by featureSlugs (comma-separated)", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
-    const res = await withIdentity(request(app).get("/org/outlets")).query({
+    const res = await withIdentity(request(app).get("/orgs/outlets")).query({
       brandId: BRAND_ID,
       featureSlugs: "pr-outreach,pr-outreach-sophia",
     });
@@ -416,7 +416,7 @@ describe("GET /org/outlets", () => {
   it("filters by featureSlugs with single slug", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
-    const res = await withIdentity(request(app).get("/org/outlets")).query({
+    const res = await withIdentity(request(app).get("/orgs/outlets")).query({
       brandId: BRAND_ID,
       featureSlugs: "pr-outreach",
     });
@@ -429,14 +429,14 @@ describe("GET /org/outlets", () => {
 
   it("returns empty array when no outlets match", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-    const res = await withIdentity(request(app).get("/org/outlets"));
+    const res = await withIdentity(request(app).get("/orgs/outlets"));
     expect(res.status).toBe(200);
     expect(res.body.outlets).toEqual([]);
     expect(res.body.total).toBe(0);
   });
 });
 
-describe("GET /org/outlets/:id", () => {
+describe("GET /orgs/outlets/:id", () => {
   it("returns an outlet by ID", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [
@@ -452,7 +452,7 @@ describe("GET /org/outlets/:id", () => {
     });
 
     const res = await withIdentity(
-      request(app).get("/org/outlets/11111111-1111-1111-1111-111111111111")
+      request(app).get("/orgs/outlets/11111111-1111-1111-1111-111111111111")
     );
     expect(res.status).toBe(200);
     expect(res.body.outletName).toBe("TechCrunch");
@@ -461,13 +461,13 @@ describe("GET /org/outlets/:id", () => {
   it("returns 404 for missing outlet", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     const res = await withIdentity(
-      request(app).get("/org/outlets/99999999-9999-9999-9999-999999999999")
+      request(app).get("/orgs/outlets/99999999-9999-9999-9999-999999999999")
     );
     expect(res.status).toBe(404);
   });
 });
 
-describe("PATCH /org/outlets/:id", () => {
+describe("PATCH /orgs/outlets/:id", () => {
   it("updates an outlet", async () => {
     // First query: ownership check (SELECT 1 FROM campaign_outlets)
     mockQuery.mockResolvedValueOnce({ rows: [{ "?column?": 1 }] });
@@ -486,7 +486,7 @@ describe("PATCH /org/outlets/:id", () => {
     });
 
     const res = await withIdentity(
-      request(app).patch("/org/outlets/11111111-1111-1111-1111-111111111111")
+      request(app).patch("/orgs/outlets/11111111-1111-1111-1111-111111111111")
     ).send({ outletName: "Updated Name" });
 
     expect(res.status).toBe(200);
@@ -496,13 +496,13 @@ describe("PATCH /org/outlets/:id", () => {
   it("returns 404 when outlet not found", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     const res = await withIdentity(
-      request(app).patch("/org/outlets/99999999-9999-9999-9999-999999999999")
+      request(app).patch("/orgs/outlets/99999999-9999-9999-9999-999999999999")
     ).send({ outletName: "X" });
     expect(res.status).toBe(404);
   });
 });
 
-describe("PATCH /org/outlets/:id/status", () => {
+describe("PATCH /orgs/outlets/:id/status", () => {
   it("updates outlet status with x-campaign-id header", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [
@@ -518,7 +518,7 @@ describe("PATCH /org/outlets/:id/status", () => {
 
     const res = await withIdentity(
       request(app)
-        .patch("/org/outlets/11111111-1111-1111-1111-111111111111/status")
+        .patch("/orgs/outlets/11111111-1111-1111-1111-111111111111/status")
         .set("x-campaign-id", CAMPAIGN_ID)
     ).send({ status: "ended", reason: "No longer relevant" });
 
@@ -530,7 +530,7 @@ describe("PATCH /org/outlets/:id/status", () => {
 // ========================
 // Bulk & Search
 // ========================
-describe("POST /org/outlets/bulk", () => {
+describe("POST /orgs/outlets/bulk", () => {
   it("bulk upserts outlets", async () => {
     mockQuery
       .mockResolvedValueOnce({}) // BEGIN
@@ -558,7 +558,7 @@ describe("POST /org/outlets/bulk", () => {
       .mockResolvedValueOnce({ rows: [] }) // campaign_outlets
       .mockResolvedValueOnce({}); // COMMIT
 
-    const res = await withFullHeaders(request(app).post("/org/outlets/bulk")).send({
+    const res = await withFullHeaders(request(app).post("/orgs/outlets/bulk")).send({
       outlets: [
         {
           outletName: "Outlet1",
@@ -586,7 +586,7 @@ describe("POST /org/outlets/bulk", () => {
   });
 });
 
-describe("POST /org/outlets/search", () => {
+describe("POST /orgs/outlets/search", () => {
   it("searches outlets by name", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [
@@ -603,7 +603,7 @@ describe("POST /org/outlets/search", () => {
     });
 
     const res = await withIdentity(
-      request(app).post("/org/outlets/search")
+      request(app).post("/orgs/outlets/search")
     ).send({ query: "tech" });
 
     expect(res.status).toBe(200);
@@ -748,14 +748,14 @@ describe("GET /internal/outlets", () => {
 describe("Auth middleware", () => {
   it("returns 401 without x-api-key", async () => {
     const res = await request(app)
-      .get("/org/outlets")
+      .get("/orgs/outlets")
       .set("x-org-id", ORG_ID);
     expect(res.status).toBe(401);
   });
 
-  it("returns 400 without x-org-id on /org routes", async () => {
+  it("returns 400 without x-org-id on /orgs routes", async () => {
     const res = await request(app)
-      .get("/org/outlets")
+      .get("/orgs/outlets")
       .set("x-api-key", API_KEY);
     expect(res.status).toBe(400);
     expect(res.body.error).toContain("x-org-id");
@@ -763,7 +763,7 @@ describe("Auth middleware", () => {
 
   it("read endpoints work with only x-org-id", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // empty IDs result
-    const res = await withBaseIdentity(request(app).get("/org/outlets"));
+    const res = await withBaseIdentity(request(app).get("/orgs/outlets"));
     expect(res.status).toBe(200);
   });
 });
@@ -790,7 +790,7 @@ describe("Multi-brand x-brand-id CSV header", () => {
       .mockResolvedValueOnce({ rows: [] }) // INSERT campaign_outlets
       .mockResolvedValueOnce({}); // COMMIT
 
-    const res = await withIdentity(request(app).post("/org/outlets"))
+    const res = await withIdentity(request(app).post("/orgs/outlets"))
       .set("x-campaign-id", CAMPAIGN_ID)
       .set("x-brand-id", `${BRAND_ID},${BRAND_ID_2}`)
       .send({
