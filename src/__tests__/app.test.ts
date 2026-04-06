@@ -427,6 +427,57 @@ describe("GET /orgs/outlets", () => {
     expect(sql).toContain("co.feature_slug IN");
   });
 
+  it("returns outlets even when status enrichment fails (graceful degradation)", async () => {
+    // Step 1: one distinct outlet ID
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: "11111111-1111-1111-1111-111111111111" }],
+      rowCount: 1,
+    });
+    // Step 2: count
+    mockQuery.mockResolvedValueOnce({ rows: [{ total: 1 }] });
+    // Step 3: data with "served" status (triggers enrichment)
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: "11111111-1111-1111-1111-111111111111",
+          outlet_name: "TechCrunch",
+          outlet_url: "https://techcrunch.com",
+          outlet_domain: "techcrunch.com",
+          campaign_id: CAMPAIGN_ID,
+          feature_slug: "pr-outreach",
+          brand_ids: [BRAND_ID],
+          why_relevant: "Top tech",
+          why_not_relevant: "Competitive",
+          relevance_score: "85.00",
+          outlet_status: "served",
+          overall_relevance: null,
+          relevance_rationale: null,
+          run_id: RUN_ID,
+          created_at: "2026-01-01T00:00:00Z",
+          campaign_updated_at: "2026-01-02T00:00:00Z",
+        },
+      ],
+    });
+
+    // Enrichment call throws (simulates journalists-service returning 502)
+    mockFetchOutletStatuses.mockRejectedValueOnce(
+      new Error("[outlets-service] journalists-service /orgs/outlets/status failed (502): email-gateway error")
+    );
+
+    const res = await withIdentity(request(app).get("/orgs/outlets")).query({
+      campaignId: CAMPAIGN_ID,
+    });
+
+    // Should still return 200 with outlets — not crash with 500
+    expect(res.status).toBe(200);
+    expect(res.body.outlets).toHaveLength(1);
+    const outlet = res.body.outlets[0];
+    expect(outlet.outletName).toBe("TechCrunch");
+    // Status stays "served" since enrichment failed
+    expect(outlet.campaigns[0].status).toBe("served");
+    expect(outlet.latestStatus).toBe("served");
+  });
+
   it("returns empty array when no outlets match", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const res = await withIdentity(request(app).get("/orgs/outlets"));
