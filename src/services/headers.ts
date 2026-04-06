@@ -3,7 +3,7 @@ import type { OrgContext } from "../middleware/org-context";
 /**
  * Build standard forwarding headers for downstream service calls.
  * Single source of truth — all service clients must use this.
- * Only includes workflow headers when present in the context.
+ * Only includes headers when present in the context.
  */
 export function buildServiceHeaders(
   apiKey: string,
@@ -13,9 +13,9 @@ export function buildServiceHeaders(
     "Content-Type": "application/json",
     "x-api-key": apiKey,
     "x-org-id": ctx.orgId,
-    "x-user-id": ctx.userId,
-    "x-run-id": ctx.runId,
   };
+  if (ctx.userId) headers["x-user-id"] = ctx.userId;
+  if (ctx.runId) headers["x-run-id"] = ctx.runId;
   if (ctx.campaignId) headers["x-campaign-id"] = ctx.campaignId;
   if (ctx.brandIds.length > 0) headers["x-brand-id"] = ctx.brandIds.join(",");
   if (ctx.featureSlug) headers["x-feature-slug"] = ctx.featureSlug;

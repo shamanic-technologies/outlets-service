@@ -31,6 +31,7 @@ vi.mock("../services/journalists", () => ({
   isOutletBlocked: (...args: unknown[]) => mockIsOutletBlocked(...args),
 }));
 
+const API_KEY = "test-key";
 const ORG_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const USER_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 const RUN_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc";
@@ -43,6 +44,7 @@ const WORKFLOW_SLUG = "discover";
 
 function withHeaders(req: request.Test): request.Test {
   return req
+    .set("x-api-key", API_KEY)
     .set("x-org-id", ORG_ID)
     .set("x-user-id", USER_ID)
     .set("x-run-id", RUN_ID)
@@ -78,7 +80,7 @@ beforeEach(() => {
   app = createApp();
 });
 
-describe("POST /buffer/next", () => {
+describe("POST /org/buffer/next", () => {
   it("returns one outlet by default (count=1)", async () => {
     // claimNext → found an outlet
     mockQuery.mockResolvedValueOnce({ rows: [makeOutletRow()] });
@@ -88,7 +90,7 @@ describe("POST /buffer/next", () => {
     mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
 
     const res = await withHeaders(
-      request(app).post("/buffer/next")
+      request(app).post("/org/buffer/next")
     ).send({});
 
     expect(res.status).toBe(200);
@@ -123,7 +125,7 @@ describe("POST /buffer/next", () => {
     mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
 
     const res = await withHeaders(
-      request(app).post("/buffer/next")
+      request(app).post("/org/buffer/next")
     ).send({ count: 2 });
 
     expect(res.status).toBe(200);
@@ -137,7 +139,7 @@ describe("POST /buffer/next", () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ response: cachedResponse }] });
 
     const res = await withHeaders(
-      request(app).post("/buffer/next")
+      request(app).post("/org/buffer/next")
     ).send({ idempotencyKey: "already-used-key" });
 
     expect(res.status).toBe(200);
@@ -176,7 +178,7 @@ describe("POST /buffer/next", () => {
     mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
 
     const res = await withHeaders(
-      request(app).post("/buffer/next")
+      request(app).post("/org/buffer/next")
     ).send({});
 
     expect(res.status).toBe(200);
@@ -223,7 +225,7 @@ describe("POST /buffer/next", () => {
     mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
 
     const res = await withHeaders(
-      request(app).post("/buffer/next")
+      request(app).post("/org/buffer/next")
     ).send({});
 
     expect(res.status).toBe(200);
@@ -263,7 +265,7 @@ describe("POST /buffer/next", () => {
     mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
 
     const res = await withHeaders(
-      request(app).post("/buffer/next")
+      request(app).post("/org/buffer/next")
     ).send({});
 
     expect(res.status).toBe(200);
@@ -288,7 +290,7 @@ describe("POST /buffer/next", () => {
     mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
 
     const res = await withHeaders(
-      request(app).post("/buffer/next")
+      request(app).post("/org/buffer/next")
     ).send({});
 
     expect(res.status).toBe(200);
@@ -307,7 +309,7 @@ describe("POST /buffer/next", () => {
     mockDiscoverCycle.mockResolvedValueOnce(0);
 
     const res = await withHeaders(
-      request(app).post("/buffer/next")
+      request(app).post("/org/buffer/next")
     ).send({});
 
     expect(res.status).toBe(200);
@@ -339,7 +341,7 @@ describe("POST /buffer/next", () => {
     mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
 
     const res = await withHeaders(
-      request(app).post("/buffer/next")
+      request(app).post("/org/buffer/next")
     ).send({});
 
     expect(res.status).toBe(200);
@@ -361,7 +363,7 @@ describe("POST /buffer/next", () => {
     mockDiscoverCycle.mockResolvedValueOnce(0);
 
     const res = await withHeaders(
-      request(app).post("/buffer/next")
+      request(app).post("/org/buffer/next")
     ).send({ count: 5 });
 
     expect(res.status).toBe(200);
@@ -370,30 +372,22 @@ describe("POST /buffer/next", () => {
     expect(res.body.outlets[0].outletId).toBe(OUTLET_ID);
   });
 
-  it("returns 400 listing all missing identity headers", async () => {
+  it("returns 400 when x-org-id is missing", async () => {
     const res = await request(app)
-      .post("/buffer/next")
-      .set("x-org-id", ORG_ID)
-      .set("x-user-id", USER_ID)
-      .set("x-run-id", RUN_ID)
-      .send({});
-
-    expect(res.status).toBe(400);
-    expect(res.body.error).toContain("x-campaign-id");
-    expect(res.body.error).toContain("x-brand-id");
-    expect(res.body.error).toContain("x-feature-slug");
-    expect(res.body.error).toContain("x-workflow-slug");
-  });
-
-  it("returns 400 when no headers are sent", async () => {
-    const res = await request(app)
-      .post("/buffer/next")
+      .post("/org/buffer/next")
+      .set("x-api-key", API_KEY)
       .send({});
 
     expect(res.status).toBe(400);
     expect(res.body.error).toContain("x-org-id");
-    expect(res.body.error).toContain("x-user-id");
-    expect(res.body.error).toContain("x-run-id");
+  });
+
+  it("returns 401 when no x-api-key is sent", async () => {
+    const res = await request(app)
+      .post("/org/buffer/next")
+      .send({});
+
+    expect(res.status).toBe(401);
   });
 
   it("returns 502 when discover cycle fails with upstream error", async () => {
@@ -405,7 +399,7 @@ describe("POST /buffer/next", () => {
     );
 
     const res = await withHeaders(
-      request(app).post("/buffer/next")
+      request(app).post("/org/buffer/next")
     ).send({});
 
     expect(res.status).toBe(502);
@@ -421,7 +415,7 @@ describe("POST /buffer/next", () => {
     mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
 
     const res = await withHeaders(
-      request(app).post("/buffer/next")
+      request(app).post("/org/buffer/next")
     ).send({});
 
     expect(res.status).toBe(200);
@@ -438,7 +432,7 @@ describe("POST /buffer/next", () => {
     mockDiscoverCycle.mockResolvedValueOnce(0);
 
     const res = await withHeaders(
-      request(app).post("/buffer/next")
+      request(app).post("/org/buffer/next")
     ).send({});
 
     expect(res.status).toBe(200);

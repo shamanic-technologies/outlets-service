@@ -11,7 +11,7 @@ import {
   buildOutletGenerationMessage,
   type BrandPromptContext,
 } from "../prompts";
-import type { FullOrgContext } from "../middleware/org-context";
+import type { OrgContext } from "../middleware/org-context";
 
 const CATEGORY_BATCH_SIZE = 10;
 const OUTLET_BATCH_SIZE = 10;
@@ -59,13 +59,13 @@ export interface CampaignCategory {
   batchNumber: number;
 }
 
-async function buildBrandContext(ctx: FullOrgContext): Promise<{
+async function buildBrandContext(ctx: OrgContext): Promise<{
   brandContext: BrandPromptContext;
   featureInput: Record<string, unknown> | undefined;
 }> {
   const [extractedFields, featureInputs] = await Promise.all([
     extractFields(BRAND_FIELDS, ctx),
-    getFeatureInputs(ctx.campaignId, ctx),
+    getFeatureInputs(ctx.campaignId!, ctx),
   ]);
 
   const brandContext: BrandPromptContext = {
@@ -101,9 +101,9 @@ async function getAllCategories(campaignId: string): Promise<Array<{ name: strin
  * Generate a batch of 10 categories via LLM and insert them.
  * Returns the number of categories inserted.
  */
-export async function generateCategoryBatch(ctx: FullOrgContext): Promise<number> {
+export async function generateCategoryBatch(ctx: OrgContext): Promise<number> {
   const { brandContext, featureInput } = await buildBrandContext(ctx);
-  const alreadyUsed = await getAllCategories(ctx.campaignId);
+  const alreadyUsed = await getAllCategories(ctx.campaignId!);
 
   // Determine batch number
   const batchResult = await pool.query(
@@ -198,7 +198,7 @@ export async function getActiveCategory(campaignId: string): Promise<CampaignCat
  */
 export async function discoverOutletsInCategory(
   category: CampaignCategory,
-  ctx: FullOrgContext
+  ctx: OrgContext
 ): Promise<number> {
   const { brandContext, featureInput } = await buildBrandContext(ctx);
 
@@ -356,7 +356,7 @@ async function markCategoryStatus(categoryId: string, status: "exhausted" | "cap
  * 4. Discover outlets in active category
  * Returns number of outlets inserted.
  */
-export async function discoverCycle(ctx: FullOrgContext): Promise<number> {
+export async function discoverCycle(ctx: OrgContext): Promise<number> {
   // Ensure at least one batch of categories exists
   const existing = await pool.query(
     `SELECT COUNT(*) AS cnt FROM campaign_categories WHERE campaign_id = $1`,
@@ -371,7 +371,7 @@ export async function discoverCycle(ctx: FullOrgContext): Promise<number> {
   }
 
   // Get active category
-  let activeCategory = await getActiveCategory(ctx.campaignId);
+  let activeCategory = await getActiveCategory(ctx.campaignId!);
 
   // If no active category, all are exhausted/capped — generate a new batch
   if (!activeCategory) {
@@ -381,7 +381,7 @@ export async function discoverCycle(ctx: FullOrgContext): Promise<number> {
       console.log(`[outlets-service] discoverCycle: could not generate new categories for campaign ${ctx.campaignId}`);
       return 0;
     }
-    activeCategory = await getActiveCategory(ctx.campaignId);
+    activeCategory = await getActiveCategory(ctx.campaignId!);
     if (!activeCategory) return 0;
   }
 

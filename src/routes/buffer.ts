@@ -1,12 +1,10 @@
 import { Router, Request, Response } from "express";
 import { validateBody } from "../middleware/validate";
-import { requireFullOrgContext } from "../middleware/org-context";
-import type { FullOrgContext } from "../middleware/org-context";
+import type { OrgContext } from "../middleware/org-context";
 import { pool } from "../db/pool";
 import { isOutletBlocked } from "../services/journalists";
 import { discoverCycle } from "../services/category-discovery";
 import { bufferNextSchema } from "../schemas";
-import type { OrgContext } from "../middleware/org-context";
 
 const MAX_CLAIM_ITERATIONS = 50;
 const MAX_DISCOVER_ATTEMPTS = 5;
@@ -114,10 +112,9 @@ const router = Router();
 // POST /buffer/next — pull the next best outlet(s) from the buffer
 router.post(
   "/next",
-  requireFullOrgContext,
   validateBody(bufferNextSchema),
   async (req: Request, res: Response): Promise<void> => {
-    const ctx = req.orgContext! as FullOrgContext;
+    const ctx = req.orgContext!;
     const { count, idempotencyKey } = req.body as { count: number; idempotencyKey?: string };
 
     try {
@@ -137,7 +134,7 @@ router.post(
       let discoverAttempts = 0;
 
       for (let i = 0; i < MAX_CLAIM_ITERATIONS && collected.length < count; i++) {
-        const claimed = await claimNext(ctx.campaignId);
+        const claimed = await claimNext(ctx.campaignId!);
 
         if (!claimed) {
           // Buffer empty — try category-based discovery

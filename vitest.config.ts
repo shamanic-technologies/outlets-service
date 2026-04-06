@@ -5,5 +5,8 @@ export default defineConfig({
     globals: true,
     environment: "node",
     testTimeout: 10000,
+    env: {
+      OUTLETS_SERVICE_API_KEY: "test-key",
+    },
   },
 });

@@ -1,20 +1,17 @@
 import { Router, Request, Response } from "express";
 import { validateBody } from "../middleware/validate";
-import { requireFullOrgContext } from "../middleware/org-context";
-import type { FullOrgContext } from "../middleware/org-context";
 import { discoverSchema } from "../schemas";
 import { discoverCycle } from "../services/category-discovery";
 import { createChildRun, closeRun } from "../services/runs";
 
 const router = Router();
 
-// POST /outlets/discover — on-demand outlet discovery for a campaign
+// POST /org/outlets/discover — on-demand outlet discovery for a campaign
 router.post(
   "/discover",
-  requireFullOrgContext,
   validateBody(discoverSchema),
   async (req: Request, res: Response): Promise<void> => {
-    const ctx = req.orgContext! as FullOrgContext;
+    const ctx = req.orgContext!;
     const { count } = req.body as { count: number };
 
     let childRunId: string | undefined;
