@@ -54,7 +54,7 @@ import {
   discoverCycle,
   type CampaignCategory,
 } from "../services/category-discovery";
-import type { FullOrgContext } from "../middleware/org-context";
+import type { OrgContext } from "../middleware/org-context";
 
 const CAMPAIGN_ID = "dddddddd-dddd-dddd-dddd-dddddddddddd";
 const CATEGORY_ID = "ffffffff-ffff-ffff-ffff-ffffffffffff";
@@ -63,7 +63,7 @@ const USER_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 const RUN_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc";
 const BRAND_ID = "55555555-5555-5555-5555-555555555555";
 
-const ctx: FullOrgContext = {
+const ctx: OrgContext = {
   orgId: ORG_ID,
   userId: USER_ID,
   runId: RUN_ID,

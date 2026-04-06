@@ -1,6 +1,6 @@
 import express from "express";
 import { apiKeyAuth } from "./middleware/auth";
-import { extractOrgContext } from "./middleware/org-context";
+import { requireOrgId } from "./middleware/org-context";
 import outletsRouter from "./routes/outlets";
 import internalRouter from "./routes/internal";
 import bufferRouter from "./routes/buffer";
@@ -13,15 +13,12 @@ export function createApp() {
   const app = express();
 
   app.use(express.json({ limit: "10mb" }));
-  app.use(apiKeyAuth);
-  app.use(extractOrgContext);
 
-  // Health check
+  // Public routes — no auth
   app.get("/health", (_req, res) => {
     res.json({ status: "ok", service: "outlets-service" });
   });
 
-  // OpenAPI spec
   app.get("/openapi.json", (_req, res) => {
     const specPath = path.join(__dirname, "..", "openapi.json");
     if (fs.existsSync(specPath)) {
@@ -31,20 +28,26 @@ export function createApp() {
     }
   });
 
-  // Stats route (must be before /outlets/:id to avoid path conflicts)
-  app.use("/outlets", statsRouter);
+  // All remaining routes require API key
+  app.use(apiKeyAuth);
 
-  // Discover route (must be before /outlets/:id to avoid path conflicts)
-  app.use("/outlets", discoverRouter);
+  // Internal routes — API key only, no org context
+  app.use("/internal", internalRouter);
+
+  // Org routes — API key + x-org-id required
+  app.use("/org", requireOrgId);
+
+  // Stats route (must be before /org/outlets/:id to avoid path conflicts)
+  app.use("/org/outlets", statsRouter);
+
+  // Discover route (must be before /org/outlets/:id to avoid path conflicts)
+  app.use("/org/outlets", discoverRouter);
 
   // Buffer route
-  app.use("/buffer", bufferRouter);
+  app.use("/org/buffer", bufferRouter);
 
   // CRUD routes
-  app.use("/outlets", outletsRouter);
-
-  // Internal routes
-  app.use("/internal", internalRouter);
+  app.use("/org/outlets", outletsRouter);
 
   return app;
 }

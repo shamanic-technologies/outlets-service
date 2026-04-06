@@ -2,8 +2,8 @@
   "openapi": "3.0.0",
   "info": {
     "title": "Outlets Service",
-    "description": "Manages press outlets (publications) and their campaign relevance data. Scoped by org × brand × feature × campaign × workflow. Brand fields (brandName, industry, etc.) are fetched from brand-service — callers provide brandId via x-brand-id header and optionally pass featureInput as opaque context for LLM calls.",
-    "version": "3.0.0"
+    "description": "Manages press outlets (publications) and their campaign relevance data. Routes are organized under /org (requires x-api-key + x-org-id) and /internal (requires x-api-key only).",
+    "version": "4.0.0"
   },
   "servers": [
     {
@@ -565,7 +565,7 @@
         "type": "apiKey",
         "in": "header",
         "name": "x-api-key",
-        "description": "API key for authenticating requests. Must match OUTLETS_SERVICE_API_KEY env var."
+        "description": "API key for authenticating requests. Required on all routes except /health and /openapi.json."
       }
     }
   },
@@ -573,6 +573,7 @@
     "/health": {
       "get": {
         "summary": "Health check",
+        "security": [],
         "responses": {
           "200": {
             "description": "Service is healthy",
@@ -587,10 +588,10 @@
         }
       }
     },
-    "/outlets": {
+    "/org/outlets": {
       "post": {
-        "summary": "Create outlet (upsert by outlet_url)",
-        "description": "Requires all 7 identity headers. Upserts by outlet_domain — if the domain already exists, updates the name/url.",
+        "summary": "Create outlet (upsert by outlet_domain)",
+        "description": "Upserts by outlet_domain — if the domain already exists, updates the name/url. Callers should provide campaign/brand/feature/workflow headers for proper context.",
         "parameters": [
           {
             "in": "header",
@@ -605,59 +606,59 @@
           {
             "in": "header",
             "name": "x-user-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "User ID (from client-service)"
+            "description": "User ID (optional)"
           },
           {
             "in": "header",
             "name": "x-run-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "Run ID (caller's run from runs-service)"
+            "description": "Run ID (optional)"
           },
           {
             "in": "header",
             "name": "x-feature-slug",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "Feature slug for tracking (propagated downstream)"
+            "description": "Feature slug (optional)"
           },
           {
             "in": "header",
             "name": "x-campaign-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "Campaign ID"
+            "description": "Campaign ID (optional)"
           },
           {
             "in": "header",
             "name": "x-brand-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "Brand ID(s) — single UUID or comma-separated UUIDs for multi-brand campaigns. Example: uuid1,uuid2,uuid3"
+            "description": "Brand ID(s) — comma-separated UUIDs (optional)"
           },
           {
             "in": "header",
             "name": "x-workflow-slug",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "Workflow slug for tracking (propagated downstream)"
+            "description": "Workflow slug (optional)"
           }
         ],
         "requestBody": {
@@ -685,30 +686,12 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CampaignOutletResponse"
-                },
-                "example": {
-                  "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-                  "outletName": "TechCrunch",
-                  "outletUrl": "https://techcrunch.com",
-                  "outletDomain": "techcrunch.com",
-                  "campaignId": "11111111-2222-3333-4444-555555555555",
-                  "brandIds": [
-                    "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-                  ],
-                  "whyRelevant": "Top tech publication with high domain authority",
-                  "whyNotRelevant": "Highly competitive, may not accept guest posts",
-                  "relevanceScore": 85,
-                  "status": "open",
-                  "overallRelevance": null,
-                  "relevanceRationale": null,
-                  "createdAt": "2026-01-15T10:30:00.000Z",
-                  "updatedAt": "2026-01-15T10:30:00.000Z"
                 }
               }
             }
           },
           "400": {
-            "description": "Validation error or missing headers",
+            "description": "Validation error",
             "content": {
               "application/json": {
                 "schema": {
@@ -720,8 +703,8 @@
         }
       },
       "get": {
-        "summary": "List outlets with filters (deduplicated)",
-        "description": "Returns outlets deduplicated by outlet_id with nested campaign data. Each outlet appears once with a `campaigns` array containing per-campaign details. Filter by campaignId, brandId, status, featureSlug(s), or featureDynastySlug. Supports pagination on distinct outlets.",
+        "summary": "List outlets with filters (deduplicated, org-scoped)",
+        "description": "Returns outlets deduplicated by outlet_id with nested campaign data. Always scoped by x-org-id. Filter by campaignId, brandId, status, featureSlug(s), or featureDynastySlug.",
         "parameters": [
           {
             "in": "header",
@@ -736,22 +719,22 @@
           {
             "in": "header",
             "name": "x-user-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "User ID (from client-service)"
+            "description": "User ID (optional)"
           },
           {
             "in": "header",
             "name": "x-run-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "Run ID (caller's run from runs-service)"
+            "description": "Run ID (optional)"
           },
           {
             "in": "header",
@@ -760,7 +743,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Feature slug for tracking (optional, propagated downstream)"
+            "description": "Feature slug (optional)"
           },
           {
             "in": "header",
@@ -770,7 +753,7 @@
               "type": "string",
               "format": "uuid"
             },
-            "description": "Campaign ID (optional for read endpoints)"
+            "description": "Campaign ID (optional)"
           },
           {
             "in": "header",
@@ -779,7 +762,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Brand ID(s) — optional for read endpoints"
+            "description": "Brand ID(s) — comma-separated UUIDs (optional)"
           },
           {
             "in": "header",
@@ -788,7 +771,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Workflow slug for tracking (optional, propagated downstream)"
+            "description": "Workflow slug (optional)"
           },
           {
             "in": "query",
@@ -829,7 +812,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Filter by run ID (from discover endpoint)"
+            "description": "Filter by run ID"
           },
           {
             "in": "query",
@@ -837,7 +820,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Filter by feature slugs (comma-separated). Use a single slug or multiple."
+            "description": "Filter by feature slugs (comma-separated)"
           },
           {
             "in": "query",
@@ -845,7 +828,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Filter by feature dynasty slug (resolved to all versioned slugs via features-service). Takes priority over featureSlugs."
+            "description": "Filter by feature dynasty slug (resolved via features-service)"
           },
           {
             "in": "query",
@@ -863,7 +846,7 @@
               "type": "integer",
               "default": 0
             },
-            "description": "Pagination offset (on distinct outlets)"
+            "description": "Pagination offset"
           }
         ],
         "responses": {
@@ -907,8 +890,7 @@
                               "delivered",
                               "replied",
                               "skipped"
-                            ],
-                            "description": "Enriched status — 'served' outlets may be overridden to contacted/delivered/replied based on email delivery data from journalists-service"
+                            ]
                           },
                           "latestRelevanceScore": {
                             "type": "number"
@@ -952,8 +934,7 @@
                                     "delivered",
                                     "replied",
                                     "skipped"
-                                  ],
-                                  "description": "Enriched status — 'served' may be overridden based on email delivery data"
+                                  ]
                                 },
                                 "overallRelevance": {
                                   "type": "string",
@@ -970,8 +951,7 @@
                                     "positive",
                                     "negative",
                                     "neutral"
-                                  ],
-                                  "description": "Best reply classification among journalists at this outlet. Non-null only when status is 'replied'."
+                                  ]
                                 },
                                 "runId": {
                                   "type": "string",
@@ -1006,45 +986,13 @@
                       }
                     },
                     "total": {
-                      "type": "integer",
-                      "description": "Total number of distinct outlets matching filters"
+                      "type": "integer"
                     }
                   },
                   "required": [
                     "outlets",
                     "total"
                   ]
-                },
-                "example": {
-                  "outlets": [
-                    {
-                      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-                      "outletName": "TechCrunch",
-                      "outletUrl": "https://techcrunch.com",
-                      "outletDomain": "techcrunch.com",
-                      "createdAt": "2026-01-15T10:30:00.000Z",
-                      "latestStatus": "served",
-                      "latestRelevanceScore": 85,
-                      "campaigns": [
-                        {
-                          "campaignId": "11111111-2222-3333-4444-555555555555",
-                          "featureSlug": "pr-cold-email-outreach",
-                          "brandIds": [
-                            "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-                          ],
-                          "whyRelevant": "Top tech publication",
-                          "whyNotRelevant": "Competitive",
-                          "relevanceScore": 85,
-                          "status": "served",
-                          "overallRelevance": "high",
-                          "relevanceRationale": null,
-                          "runId": "cccccccc-cccc-cccc-cccc-cccccccccccc",
-                          "updatedAt": "2026-01-16T14:00:00.000Z"
-                        }
-                      ]
-                    }
-                  ],
-                  "total": 1
                 }
               }
             }
@@ -1052,9 +1000,9 @@
         }
       }
     },
-    "/outlets/{id}": {
+    "/org/outlets/{id}": {
       "get": {
-        "summary": "Get outlet by ID",
+        "summary": "Get outlet by ID (org-scoped)",
         "parameters": [
           {
             "in": "path",
@@ -1078,22 +1026,22 @@
           {
             "in": "header",
             "name": "x-user-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "User ID (from client-service)"
+            "description": "User ID (optional)"
           },
           {
             "in": "header",
             "name": "x-run-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "Run ID (caller's run from runs-service)"
+            "description": "Run ID (optional)"
           },
           {
             "in": "header",
@@ -1102,7 +1050,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Feature slug for tracking (optional, propagated downstream)"
+            "description": "Feature slug (optional)"
           },
           {
             "in": "header",
@@ -1112,7 +1060,7 @@
               "type": "string",
               "format": "uuid"
             },
-            "description": "Campaign ID (optional for read endpoints)"
+            "description": "Campaign ID (optional)"
           },
           {
             "in": "header",
@@ -1121,7 +1069,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Brand ID(s) — optional for read endpoints"
+            "description": "Brand ID(s) — comma-separated UUIDs (optional)"
           },
           {
             "in": "header",
@@ -1130,7 +1078,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Workflow slug for tracking (optional, propagated downstream)"
+            "description": "Workflow slug (optional)"
           }
         ],
         "responses": {
@@ -1150,7 +1098,7 @@
         }
       },
       "patch": {
-        "summary": "Update outlet",
+        "summary": "Update outlet (org-scoped)",
         "parameters": [
           {
             "in": "path",
@@ -1174,22 +1122,22 @@
           {
             "in": "header",
             "name": "x-user-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "User ID (from client-service)"
+            "description": "User ID (optional)"
           },
           {
             "in": "header",
             "name": "x-run-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "Run ID (caller's run from runs-service)"
+            "description": "Run ID (optional)"
           },
           {
             "in": "header",
@@ -1198,7 +1146,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Feature slug for tracking (optional, propagated downstream)"
+            "description": "Feature slug (optional)"
           },
           {
             "in": "header",
@@ -1208,7 +1156,7 @@
               "type": "string",
               "format": "uuid"
             },
-            "description": "Campaign ID (optional for read endpoints)"
+            "description": "Campaign ID (optional)"
           },
           {
             "in": "header",
@@ -1217,7 +1165,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Brand ID(s) — optional for read endpoints"
+            "description": "Brand ID(s) — comma-separated UUIDs (optional)"
           },
           {
             "in": "header",
@@ -1226,7 +1174,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Workflow slug for tracking (optional, propagated downstream)"
+            "description": "Workflow slug (optional)"
           }
         ],
         "requestBody": {
@@ -1255,10 +1203,10 @@
         }
       }
     },
-    "/outlets/{id}/status": {
+    "/org/outlets/{id}/status": {
       "patch": {
-        "summary": "Update outlet status",
-        "description": "Updates the status of an outlet within a campaign. Requires all 7 identity headers. Setting status to 'ended' also sets ended_at timestamp.",
+        "summary": "Update outlet status (org-scoped)",
+        "description": "Updates the status of an outlet within a campaign. Requires x-campaign-id to identify the campaign_outlet row.",
         "parameters": [
           {
             "in": "path",
@@ -1267,8 +1215,7 @@
             "schema": {
               "type": "string",
               "format": "uuid"
-            },
-            "description": "Outlet ID"
+            }
           },
           {
             "in": "header",
@@ -1283,59 +1230,59 @@
           {
             "in": "header",
             "name": "x-user-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "User ID (from client-service)"
+            "description": "User ID (optional)"
           },
           {
             "in": "header",
             "name": "x-run-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "Run ID (caller's run from runs-service)"
+            "description": "Run ID (optional)"
           },
           {
             "in": "header",
             "name": "x-feature-slug",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "Feature slug for tracking (propagated downstream)"
+            "description": "Feature slug (optional)"
           },
           {
             "in": "header",
             "name": "x-campaign-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "Campaign ID"
+            "description": "Campaign ID (optional)"
           },
           {
             "in": "header",
             "name": "x-brand-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "Brand ID(s) — single UUID or comma-separated UUIDs for multi-brand campaigns. Example: uuid1,uuid2,uuid3"
+            "description": "Brand ID(s) — comma-separated UUIDs (optional)"
           },
           {
             "in": "header",
             "name": "x-workflow-slug",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "Workflow slug for tracking (propagated downstream)"
+            "description": "Workflow slug (optional)"
           }
         ],
         "requestBody": {
@@ -1346,7 +1293,7 @@
               },
               "example": {
                 "status": "ended",
-                "reason": "No longer relevant to campaign goals"
+                "reason": "No longer relevant"
               }
             }
           }
@@ -1392,44 +1339,20 @@
                     "status",
                     "updatedAt"
                   ]
-                },
-                "example": {
-                  "outletId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-                  "campaignId": "11111111-2222-3333-4444-555555555555",
-                  "status": "ended",
-                  "reason": "No longer relevant to campaign goals",
-                  "updatedAt": "2026-01-16T14:00:00.000Z"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Missing x-campaign-id header",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
           },
           "404": {
-            "description": "Campaign outlet not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Campaign outlet not found"
           }
         }
       }
     },
-    "/outlets/bulk": {
+    "/org/outlets/bulk": {
       "post": {
-        "summary": "Bulk upsert outlets",
-        "description": "Requires all 7 identity headers. All outlets in the batch share the same campaign and brand. Max 500 outlets per request.",
+        "summary": "Bulk upsert outlets (org-scoped)",
+        "description": "Callers should provide campaign/brand/feature/workflow headers. Max 500 outlets per request.",
         "parameters": [
           {
             "in": "header",
@@ -1444,59 +1367,59 @@
           {
             "in": "header",
             "name": "x-user-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "User ID (from client-service)"
+            "description": "User ID (optional)"
           },
           {
             "in": "header",
             "name": "x-run-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "Run ID (caller's run from runs-service)"
+            "description": "Run ID (optional)"
           },
           {
             "in": "header",
             "name": "x-feature-slug",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "Feature slug for tracking (propagated downstream)"
+            "description": "Feature slug (optional)"
           },
           {
             "in": "header",
             "name": "x-campaign-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "Campaign ID"
+            "description": "Campaign ID (optional)"
           },
           {
             "in": "header",
             "name": "x-brand-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "Brand ID(s) — single UUID or comma-separated UUIDs for multi-brand campaigns. Example: uuid1,uuid2,uuid3"
+            "description": "Brand ID(s) — comma-separated UUIDs (optional)"
           },
           {
             "in": "header",
             "name": "x-workflow-slug",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "Workflow slug for tracking (propagated downstream)"
+            "description": "Workflow slug (optional)"
           }
         ],
         "requestBody": {
@@ -1504,57 +1427,16 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/BulkCreateOutlets"
-              },
-              "example": {
-                "outlets": [
-                  {
-                    "outletName": "TechCrunch",
-                    "outletUrl": "https://techcrunch.com",
-                    "outletDomain": "techcrunch.com",
-                    "whyRelevant": "Top tech publication",
-                    "whyNotRelevant": "Competitive",
-                    "relevanceScore": 85
-                  },
-                  {
-                    "outletName": "The Verge",
-                    "outletUrl": "https://theverge.com",
-                    "outletDomain": "theverge.com",
-                    "whyRelevant": "Wide consumer tech audience",
-                    "whyNotRelevant": "May not cover B2B topics",
-                    "relevanceScore": 78
-                  }
-                ]
               }
             }
           }
         },
         "responses": {
           "201": {
-            "description": "Outlets created",
-            "content": {
-              "application/json": {
-                "example": {
-                  "outlets": [
-                    {
-                      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-                      "outletName": "TechCrunch",
-                      "outletUrl": "https://techcrunch.com",
-                      "campaignId": "11111111-2222-3333-4444-555555555555"
-                    },
-                    {
-                      "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
-                      "outletName": "The Verge",
-                      "outletUrl": "https://theverge.com",
-                      "campaignId": "11111111-2222-3333-4444-555555555555"
-                    }
-                  ],
-                  "count": 2
-                }
-              }
-            }
+            "description": "Outlets created"
           },
           "400": {
-            "description": "Validation error or missing headers",
+            "description": "Validation error",
             "content": {
               "application/json": {
                 "schema": {
@@ -1566,10 +1448,10 @@
         }
       }
     },
-    "/outlets/search": {
+    "/org/outlets/search": {
       "post": {
-        "summary": "Search outlets by name/url",
-        "description": "Full-text search (ILIKE) on outlet name and URL. Optionally scoped to a campaign.",
+        "summary": "Search outlets by name/url (org-scoped)",
+        "description": "Full-text search (ILIKE) on outlet name and URL, scoped by org.",
         "parameters": [
           {
             "in": "header",
@@ -1584,22 +1466,22 @@
           {
             "in": "header",
             "name": "x-user-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "User ID (from client-service)"
+            "description": "User ID (optional)"
           },
           {
             "in": "header",
             "name": "x-run-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "Run ID (caller's run from runs-service)"
+            "description": "Run ID (optional)"
           },
           {
             "in": "header",
@@ -1608,7 +1490,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Feature slug for tracking (optional, propagated downstream)"
+            "description": "Feature slug (optional)"
           },
           {
             "in": "header",
@@ -1618,7 +1500,7 @@
               "type": "string",
               "format": "uuid"
             },
-            "description": "Campaign ID (optional for read endpoints)"
+            "description": "Campaign ID (optional)"
           },
           {
             "in": "header",
@@ -1627,7 +1509,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Brand ID(s) — optional for read endpoints"
+            "description": "Brand ID(s) — comma-separated UUIDs (optional)"
           },
           {
             "in": "header",
@@ -1636,7 +1518,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Workflow slug for tracking (optional, propagated downstream)"
+            "description": "Workflow slug (optional)"
           }
         ],
         "requestBody": {
@@ -1682,10 +1564,10 @@
         }
       }
     },
-    "/outlets/stats": {
+    "/org/outlets/stats": {
       "get": {
-        "summary": "Aggregated outlet discovery metrics",
-        "description": "Returns outlet discovery stats (count, avg relevance, search queries used). Supports filtering by brandId, campaignId, workflowSlug, featureSlug, and dynasty slugs. Dynasty slug filters resolve to all versioned slugs via workflow-service / features-service.",
+        "summary": "Aggregated outlet discovery metrics (org-scoped)",
+        "description": "Returns outlet discovery stats. Supports filtering and groupBy.",
         "parameters": [
           {
             "in": "header",
@@ -1700,22 +1582,22 @@
           {
             "in": "header",
             "name": "x-user-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "User ID (from client-service)"
+            "description": "User ID (optional)"
           },
           {
             "in": "header",
             "name": "x-run-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "Run ID (caller's run from runs-service)"
+            "description": "Run ID (optional)"
           },
           {
             "in": "header",
@@ -1724,7 +1606,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Feature slug for tracking (optional, propagated downstream)"
+            "description": "Feature slug (optional)"
           },
           {
             "in": "header",
@@ -1734,7 +1616,7 @@
               "type": "string",
               "format": "uuid"
             },
-            "description": "Campaign ID (optional for read endpoints)"
+            "description": "Campaign ID (optional)"
           },
           {
             "in": "header",
@@ -1743,7 +1625,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Brand ID(s) — optional for read endpoints"
+            "description": "Brand ID(s) — comma-separated UUIDs (optional)"
           },
           {
             "in": "header",
@@ -1752,7 +1634,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Workflow slug for tracking (optional, propagated downstream)"
+            "description": "Workflow slug (optional)"
           },
           {
             "in": "query",
@@ -1786,7 +1668,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Filter by multiple workflow slugs (comma-separated). Takes priority over workflowSlug."
+            "description": "Filter by multiple workflow slugs (comma-separated)"
           },
           {
             "in": "query",
@@ -1802,7 +1684,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Filter by multiple feature slugs (comma-separated). Takes priority over featureSlug."
+            "description": "Filter by multiple feature slugs (comma-separated)"
           },
           {
             "in": "query",
@@ -1810,7 +1692,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Filter by workflow dynasty slug (resolved to all versioned slugs). Takes priority over workflowSlug."
+            "description": "Filter by workflow dynasty slug"
           },
           {
             "in": "query",
@@ -1818,7 +1700,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Filter by feature dynasty slug (resolved to all versioned slugs). Takes priority over featureSlug."
+            "description": "Filter by feature dynasty slug"
           },
           {
             "in": "query",
@@ -1834,7 +1716,7 @@
                 "featureDynastySlug"
               ]
             },
-            "description": "Group results by this dimension. Dynasty groupBy aggregates versioned slugs into their dynasty."
+            "description": "Group results by dimension"
           }
         ],
         "responses": {
@@ -1858,10 +1740,10 @@
         }
       }
     },
-    "/outlets/stats/costs": {
+    "/org/outlets/stats/costs": {
       "get": {
-        "summary": "Cost stats for outlet discovery",
-        "description": "Returns aggregated discovery costs by querying runs-service for all runs associated with outlets. Supports filters (brandId, campaignId) and optional groupBy (outletId, runId). Without groupBy returns flat totals; with groupBy=outletId returns cost-per-outlet (run cost / outlets in that run); with groupBy=runId returns one row per discovery run.",
+        "summary": "Cost stats for outlet discovery (org-scoped)",
+        "description": "Returns aggregated discovery costs via runs-service.",
         "parameters": [
           {
             "in": "header",
@@ -1876,22 +1758,22 @@
           {
             "in": "header",
             "name": "x-user-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "User ID (from client-service)"
+            "description": "User ID (optional)"
           },
           {
             "in": "header",
             "name": "x-run-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "Run ID (caller's run from runs-service)"
+            "description": "Run ID (optional)"
           },
           {
             "in": "header",
@@ -1900,7 +1782,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Feature slug for tracking (optional, propagated downstream)"
+            "description": "Feature slug (optional)"
           },
           {
             "in": "header",
@@ -1910,7 +1792,7 @@
               "type": "string",
               "format": "uuid"
             },
-            "description": "Campaign ID (optional for read endpoints)"
+            "description": "Campaign ID (optional)"
           },
           {
             "in": "header",
@@ -1919,7 +1801,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Brand ID(s) — optional for read endpoints"
+            "description": "Brand ID(s) — comma-separated UUIDs (optional)"
           },
           {
             "in": "header",
@@ -1928,7 +1810,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Workflow slug for tracking (optional, propagated downstream)"
+            "description": "Workflow slug (optional)"
           },
           {
             "in": "query",
@@ -1958,35 +1840,22 @@
                 "runId"
               ]
             },
-            "description": "Group results by dimension. Omit for flat totals."
+            "description": "Group results by dimension"
           }
         ],
         "responses": {
           "200": {
-            "description": "Cost stats (flat or grouped)",
+            "description": "Cost stats",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/StatsCostsResponse"
-                },
-                "example": {
-                  "groups": [
-                    {
-                      "dimensions": {
-                        "outletId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-                      },
-                      "totalCostInUsdCents": 1234,
-                      "actualCostInUsdCents": 800,
-                      "provisionedCostInUsdCents": 434,
-                      "runCount": 3
-                    }
-                  ]
                 }
               }
             }
           },
           "502": {
-            "description": "Upstream service error (runs-service)",
+            "description": "Upstream service error",
             "content": {
               "application/json": {
                 "schema": {
@@ -1998,10 +1867,10 @@
         }
       }
     },
-    "/outlets/discover": {
+    "/org/outlets/discover": {
       "post": {
-        "summary": "Discover outlets for a campaign",
-        "description": "Runs parameterized outlet discovery: generates search queries via LLM, searches Google, scores results, and inserts into the campaign buffer. Creates a child run in runs-service for cost tracking. Requires all 7 identity headers.",
+        "summary": "Discover outlets for a campaign (org-scoped)",
+        "description": "Runs outlet discovery: generates categories, searches Google, scores results, inserts into buffer.",
         "parameters": [
           {
             "in": "header",
@@ -2016,59 +1885,59 @@
           {
             "in": "header",
             "name": "x-user-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "User ID (from client-service)"
+            "description": "User ID (optional)"
           },
           {
             "in": "header",
             "name": "x-run-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "Run ID (caller's run from runs-service)"
+            "description": "Run ID (optional)"
           },
           {
             "in": "header",
             "name": "x-feature-slug",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "Feature slug for tracking (propagated downstream)"
+            "description": "Feature slug (optional)"
           },
           {
             "in": "header",
             "name": "x-campaign-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "Campaign ID"
+            "description": "Campaign ID (optional)"
           },
           {
             "in": "header",
             "name": "x-brand-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "Brand ID(s) — single UUID or comma-separated UUIDs for multi-brand campaigns. Example: uuid1,uuid2,uuid3"
+            "description": "Brand ID(s) — comma-separated UUIDs (optional)"
           },
           {
             "in": "header",
             "name": "x-workflow-slug",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "Workflow slug for tracking (propagated downstream)"
+            "description": "Workflow slug (optional)"
           }
         ],
         "requestBody": {
@@ -2090,16 +1959,12 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DiscoverResponse"
-                },
-                "example": {
-                  "runId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-                  "discovered": 42
                 }
               }
             }
           },
           "400": {
-            "description": "Missing required headers or invalid count",
+            "description": "Invalid request",
             "content": {
               "application/json": {
                 "schema": {
@@ -2109,7 +1974,7 @@
             }
           },
           "502": {
-            "description": "Upstream service error during discovery",
+            "description": "Upstream service error",
             "content": {
               "application/json": {
                 "schema": {
@@ -2121,10 +1986,10 @@
         }
       }
     },
-    "/buffer/next": {
+    "/org/buffer/next": {
       "post": {
-        "summary": "Pull the next best outlet(s) from the buffer",
-        "description": "Returns up to `count` (default 1, max 50) highest-scored open outlets for the campaign. If the buffer is empty, triggers a lightweight mini-discover (3 queries × 5 Google results, LLM scoring) to refill it. Supports idempotency via optional idempotencyKey. Requires all 7 identity headers.",
+        "summary": "Pull next outlet(s) from buffer (org-scoped)",
+        "description": "Returns up to `count` highest-scored open outlets. Auto-discovers if buffer is empty.",
         "parameters": [
           {
             "in": "header",
@@ -2139,59 +2004,59 @@
           {
             "in": "header",
             "name": "x-user-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "User ID (from client-service)"
+            "description": "User ID (optional)"
           },
           {
             "in": "header",
             "name": "x-run-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "Run ID (caller's run from runs-service)"
+            "description": "Run ID (optional)"
           },
           {
             "in": "header",
             "name": "x-feature-slug",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "Feature slug for tracking (propagated downstream)"
+            "description": "Feature slug (optional)"
           },
           {
             "in": "header",
             "name": "x-campaign-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "Campaign ID"
+            "description": "Campaign ID (optional)"
           },
           {
             "in": "header",
             "name": "x-brand-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "Brand ID(s) — single UUID or comma-separated UUIDs for multi-brand campaigns. Example: uuid1,uuid2,uuid3"
+            "description": "Brand ID(s) — comma-separated UUIDs (optional)"
           },
           {
             "in": "header",
             "name": "x-workflow-slug",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "Workflow slug for tracking (propagated downstream)"
+            "description": "Workflow slug (optional)"
           }
         ],
         "requestBody": {
@@ -2205,7 +2070,7 @@
         },
         "responses": {
           "200": {
-            "description": "Array of outlets (may be empty if none available)",
+            "description": "Outlets",
             "content": {
               "application/json": {
                 "schema": {
@@ -2215,7 +2080,7 @@
             }
           },
           "400": {
-            "description": "Missing required headers",
+            "description": "Missing x-org-id",
             "content": {
               "application/json": {
                 "schema": {
@@ -2225,7 +2090,7 @@
             }
           },
           "502": {
-            "description": "Upstream service error during mini-discover",
+            "description": "Upstream service error",
             "content": {
               "application/json": {
                 "schema": {
@@ -2240,75 +2105,8 @@
     "/internal/outlets": {
       "get": {
         "summary": "Lookup outlets by IDs and/or campaignId",
-        "description": "Unified internal endpoint. At least one of `ids` or `campaignId` must be provided. When `campaignId` is provided, returns campaign-enriched outlet data (relevance, status, etc.). When only `ids` is provided, returns base outlet data.",
+        "description": "Internal endpoint — requires only x-api-key, no org context. At least one of `ids` or `campaignId` must be provided.",
         "parameters": [
-          {
-            "in": "header",
-            "name": "x-org-id",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "description": "Organization ID (from client-service)"
-          },
-          {
-            "in": "header",
-            "name": "x-user-id",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "description": "User ID (from client-service)"
-          },
-          {
-            "in": "header",
-            "name": "x-run-id",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "description": "Run ID (caller's run from runs-service)"
-          },
-          {
-            "in": "header",
-            "name": "x-feature-slug",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Feature slug for tracking (optional, propagated downstream)"
-          },
-          {
-            "in": "header",
-            "name": "x-campaign-id",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "description": "Campaign ID (optional for read endpoints)"
-          },
-          {
-            "in": "header",
-            "name": "x-brand-id",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Brand ID(s) — optional for read endpoints"
-          },
-          {
-            "in": "header",
-            "name": "x-workflow-slug",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Workflow slug for tracking (optional, propagated downstream)"
-          },
           {
             "in": "query",
             "name": "ids",
@@ -2326,12 +2124,12 @@
               "type": "string",
               "format": "uuid"
             },
-            "description": "Filter by campaign ID — includes campaign-specific fields in response"
+            "description": "Filter by campaign ID"
           }
         ],
         "responses": {
           "200": {
-            "description": "Outlets found. Shape depends on whether campaignId was provided.",
+            "description": "Outlets found",
             "content": {
               "application/json": {
                 "schema": {
@@ -2374,6 +2172,7 @@
     "/openapi.json": {
       "get": {
         "summary": "Get OpenAPI specification",
+        "security": [],
         "responses": {
           "200": {
             "description": "OpenAPI JSON document"

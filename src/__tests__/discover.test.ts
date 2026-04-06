@@ -33,6 +33,7 @@ vi.mock("../services/category-discovery", () => ({
   discoverCycle: (...args: unknown[]) => mockDiscoverCycle(...args),
 }));
 
+const API_KEY = "test-key";
 const ORG_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const USER_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 const RUN_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc";
@@ -42,6 +43,7 @@ const BRAND_ID = "55555555-5555-5555-5555-555555555555";
 
 function withHeaders(req: request.Test): request.Test {
   return req
+    .set("x-api-key", API_KEY)
     .set("x-org-id", ORG_ID)
     .set("x-user-id", USER_ID)
     .set("x-run-id", RUN_ID)
@@ -61,7 +63,7 @@ beforeEach(() => {
   app = createApp();
 });
 
-describe("POST /outlets/discover", () => {
+describe("POST /org/outlets/discover", () => {
   it("creates a child run, discovers outlets via discoverCycle, closes run as completed", async () => {
     // discoverCycle returns 5 outlets on first call, 3 on second, then 0 (done)
     mockDiscoverCycle
@@ -70,7 +72,7 @@ describe("POST /outlets/discover", () => {
       .mockResolvedValueOnce(0);
 
     const res = await withHeaders(
-      request(app).post("/outlets/discover")
+      request(app).post("/org/outlets/discover")
     ).send({ count: 10 });
 
     expect(res.status).toBe(200);
@@ -90,7 +92,7 @@ describe("POST /outlets/discover", () => {
       .mockResolvedValueOnce(5);
 
     const res = await withHeaders(
-      request(app).post("/outlets/discover")
+      request(app).post("/org/outlets/discover")
     ).send({});
 
     expect(res.status).toBe(200);
@@ -101,7 +103,7 @@ describe("POST /outlets/discover", () => {
     mockDiscoverCycle.mockResolvedValueOnce(0);
 
     const res = await withHeaders(
-      request(app).post("/outlets/discover")
+      request(app).post("/org/outlets/discover")
     ).send({ count: 50 });
 
     expect(res.status).toBe(200);
@@ -114,31 +116,26 @@ describe("POST /outlets/discover", () => {
     mockDiscoverCycle.mockRejectedValueOnce(new Error("brand-service /brands/extract-fields failed (503): down"));
 
     const res = await withHeaders(
-      request(app).post("/outlets/discover")
+      request(app).post("/org/outlets/discover")
     ).send({ count: 10 });
 
     expect(res.status).toBe(502);
     expect(mockCloseRun).toHaveBeenCalledWith(CHILD_RUN_ID, "failed", expect.anything());
   });
 
-  it("returns 400 listing all missing identity headers", async () => {
+  it("returns 400 when x-org-id is missing", async () => {
     const res = await request(app)
-      .post("/outlets/discover")
-      .set("x-org-id", ORG_ID)
-      .set("x-user-id", USER_ID)
-      .set("x-run-id", RUN_ID)
+      .post("/org/outlets/discover")
+      .set("x-api-key", API_KEY)
       .send({ count: 10 });
 
     expect(res.status).toBe(400);
-    expect(res.body.error).toContain("x-campaign-id");
-    expect(res.body.error).toContain("x-brand-id");
-    expect(res.body.error).toContain("x-feature-slug");
-    expect(res.body.error).toContain("x-workflow-slug");
+    expect(res.body.error).toContain("x-org-id");
   });
 
   it("returns 400 for count > 200", async () => {
     const res = await withHeaders(
-      request(app).post("/outlets/discover")
+      request(app).post("/org/outlets/discover")
     ).send({ count: 201 });
 
     expect(res.status).toBe(400);
@@ -147,7 +144,7 @@ describe("POST /outlets/discover", () => {
 
   it("returns 400 for count < 1", async () => {
     const res = await withHeaders(
-      request(app).post("/outlets/discover")
+      request(app).post("/org/outlets/discover")
     ).send({ count: 0 });
 
     expect(res.status).toBe(400);

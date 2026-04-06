@@ -2,8 +2,7 @@ import { Router, Request, Response } from "express";
 import { pool } from "../db/pool";
 import { config } from "../config";
 import { validateBody, validateQuery } from "../middleware/validate";
-import { requireFullOrgContext } from "../middleware/org-context";
-import type { FullOrgContext } from "../middleware/org-context";
+import type { OrgContext } from "../middleware/org-context";
 import {
   createOutletSchema,
   updateOutletSchema,
@@ -25,13 +24,12 @@ function extractDomain(url: string): string {
   }
 }
 
-// POST /outlets — create outlet (upsert by outlet_url)
+// POST /org/outlets — create outlet (upsert by outlet_url)
 router.post(
   "/",
-  requireFullOrgContext,
   validateBody(createOutletSchema),
   async (req: Request, res: Response): Promise<void> => {
-    const ctx = req.orgContext! as FullOrgContext;
+    const ctx = req.orgContext!;
 
     try {
       const b = req.body;
@@ -91,13 +89,13 @@ router.post(
         client.release();
       }
     } catch (err) {
-      console.error("Error creating outlet:", err);
+      console.error("[outlets-service] Error creating outlet:", err);
       res.status(500).json({ error: "Internal server error" });
     }
   }
 );
 
-// GET /outlets — list with filters, deduplicated by outlet with nested campaigns
+// GET /org/outlets — list with filters, deduplicated by outlet with nested campaigns
 router.get(
   "/",
   validateQuery(listOutletsQuerySchema),
@@ -105,9 +103,9 @@ router.get(
     try {
       const ctx = req.orgContext!;
       const q = req.query as any;
-      const conditions: string[] = [];
-      const params: unknown[] = [];
-      let paramIdx = 1;
+      const conditions: string[] = ["co.org_id = $1"];
+      const params: unknown[] = [ctx.orgId];
+      let paramIdx = 2;
 
       if (q.campaignId) {
         conditions.push(`co.campaign_id = $${paramIdx++}`);
@@ -153,7 +151,7 @@ router.get(
         paramIdx += slugs.length;
       }
 
-      const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+      const where = `WHERE ${conditions.join(" AND ")}`;
 
       // Step 1: Get paginated distinct outlet IDs + total count
       const idsResult = await pool.query(
@@ -185,9 +183,9 @@ router.get(
 
       // Step 3: Fetch all campaign_outlet rows for the paginated outlet IDs (with filters)
       // Re-apply filters so we only get matching campaign_outlet rows
-      const dataParams: unknown[] = [outletIds];
-      let dataIdx = 2;
-      const dataConditions: string[] = ["o.id = ANY($1)"];
+      const dataParams: unknown[] = [outletIds, ctx.orgId];
+      let dataIdx = 3;
+      const dataConditions: string[] = ["o.id = ANY($1)", "co.org_id = $2"];
 
       if (q.campaignId) {
         dataConditions.push(`co.campaign_id = $${dataIdx++}`);
@@ -344,13 +342,17 @@ router.get(
   }
 );
 
-// GET /outlets/:id
+// GET /org/outlets/:id
 router.get("/:id", async (req: Request, res: Response): Promise<void> => {
   try {
+    const ctx = req.orgContext!;
     const result = await pool.query(
-      `SELECT id, outlet_name, outlet_url, outlet_domain, created_at, updated_at
-       FROM outlets WHERE id = $1`,
-      [req.params.id]
+      `SELECT o.id, o.outlet_name, o.outlet_url, o.outlet_domain, o.created_at, o.updated_at
+       FROM outlets o
+       JOIN campaign_outlets co ON o.id = co.outlet_id
+       WHERE o.id = $1 AND co.org_id = $2
+       LIMIT 1`,
+      [req.params.id, ctx.orgId]
     );
 
     if (result.rows.length === 0) {
@@ -368,17 +370,29 @@ router.get("/:id", async (req: Request, res: Response): Promise<void> => {
       updatedAt: r.updated_at,
     });
   } catch (err) {
-    console.error("Error getting outlet:", err);
+    console.error("[outlets-service] Error getting outlet:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// PATCH /outlets/:id
+// PATCH /org/outlets/:id
 router.patch(
   "/:id",
   validateBody(updateOutletSchema),
   async (req: Request, res: Response): Promise<void> => {
     try {
+      const ctx = req.orgContext!;
+
+      // Verify the outlet belongs to this org
+      const check = await pool.query(
+        `SELECT 1 FROM campaign_outlets WHERE outlet_id = $1 AND org_id = $2 LIMIT 1`,
+        [req.params.id, ctx.orgId]
+      );
+      if (check.rows.length === 0) {
+        res.status(404).json({ error: "Outlet not found" });
+        return;
+      }
+
       const b = req.body;
       const sets: string[] = [];
       const params: unknown[] = [];
@@ -412,19 +426,18 @@ router.patch(
         updatedAt: r.updated_at,
       });
     } catch (err) {
-      console.error("Error updating outlet:", err);
+      console.error("[outlets-service] Error updating outlet:", err);
       res.status(500).json({ error: "Internal server error" });
     }
   }
 );
 
-// PATCH /outlets/:id/status
+// PATCH /org/outlets/:id/status
 router.patch(
   "/:id/status",
-  requireFullOrgContext,
   validateBody(updateOutletStatusSchema),
   async (req: Request, res: Response): Promise<void> => {
-    const ctx = req.orgContext! as FullOrgContext;
+    const ctx = req.orgContext!;
 
     try {
       const { status, reason } = req.body;
@@ -434,9 +447,9 @@ router.patch(
          SET status = $1, relevance_rationale = COALESCE($2, relevance_rationale),
              ended_at = ${status === "ended" ? "CURRENT_TIMESTAMP" : "ended_at"},
              updated_at = CURRENT_TIMESTAMP
-         WHERE outlet_id = $3 AND campaign_id = $4
+         WHERE outlet_id = $3 AND campaign_id = $4 AND org_id = $5
          RETURNING campaign_id, outlet_id, status, relevance_rationale, updated_at`,
-        [status, reason || null, req.params.id, ctx.campaignId]
+        [status, reason || null, req.params.id, ctx.campaignId, ctx.orgId]
       );
 
       if (result.rows.length === 0) {
@@ -453,19 +466,18 @@ router.patch(
         updatedAt: r.updated_at,
       });
     } catch (err) {
-      console.error("Error updating outlet status:", err);
+      console.error("[outlets-service] Error updating outlet status:", err);
       res.status(500).json({ error: "Internal server error" });
     }
   }
 );
 
-// POST /outlets/bulk — upsert many outlets
+// POST /org/outlets/bulk — upsert many outlets
 router.post(
   "/bulk",
-  requireFullOrgContext,
   validateBody(bulkCreateOutletsSchema),
   async (req: Request, res: Response): Promise<void> => {
-    const ctx = req.orgContext! as FullOrgContext;
+    const ctx = req.orgContext!;
 
     try {
       const { outlets } = req.body;
@@ -519,22 +531,23 @@ router.post(
         client.release();
       }
     } catch (err) {
-      console.error("Error bulk creating outlets:", err);
+      console.error("[outlets-service] Error bulk creating outlets:", err);
       res.status(500).json({ error: "Internal server error" });
     }
   }
 );
 
-// POST /outlets/search — search by name/url
+// POST /org/outlets/search — search by name/url, scoped by org
 router.post(
   "/search",
   validateBody(searchOutletsSchema),
   async (req: Request, res: Response): Promise<void> => {
     try {
+      const ctx = req.orgContext!;
       const { query, campaignId, limit } = req.body;
       const pattern = `%${query}%`;
-      const params: unknown[] = [pattern, pattern];
-      let paramIdx = 3;
+      const params: unknown[] = [pattern, pattern, ctx.orgId];
+      let paramIdx = 4;
 
       let campaignFilter = "";
       if (campaignId) {
@@ -546,10 +559,10 @@ router.post(
       const result = await pool.query(
         `SELECT DISTINCT o.id, o.outlet_name, o.outlet_url, o.outlet_domain, o.created_at, o.updated_at
          FROM outlets o
-         LEFT JOIN campaign_outlets co ON o.id = co.outlet_id
-         WHERE (o.outlet_name ILIKE $1 OR o.outlet_url ILIKE $2) ${campaignFilter}
+         JOIN campaign_outlets co ON o.id = co.outlet_id
+         WHERE (o.outlet_name ILIKE $1 OR o.outlet_url ILIKE $2) AND co.org_id = $3 ${campaignFilter}
          ORDER BY o.outlet_name
-         LIMIT $${paramIdx - (campaignId ? 0 : 1)}`,
+         LIMIT $${paramIdx}`,
         params
       );
 
@@ -565,7 +578,7 @@ router.post(
         total: result.rowCount,
       });
     } catch (err) {
-      console.error("Error searching outlets:", err);
+      console.error("[outlets-service] Error searching outlets:", err);
       res.status(500).json({ error: "Internal server error" });
     }
   }
