@@ -25,7 +25,7 @@ export async function isOutletBlocked(
   let res: Response;
   try {
     res = await fetch(
-      `${config.journalistsServiceUrl}/internal/outlets/blocked?${params}`,
+      `${config.journalistsServiceUrl}/orgs/outlets/blocked?${params}`,
       {
         method: "GET",
         headers: buildServiceHeaders(config.journalistsServiceApiKey, ctx),
@@ -34,15 +34,15 @@ export async function isOutletBlocked(
     );
   } catch (err) {
     if (err instanceof DOMException && err.name === "TimeoutError") {
-      throw new Error(`[outlets-service] journalists-service /internal/outlets/blocked timed out after 30s`);
+      throw new Error(`[outlets-service] journalists-service /orgs/outlets/blocked timed out after 30s`);
     }
-    throw new Error(`[outlets-service] journalists-service /internal/outlets/blocked fetch failed: ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(`[outlets-service] journalists-service /orgs/outlets/blocked fetch failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   if (!res.ok) {
     const body = await res.text();
     throw new Error(
-      `[outlets-service] journalists-service /internal/outlets/blocked failed (${res.status}): ${body}`
+      `[outlets-service] journalists-service /orgs/outlets/blocked failed (${res.status}): ${body}`
     );
   }
 
