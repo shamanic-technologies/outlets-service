@@ -102,6 +102,7 @@ router.get(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const ctx = req.orgContext!;
+      console.log("[outlets-service] GET /orgs/outlets — orgContext:", JSON.stringify(ctx));
       const q = req.query as any;
       const conditions: string[] = ["co.org_id = $1"];
       const params: unknown[] = [ctx.orgId];

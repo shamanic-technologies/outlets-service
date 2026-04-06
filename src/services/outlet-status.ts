@@ -18,13 +18,16 @@ export async function fetchOutletStatuses(
 ): Promise<Map<string, OutletEnrichedStatus>> {
   if (outletIds.length === 0) return new Map();
 
+  const headers = buildServiceHeaders(config.journalistsServiceApiKey, ctx);
+  console.log("[outlets-service] POST /orgs/outlets/status — forwarding headers:", JSON.stringify(headers));
+
   let res: Response;
   try {
     res = await fetch(
       `${config.journalistsServiceUrl}/orgs/outlets/status`,
       {
         method: "POST",
-        headers: buildServiceHeaders(config.journalistsServiceApiKey, ctx),
+        headers,
         body: JSON.stringify({ outletIds }),
         signal: AbortSignal.timeout(30_000),
       }
@@ -50,6 +53,8 @@ export async function fetchOutletStatuses(
   const data = (await res.json()) as {
     results: Record<string, OutletEnrichedStatus>;
   };
+
+  console.log("[outlets-service] POST /orgs/outlets/status — response:", JSON.stringify(data));
 
   return new Map(Object.entries(data.results));
 }
