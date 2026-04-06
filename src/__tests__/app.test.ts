@@ -427,7 +427,7 @@ describe("GET /orgs/outlets", () => {
     expect(sql).toContain("co.feature_slug IN");
   });
 
-  it("returns outlets even when status enrichment fails (graceful degradation)", async () => {
+  it("crashes with 500 when status enrichment fails", async () => {
     // Step 1: one distinct outlet ID
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: "11111111-1111-1111-1111-111111111111" }],
@@ -468,14 +468,9 @@ describe("GET /orgs/outlets", () => {
       campaignId: CAMPAIGN_ID,
     });
 
-    // Should still return 200 with outlets — not crash with 500
-    expect(res.status).toBe(200);
-    expect(res.body.outlets).toHaveLength(1);
-    const outlet = res.body.outlets[0];
-    expect(outlet.outletName).toBe("TechCrunch");
-    // Status stays "served" since enrichment failed
-    expect(outlet.campaigns[0].status).toBe("served");
-    expect(outlet.latestStatus).toBe("served");
+    // Must crash — never silently return stale data
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe("Internal server error");
   });
 
   it("returns empty array when no outlets match", async () => {
