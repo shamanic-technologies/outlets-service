@@ -294,18 +294,9 @@ router.get(
         .filter(([_, o]) => o.campaigns.some((c) => c.status === "served"))
         .map(([id]) => id);
 
-      let enrichedStatuses: Map<string, { status: string; replyClassification: "positive" | "negative" | "neutral" | null }>;
-      try {
-        enrichedStatuses = servedOutletIds.length > 0
-          ? await fetchOutletStatuses(servedOutletIds, ctx)
-          : new Map();
-      } catch (err) {
-        console.error(
-          `[outlets-service] Status enrichment failed, returning outlets without enriched statuses:`,
-          err instanceof Error ? err.message : err
-        );
-        enrichedStatuses = new Map();
-      }
+      const enrichedStatuses = servedOutletIds.length > 0
+        ? await fetchOutletStatuses(servedOutletIds, ctx)
+        : new Map<string, { status: string; replyClassification: "positive" | "negative" | "neutral" | null }>();
 
       // Override campaign-level statuses with enriched status
       for (const outlet of outletsMap.values()) {
