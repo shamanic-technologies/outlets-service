@@ -113,7 +113,7 @@ describe("POST /orgs/outlets/discover", () => {
   });
 
   it("closes run as failed on error", async () => {
-    mockDiscoverCycle.mockRejectedValueOnce(new Error("brand-service /brands/extract-fields failed (503): down"));
+    mockDiscoverCycle.mockRejectedValueOnce(new Error("brand-service /orgs/brands/extract-fields failed (503): down"));
 
     const res = await withHeaders(
       request(app).post("/orgs/outlets/discover")

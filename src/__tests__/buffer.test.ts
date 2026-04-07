@@ -395,7 +395,7 @@ describe("POST /orgs/buffer/next", () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
     mockDiscoverCycle.mockRejectedValueOnce(
-      new Error("brand-service /brands/extract-fields failed (503): Service Unavailable")
+      new Error("brand-service /orgs/brands/extract-fields failed (503): Service Unavailable")
     );
 
     const res = await withHeaders(
