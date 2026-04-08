@@ -41,7 +41,7 @@ const spec = {
   info: {
     title: "Outlets Service",
     description: "Manages press outlets (publications) and their campaign relevance data. Routes are organized under /org (requires x-api-key + x-org-id) and /internal (requires x-api-key only).",
-    version: "4.0.0",
+    version: "5.0.0",
   },
   servers: [{ url: "http://localhost:3000" }],
   security: [{ apiKey: [] }],
@@ -119,7 +119,7 @@ const spec = {
           ...orgHeaders,
           { in: "query", name: "campaignId", schema: { type: "string", format: "uuid" }, description: "Filter by campaign ID" },
           { in: "query", name: "brandId", schema: { type: "string", format: "uuid" }, description: "Filter by brand ID" },
-          { in: "query", name: "status", schema: { type: "string", enum: ["open", "ended", "denied", "served", "skipped"] }, description: "Filter by outlet status" },
+          { in: "query", name: "status", schema: { type: "string", enum: ["open", "ended", "denied", "served", "skipped"] }, description: "Filter by internal DB status (not outreach status). Use this to filter outlets by their discovery pipeline state." },
           { in: "query", name: "runId", schema: { type: "string" }, description: "Filter by run ID" },
           { in: "query", name: "featureSlugs", schema: { type: "string" }, description: "Filter by feature slugs (comma-separated)" },
           { in: "query", name: "featureDynastySlug", schema: { type: "string" }, description: "Filter by feature dynasty slug (resolved via features-service)" },
@@ -144,10 +144,11 @@ const spec = {
                           outletUrl: { type: "string" },
                           outletDomain: { type: "string" },
                           createdAt: { type: "string", format: "date-time" },
-                          outreachStatus: { type: "string", enum: ["open", "ended", "denied", "served", "contacted", "delivered", "replied", "skipped"], description: "High watermark outreach status from journalists-service at the query's scope (campaign or brand). Falls back to DB status when no journalist data exists." },
-                          replyClassification: { type: "string", nullable: true, enum: ["positive", "negative", "neutral"], description: "Best reply classification when outreachStatus is replied. Null otherwise." },
+                          outreachStatus: { type: "string", enum: ["open", "ended", "denied", "served", "contacted", "delivered", "replied", "skipped"], description: "High watermark outreach status from journalists-service at the query's scope (campaign or brand). Falls back to most advanced DB status when no journalist data exists." },
+                          replyClassification: { type: "string", nullable: true, enum: ["positive", "negative", "neutral"], description: "Best reply classification when outreachStatus is 'replied'. Null otherwise." },
                           campaigns: {
                             type: "array",
+                            description: "Campaign-level data for this outlet. When brand-scoped, each campaign has its own outreachStatus from the byCampaign breakdown. When campaign-scoped, there is one entry.",
                             items: {
                               type: "object",
                               properties: {
@@ -157,7 +158,7 @@ const spec = {
                                 whyRelevant: { type: "string" },
                                 whyNotRelevant: { type: "string" },
                                 relevanceScore: { type: "number" },
-                                outreachStatus: { type: "string", enum: ["open", "ended", "denied", "served", "contacted", "delivered", "replied", "skipped"], description: "Outreach status scoped to this campaign." },
+                                outreachStatus: { type: "string", enum: ["open", "ended", "denied", "served", "contacted", "delivered", "replied", "skipped"], description: "Outreach status scoped to this specific campaign." },
                                 overallRelevance: { type: "string", nullable: true },
                                 relevanceRationale: { type: "string", nullable: true },
                                 replyClassification: { type: "string", nullable: true, enum: ["positive", "negative", "neutral"] },
@@ -175,8 +176,42 @@ const spec = {
                   },
                   required: ["outlets", "total"],
                 },
+                example: {
+                  outlets: [
+                    {
+                      id: "11111111-2222-3333-4444-555555555555",
+                      outletName: "TechCrunch",
+                      outletUrl: "https://techcrunch.com",
+                      outletDomain: "techcrunch.com",
+                      createdAt: "2026-01-01T00:00:00Z",
+                      outreachStatus: "delivered",
+                      replyClassification: null,
+                      campaigns: [
+                        {
+                          campaignId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                          featureSlug: "pr-outreach-v3",
+                          brandIds: ["ffffffff-1111-2222-3333-444444444444"],
+                          whyRelevant: "Top tech publication with high domain authority",
+                          whyNotRelevant: "Highly competitive",
+                          relevanceScore: 85,
+                          outreachStatus: "delivered",
+                          overallRelevance: "high",
+                          relevanceRationale: null,
+                          replyClassification: null,
+                          runId: "cccccccc-dddd-eeee-ffff-111111111111",
+                          updatedAt: "2026-01-15T12:00:00Z",
+                        },
+                      ],
+                    },
+                  ],
+                  total: 1,
+                },
               },
             },
+          },
+          "400": {
+            description: "Missing required filter — at least one of brandId or campaignId query parameter is required",
+            content: { "application/json": { schema: ref("ErrorResponse"), example: { error: "At least one of brandId or campaignId query parameter is required" } } },
           },
         },
       },
@@ -292,7 +327,7 @@ const spec = {
     "/orgs/outlets/stats": {
       get: {
         summary: "Aggregated outlet discovery metrics (org-scoped)",
-        description: "Returns outlet discovery stats. Supports filtering and groupBy.",
+        description: "Returns outlet discovery stats: total outlets discovered, average relevance score, search queries used, and a `byOutreachStatus` breakdown. The status breakdown enriches all outlets via journalists-service — each outlet's outreach status is its high watermark from journalists-service, falling back to the most advanced DB status when no journalist data exists. Supports filtering by brand, campaign, workflow, feature, and groupBy for dimensional breakdown.",
         parameters: [
           ...orgHeaders,
           { in: "query", name: "brandId", schema: { type: "string", format: "uuid" }, description: "Filter by brand ID" },
@@ -307,10 +342,23 @@ const spec = {
         ],
         responses: {
           "200": {
-            description: "Stats (flat or grouped)",
+            description: "Stats (flat when no groupBy, grouped when groupBy is set). Flat response includes `byOutreachStatus` — a map of outreach status → count, enriched from journalists-service with DB status fallback.",
             content: {
               "application/json": {
                 schema: { oneOf: [ref("StatsResponse"), ref("StatsGroupedResponse")] },
+                example: {
+                  outletsDiscovered: 42,
+                  avgRelevanceScore: 72.5,
+                  searchQueriesUsed: 8,
+                  byOutreachStatus: {
+                    open: 10,
+                    served: 15,
+                    contacted: 8,
+                    delivered: 5,
+                    replied: 3,
+                    denied: 1,
+                  },
+                },
               },
             },
           },
@@ -375,7 +423,7 @@ const spec = {
     "/internal/outlets": {
       get: {
         summary: "Lookup outlets by IDs and/or campaignId",
-        description: "Internal endpoint — requires only x-api-key, no org context. At least one of `ids` or `campaignId` must be provided.",
+        description: "Internal endpoint — requires only x-api-key, no org context. At least one of `ids` or `campaignId` must be provided. When `campaignId` is provided, returns enriched campaign-outlet data including `outreachStatus` and `replyClassification` from journalists-service. Without `campaignId`, returns basic outlet data only.",
         parameters: [
           { in: "query", name: "ids", required: false, schema: { type: "string" }, description: "Comma-separated outlet IDs" },
           { in: "query", name: "campaignId", required: false, schema: { type: "string", format: "uuid" }, description: "Filter by campaign ID" },
