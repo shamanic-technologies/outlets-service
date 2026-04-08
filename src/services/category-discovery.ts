@@ -348,13 +348,14 @@ async function markCategoryStatus(categoryId: string, status: "exhausted" | "cap
   );
 }
 
+const MAX_CATEGORY_ATTEMPTS = 20;
+
 /**
  * Main discovery cycle entry point.
- * 1. Ensure categories exist (generate first batch if needed)
- * 2. Get active category
- * 3. If no active category, generate new batch
- * 4. Discover outlets in active category
- * Returns number of outlets inserted.
+ * Loops across categories until it finds outlets. When a category is exhausted,
+ * moves to the next active category. When all categories are exhausted, generates
+ * a new batch. Only returns 0 if generateCategoryBatch fails (LLM cannot produce
+ * new categories) — never because a single category was exhausted.
  */
 export async function discoverCycle(ctx: OrgContext): Promise<number> {
   // Ensure at least one batch of categories exists
@@ -370,20 +371,29 @@ export async function discoverCycle(ctx: OrgContext): Promise<number> {
     }
   }
 
-  // Get active category
-  let activeCategory = await getActiveCategory(ctx.campaignId!);
+  for (let attempt = 0; attempt < MAX_CATEGORY_ATTEMPTS; attempt++) {
+    // Get active category
+    let activeCategory = await getActiveCategory(ctx.campaignId!);
 
-  // If no active category, all are exhausted/capped — generate a new batch
-  if (!activeCategory) {
-    console.log(`[outlets-service] discoverCycle: all categories exhausted for campaign ${ctx.campaignId}, generating new batch`);
-    const generated = await generateCategoryBatch(ctx);
-    if (generated === 0) {
-      console.log(`[outlets-service] discoverCycle: could not generate new categories for campaign ${ctx.campaignId}`);
-      return 0;
+    // If no active category, all are exhausted/capped — generate a new batch
+    if (!activeCategory) {
+      console.log(`[outlets-service] discoverCycle: all categories exhausted for campaign ${ctx.campaignId}, generating new batch`);
+      const generated = await generateCategoryBatch(ctx);
+      if (generated === 0) {
+        console.log(`[outlets-service] discoverCycle: could not generate new categories for campaign ${ctx.campaignId}`);
+        return 0;
+      }
+      activeCategory = await getActiveCategory(ctx.campaignId!);
+      if (!activeCategory) return 0;
     }
-    activeCategory = await getActiveCategory(ctx.campaignId!);
-    if (!activeCategory) return 0;
+
+    const found = await discoverOutletsInCategory(activeCategory, ctx);
+    if (found > 0) return found;
+
+    // Category was exhausted (0 outlets) — loop to try the next one
+    console.log(`[outlets-service] discoverCycle: category "${activeCategory.categoryName}" yielded 0, trying next (attempt ${attempt + 1}/${MAX_CATEGORY_ATTEMPTS})`);
   }
 
-  return discoverOutletsInCategory(activeCategory, ctx);
+  console.log(`[outlets-service] discoverCycle: exhausted ${MAX_CATEGORY_ATTEMPTS} category attempts for campaign ${ctx.campaignId}`);
+  return 0;
 }
