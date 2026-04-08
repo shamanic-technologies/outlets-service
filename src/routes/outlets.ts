@@ -12,7 +12,7 @@ import {
   searchOutletsSchema,
 } from "../schemas";
 import { resolveFeatureDynastySlugs } from "../services/dynasty";
-import { fetchOutletStatuses } from "../services/outlet-status";
+import { fetchOutletStatuses, type ScopeFilters } from "../services/outlet-status";
 
 const router = Router();
 
@@ -103,6 +103,13 @@ router.get(
     try {
       const ctx = req.orgContext!;
       const q = req.query as any;
+
+      // Require at least brandId or campaignId — org-only scoping is not supported
+      if (!q.brandId && !q.campaignId) {
+        res.status(400).json({ error: "At least one of brandId or campaignId query parameter is required" });
+        return;
+      }
+
       const conditions: string[] = ["co.org_id = $1"];
       const params: unknown[] = [ctx.orgId];
       let paramIdx = 2;
@@ -182,7 +189,6 @@ router.get(
       const total = countResult.rows[0]?.total ?? 0;
 
       // Step 3: Fetch all campaign_outlet rows for the paginated outlet IDs (with filters)
-      // Re-apply filters so we only get matching campaign_outlet rows
       const dataParams: unknown[] = [outletIds, ctx.orgId];
       let dataIdx = 3;
       const dataConditions: string[] = ["o.id = ANY($1)", "co.org_id = $2"];
@@ -203,7 +209,6 @@ router.get(
         dataConditions.push(`co.run_id = $${dataIdx++}`);
         dataParams.push(q.runId);
       }
-      // Re-apply feature slug filters for the data query
       if (q.featureDynastySlug) {
         const slugs = await resolveFeatureDynastySlugs(
           q.featureDynastySlug,
@@ -251,10 +256,9 @@ router.get(
           whyRelevant: string;
           whyNotRelevant: string;
           relevanceScore: number;
-          status: string;
+          dbStatus: string;
           overallRelevance: string | null;
           relevanceRationale: string | null;
-          replyClassification: string | null;
           runId: string | null;
           updatedAt: string;
         }>;
@@ -280,57 +284,88 @@ router.get(
           whyRelevant: r.why_relevant,
           whyNotRelevant: r.why_not_relevant,
           relevanceScore: Number(r.relevance_score),
-          status: r.outlet_status,
+          dbStatus: r.outlet_status,
           overallRelevance: r.overall_relevance,
           relevanceRationale: r.relevance_rationale,
-          replyClassification: null,
           runId: r.run_id || null,
           updatedAt: r.campaign_updated_at,
         });
       }
 
-      // Enrich statuses from journalists-service for "served" outlets
-      const servedOutletIds = Array.from(outletsMap.entries())
-        .filter(([_, o]) => o.campaigns.some((c) => c.status === "served"))
-        .map(([id]) => id);
+      // Enrich ALL outlets via journalists-service with scope filters from query params
+      const allOutletIds = Array.from(outletsMap.keys());
+      const scopeFilters: ScopeFilters = {};
+      if (q.campaignId) scopeFilters.campaignId = q.campaignId;
+      if (q.brandId) scopeFilters.brandId = q.brandId;
 
-      const enrichedStatuses = servedOutletIds.length > 0
-        ? await fetchOutletStatuses(servedOutletIds, ctx)
-        : new Map<string, { status: string; replyClassification: "positive" | "negative" | "neutral" | null }>();
+      const enrichedStatuses = await fetchOutletStatuses(allOutletIds, ctx, scopeFilters);
 
-      // Override campaign-level statuses with enriched status
-      for (const outlet of outletsMap.values()) {
-        const enriched = enrichedStatuses.get(outlet.id);
-        if (!enriched) continue;
-        for (const campaign of outlet.campaigns) {
-          if (campaign.status === "served" && enriched.status !== "served") {
-            campaign.status = enriched.status;
-            campaign.replyClassification = enriched.replyClassification;
-          }
-        }
-      }
-
-      // Status priority: most advanced journalist/delivery status wins
+      // Status priority for fallback computation
       const STATUS_PRIORITY: Record<string, number> = {
         skipped: 0, denied: 0, ended: 0, open: 1, served: 2, contacted: 3, delivered: 4, replied: 5,
       };
 
-      // Build final response — campaigns sorted by updated_at DESC from SQL
+      // Build final response
       const outlets = Array.from(outletsMap.values()).map((outlet) => {
-        const latest = outlet.campaigns[0];
-        const mostAdvancedStatus = outlet.campaigns.reduce(
-          (best, c) => (STATUS_PRIORITY[c.status] ?? 0) > (STATUS_PRIORITY[best] ?? 0) ? c.status : best,
-          outlet.campaigns[0].status,
-        );
+        const enriched = enrichedStatuses.get(outlet.id);
+
+        // Per-campaign outreach status (from byCampaign breakdown, or the top-level enriched status for single-campaign queries)
+        const campaignsOut = outlet.campaigns.map((c) => {
+          let outreachStatus: string;
+          let replyClassification: string | null = null;
+
+          if (enriched?.byCampaign?.[c.campaignId]) {
+            // Brand-scoped: use per-campaign breakdown from journalists-service
+            outreachStatus = enriched.byCampaign[c.campaignId].outreachStatus;
+            replyClassification = enriched.byCampaign[c.campaignId].replyClassification;
+          } else if (q.campaignId && enriched) {
+            // Campaign-scoped: single enriched status applies to the one campaign
+            outreachStatus = enriched.outreachStatus;
+            replyClassification = enriched.replyClassification;
+          } else {
+            // Fallback: use DB status
+            outreachStatus = c.dbStatus;
+          }
+
+          return {
+            campaignId: c.campaignId,
+            featureSlug: c.featureSlug,
+            brandIds: c.brandIds,
+            whyRelevant: c.whyRelevant,
+            whyNotRelevant: c.whyNotRelevant,
+            relevanceScore: c.relevanceScore,
+            outreachStatus,
+            overallRelevance: c.overallRelevance,
+            relevanceRationale: c.relevanceRationale,
+            replyClassification,
+            runId: c.runId,
+            updatedAt: c.updatedAt,
+          };
+        });
+
+        // Outlet-level outreachStatus = enriched top-level (high watermark for the scope), or fallback to most advanced DB status
+        let outletOutreachStatus: string;
+        let outletReplyClassification: string | null = null;
+        if (enriched) {
+          outletOutreachStatus = enriched.outreachStatus;
+          outletReplyClassification = enriched.replyClassification;
+        } else {
+          // Fallback: most advanced DB status across campaigns
+          outletOutreachStatus = outlet.campaigns.reduce(
+            (best, c) => (STATUS_PRIORITY[c.dbStatus] ?? 0) > (STATUS_PRIORITY[best] ?? 0) ? c.dbStatus : best,
+            outlet.campaigns[0].dbStatus,
+          );
+        }
+
         return {
           id: outlet.id,
           outletName: outlet.outletName,
           outletUrl: outlet.outletUrl,
           outletDomain: outlet.outletDomain,
           createdAt: outlet.createdAt,
-          latestStatus: mostAdvancedStatus,
-          latestRelevanceScore: latest.relevanceScore,
-          campaigns: outlet.campaigns,
+          outreachStatus: outletOutreachStatus,
+          replyClassification: outletReplyClassification,
+          campaigns: campaignsOut,
         };
       });
 

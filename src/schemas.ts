@@ -4,8 +4,8 @@ import { z } from "zod";
 /** DB-level statuses (what gets written to campaign_outlets). */
 export const outletStatusEnum = z.enum(["open", "ended", "denied", "served", "skipped"]);
 
-/** Enriched statuses returned in responses — includes downstream delivery states from journalists-service. */
-export const enrichedOutletStatusEnum = z.enum([
+/** Outreach statuses returned in responses — includes downstream delivery states from journalists-service. */
+export const outreachStatusEnum = z.enum([
   "open", "ended", "denied", "served", "contacted", "delivered", "replied", "skipped",
 ]);
 
@@ -79,7 +79,8 @@ export const campaignOutletResponseSchema = outletResponseSchema.extend({
   whyRelevant: z.string(),
   whyNotRelevant: z.string(),
   relevanceScore: z.number(),
-  status: outletStatusEnum,
+  outreachStatus: outreachStatusEnum,
+  replyClassification: replyClassificationEnum.nullable(),
   overallRelevance: z.string().nullable(),
   relevanceRationale: z.string().nullable(),
   runId: z.string().nullable(),
@@ -130,7 +131,7 @@ export const statsResponseSchema = z.object({
   outletsDiscovered: z.number(),
   avgRelevanceScore: z.number(),
   searchQueriesUsed: z.number(),
-  byStatus: z.record(enrichedOutletStatusEnum, z.number()).optional(),
+  byOutreachStatus: z.record(outreachStatusEnum, z.number()).optional(),
 });
 
 export const statsGroupedResponseSchema = z.object({
