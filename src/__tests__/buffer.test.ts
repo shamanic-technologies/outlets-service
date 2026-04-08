@@ -278,6 +278,8 @@ describe("POST /orgs/buffer/next", () => {
   it("triggers discover cycle when buffer is empty, then returns top outlet", async () => {
     // claimNext iteration 1 → buffer empty
     mockQuery.mockResolvedValueOnce({ rows: [] });
+    // diagnostic open count
+    mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "0" }] });
 
     // discoverCycle fills the buffer with 3 outlets
     mockDiscoverCycle.mockResolvedValueOnce(3);
@@ -304,6 +306,8 @@ describe("POST /orgs/buffer/next", () => {
   it("returns empty outlets array when discover cycle is exhausted (category cap)", async () => {
     // claimNext → empty
     mockQuery.mockResolvedValueOnce({ rows: [] });
+    // diagnostic open count
+    mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "0" }] });
     // discoverCycle returns 0 (category cap reached)
     mockDiscoverCycle.mockResolvedValueOnce(0);
 
@@ -319,6 +323,8 @@ describe("POST /orgs/buffer/next", () => {
   it("keeps discovering when buffer empties after blocked outlets", async () => {
     // First claim → empty
     mockQuery.mockResolvedValueOnce({ rows: [] });
+    // diagnostic open count
+    mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "0" }] });
     // Discover attempt 1 → fills 2 outlets
     mockDiscoverCycle.mockResolvedValueOnce(2);
     // Claim → gets one but it's blocked
@@ -333,6 +339,8 @@ describe("POST /orgs/buffer/next", () => {
     mockQuery.mockResolvedValueOnce({ rows: [] }); // markSkipped
     // Claim → empty again
     mockQuery.mockResolvedValueOnce({ rows: [] });
+    // diagnostic open count
+    mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "0" }] });
     // Discover attempt 2 → fills 1 outlet
     mockDiscoverCycle.mockResolvedValueOnce(1);
     // Claim → gets one, not blocked
@@ -359,6 +367,8 @@ describe("POST /orgs/buffer/next", () => {
 
     // claimNext → empty
     mockQuery.mockResolvedValueOnce({ rows: [] });
+    // diagnostic open count
+    mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "0" }] });
     // discoverCycle → 0 (category cap)
     mockDiscoverCycle.mockResolvedValueOnce(0);
 
@@ -396,6 +406,7 @@ describe("POST /orgs/buffer/next", () => {
     // claimNext → buffer empty, then discoverCycle throws — repeated for all retries
     for (let i = 0; i <= 3; i++) {
       mockQuery.mockResolvedValueOnce({ rows: [] }); // claimNext → empty
+      mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "0" }] }); // diagnostic open count
       mockDiscoverCycle.mockRejectedValueOnce(upstreamError);
     }
 
@@ -421,8 +432,8 @@ describe("POST /orgs/buffer/next", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(1);
-    // No idempotency cache save
-    expect(mockQuery).toHaveBeenCalledTimes(2); // claim + block cache check only
+    // No idempotency cache save — claim + block cache check only
+    expect(mockQuery).toHaveBeenCalledTimes(2);
   });
 
   it("retries on transient errors up to MAX_TRANSIENT_RETRIES then throws", async () => {
