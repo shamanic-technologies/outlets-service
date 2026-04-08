@@ -6,10 +6,10 @@ import { isOutletBlocked } from "../services/journalists";
 import { discoverCycle } from "../services/category-discovery";
 import { bufferNextSchema } from "../schemas";
 
-const MAX_CLAIM_ITERATIONS = 50;
-const MAX_DISCOVER_ATTEMPTS = 5;
 const MIN_RELEVANCE_SCORE = 30;
 const IDEMPOTENCY_TTL_DAYS = 60;
+const MAX_TRANSIENT_RETRIES = 3;
+const RETRY_DELAY_MS = 1000;
 
 interface ClaimedOutlet {
   outletId: string;
@@ -131,42 +131,50 @@ router.post(
       }
 
       const collected: ClaimedOutlet[] = [];
-      let discoverAttempts = 0;
+      let transientRetries = 0;
 
-      for (let i = 0; i < MAX_CLAIM_ITERATIONS && collected.length < count; i++) {
-        const claimed = await claimNext(ctx.campaignId!);
+      while (collected.length < count) {
+        try {
+          const claimed = await claimNext(ctx.campaignId!);
 
-        if (!claimed) {
-          // Buffer empty — try category-based discovery
-          if (discoverAttempts >= MAX_DISCOVER_ATTEMPTS) break;
-          discoverAttempts++;
+          if (!claimed) {
+            // Buffer empty — discover more outlets (loops until found or category cap)
+            console.log(`[outlets-service] buffer/next: buffer empty for campaign ${ctx.campaignId}, triggering discover cycle`);
+            const filled = await discoverCycle(ctx);
 
-          console.log(`[outlets-service] buffer/next: buffer empty for campaign ${ctx.campaignId}, triggering discover cycle (attempt ${discoverAttempts}/${MAX_DISCOVER_ATTEMPTS})`);
-          const filled = await discoverCycle(ctx);
+            if (filled === 0) {
+              console.log(`[outlets-service] buffer/next: discover cycle exhausted (category cap) for campaign ${ctx.campaignId}`);
+              break;
+            }
+            continue; // retry claim from freshly filled buffer
+          }
 
-          if (filled === 0) {
-            console.log(`[outlets-service] buffer/next: discover cycle found 0 outlets for campaign ${ctx.campaignId} (attempt ${discoverAttempts}/${MAX_DISCOVER_ATTEMPTS})`);
+          // Skip low-relevance ("distant") outlets — score < 30 means no meaningful connection
+          if (claimed.relevanceScore < MIN_RELEVANCE_SCORE) {
+            console.log(`[outlets-service] buffer/next: skipping low-relevance outlet ${claimed.outletName} (${claimed.outletId}, score=${claimed.relevanceScore}) for campaign ${ctx.campaignId}`);
+            await markSkipped(claimed.campaignId, claimed.outletId);
             continue;
           }
-          continue; // retry claim from freshly filled buffer
-        }
 
-        // Skip low-relevance ("distant") outlets — score < 30 means no meaningful connection
-        if (claimed.relevanceScore < MIN_RELEVANCE_SCORE) {
-          console.log(`[outlets-service] buffer/next: skipping low-relevance outlet ${claimed.outletName} (${claimed.outletId}, score=${claimed.relevanceScore}) for campaign ${ctx.campaignId}`);
-          await markSkipped(claimed.campaignId, claimed.outletId);
-          continue;
-        }
+          // Check if outlet is blocked (contacted / in cooldown) via journalists-service
+          const blocked = await isBlocked(claimed.outletId, ctx.orgId, ctx.brandIds, ctx);
+          if (blocked) {
+            console.log(`[outlets-service] buffer/next: skipping blocked outlet ${claimed.outletName} (${claimed.outletId}) for campaign ${ctx.campaignId}`);
+            await markSkipped(claimed.campaignId, claimed.outletId);
+            continue; // try next outlet
+          }
 
-        // Check if outlet is blocked (contacted / in cooldown) via journalists-service
-        const blocked = await isBlocked(claimed.outletId, ctx.orgId, ctx.brandIds, ctx);
-        if (blocked) {
-          console.log(`[outlets-service] buffer/next: skipping blocked outlet ${claimed.outletName} (${claimed.outletId}) for campaign ${ctx.campaignId}`);
-          await markSkipped(claimed.campaignId, claimed.outletId);
-          continue; // try next outlet
+          collected.push(claimed);
+          transientRetries = 0;
+        } catch (err) {
+          transientRetries++;
+          if (transientRetries > MAX_TRANSIENT_RETRIES) {
+            throw err;
+          }
+          const delay = RETRY_DELAY_MS * transientRetries;
+          console.warn(`[outlets-service] buffer/next: transient error (retry ${transientRetries}/${MAX_TRANSIENT_RETRIES}), retrying in ${delay}ms:`, err);
+          await new Promise((r) => setTimeout(r, delay));
         }
-
-        collected.push(claimed);
       }
 
       console.log(`[outlets-service] buffer/next: returning ${collected.length}/${count} outlets for campaign ${ctx.campaignId}`);

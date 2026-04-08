@@ -17,6 +17,8 @@ const CATEGORY_BATCH_SIZE = 10;
 const OUTLET_BATCH_SIZE = 10;
 const CATEGORY_CAP = 100;
 const MAX_CATEGORIES_PER_CAMPAIGN = 100;
+const MAX_LLM_RETRIES = 3;
+const LLM_RETRY_DELAY_MS = 2000;
 
 const BRAND_FIELDS = [
   { key: "brand_name", description: "The brand's display name" },
@@ -120,28 +122,41 @@ export async function generateCategoryBatch(ctx: OrgContext): Promise<number> {
   );
   const baseRank = Number(rankResult.rows[0].max_rank);
 
-  const response = await chatComplete(
-    {
-      provider: "google",
-      model: "flash-lite",
-      message: buildCategoryGenerationMessage(brandContext, alreadyUsed, featureInput),
-      systemPrompt: GENERATE_CATEGORIES_SYSTEM_PROMPT,
-      responseFormat: "json",
-      temperature: 0.7,
-      maxTokens: 2000,
-    },
-    ctx
-  );
+  let parsedCategories: z.infer<typeof categoryGenerationSchema>["categories"] | null = null;
 
-  const parsed = categoryGenerationSchema.safeParse(response.json);
-  if (!parsed.success || parsed.data.categories.length === 0) {
-    console.error("[outlets-service] Category generation: LLM returned invalid format:", response.content);
-    return 0;
+  for (let retry = 0; retry <= MAX_LLM_RETRIES; retry++) {
+    const response = await chatComplete(
+      {
+        provider: "google",
+        model: "flash-lite",
+        message: buildCategoryGenerationMessage(brandContext, alreadyUsed, featureInput),
+        systemPrompt: GENERATE_CATEGORIES_SYSTEM_PROMPT,
+        responseFormat: "json",
+        temperature: 0.7,
+        maxTokens: 2000,
+      },
+      ctx
+    );
+
+    const parsed = categoryGenerationSchema.safeParse(response.json);
+    if (parsed.success && parsed.data.categories.length > 0) {
+      parsedCategories = parsed.data.categories;
+      break;
+    }
+
+    if (retry < MAX_LLM_RETRIES) {
+      console.warn(`[outlets-service] Category generation: LLM returned invalid format (attempt ${retry + 1}/${MAX_LLM_RETRIES + 1}), retrying in ${LLM_RETRY_DELAY_MS}ms:`, response.content);
+      await new Promise((r) => setTimeout(r, LLM_RETRY_DELAY_MS));
+    } else {
+      console.error(`[outlets-service] Category generation: LLM failed after ${MAX_LLM_RETRIES + 1} attempts:`, response.content);
+    }
   }
+
+  if (!parsedCategories) return 0;
 
   // Dedup against already used
   const usedSet = new Set(alreadyUsed.map((c) => `${c.name}|||${c.geo}`));
-  const newCategories = parsed.data.categories
+  const newCategories = parsedCategories
     .filter((c) => !usedSet.has(`${c.name}|||${c.geo}`))
     .slice(0, CATEGORY_BATCH_SIZE);
 
@@ -212,36 +227,53 @@ export async function discoverOutletsInCategory(
   );
   const knownDomains: string[] = knownResult.rows.map((r: { outlet_domain: string }) => r.outlet_domain);
 
-  // Ask LLM for 10 outlets
-  const response = await chatComplete(
-    {
-      provider: "google",
-      model: "flash-lite",
-      message: buildOutletGenerationMessage(
-        brandContext,
-        category.categoryName,
-        category.categoryGeo,
-        knownDomains,
-        featureInput
-      ),
-      systemPrompt: GENERATE_OUTLETS_SYSTEM_PROMPT,
-      responseFormat: "json",
-      temperature: 0.7,
-      maxTokens: 2000,
-    },
-    ctx
-  );
+  // Ask LLM for 10 outlets (with retry on invalid format)
+  let parsedOutlets: z.infer<typeof outletGenerationSchema>["outlets"] | null = null;
 
-  const parsed = outletGenerationSchema.safeParse(response.json);
-  if (!parsed.success || parsed.data.outlets.length === 0) {
-    console.error("[outlets-service] Outlet generation: LLM returned invalid format:", response.content);
-    // Bad parse is NOT exhaustion — next attempt will retry
+  for (let retry = 0; retry <= MAX_LLM_RETRIES; retry++) {
+    const response = await chatComplete(
+      {
+        provider: "google",
+        model: "flash-lite",
+        message: buildOutletGenerationMessage(
+          brandContext,
+          category.categoryName,
+          category.categoryGeo,
+          knownDomains,
+          featureInput
+        ),
+        systemPrompt: GENERATE_OUTLETS_SYSTEM_PROMPT,
+        responseFormat: "json",
+        temperature: 0.7,
+        maxTokens: 2000,
+      },
+      ctx
+    );
+
+    const parsed = outletGenerationSchema.safeParse(response.json);
+    if (parsed.success && parsed.data.outlets.length > 0) {
+      parsedOutlets = parsed.data.outlets;
+      break;
+    }
+
+    if (retry < MAX_LLM_RETRIES) {
+      console.warn(`[outlets-service] Outlet generation: LLM returned invalid format (attempt ${retry + 1}/${MAX_LLM_RETRIES + 1}), retrying in ${LLM_RETRY_DELAY_MS}ms:`, response.content);
+      await new Promise((r) => setTimeout(r, LLM_RETRY_DELAY_MS));
+    } else {
+      console.error(`[outlets-service] Outlet generation: LLM failed after ${MAX_LLM_RETRIES + 1} attempts for category "${category.categoryName} / ${category.categoryGeo}"`);
+    }
+  }
+
+  if (!parsedOutlets) {
+    // All LLM retries failed — mark category exhausted to avoid infinite loop
+    await markCategoryStatus(category.id, "exhausted");
+    console.log(`[outlets-service] Category "${category.categoryName} / ${category.categoryGeo}" exhausted (LLM failed) for campaign ${category.campaignId}`);
     return 0;
   }
 
   // Filter out already-known domains (LLM might repeat them despite instructions)
   const knownSet = new Set(knownDomains);
-  const candidates = parsed.data.outlets
+  const candidates = parsedOutlets
     .map((o) => ({
       ...o,
       domain: o.domain.replace(/^www\./, "").toLowerCase(),
@@ -349,14 +381,12 @@ async function markCategoryStatus(categoryId: string, status: "exhausted" | "cap
   );
 }
 
-const MAX_CATEGORY_ATTEMPTS = 20;
-
 /**
  * Main discovery cycle entry point.
  * Loops across categories until it finds outlets. When a category is exhausted,
  * moves to the next active category. When all categories are exhausted, generates
- * a new batch. Only returns 0 if generateCategoryBatch fails (LLM cannot produce
- * new categories) — never because a single category was exhausted.
+ * a new batch. Only returns 0 when the campaign reaches the category cap (100)
+ * and no new categories can be generated — never because a single category was exhausted.
  */
 export async function discoverCycle(ctx: OrgContext): Promise<number> {
   // Ensure at least one batch of categories exists
@@ -372,13 +402,12 @@ export async function discoverCycle(ctx: OrgContext): Promise<number> {
     }
   }
 
-  for (let attempt = 0; attempt < MAX_CATEGORY_ATTEMPTS; attempt++) {
-    // Get active category
+  // Loop until we find outlets — only exits on category cap or generation failure
+  while (true) {
     let activeCategory = await getActiveCategory(ctx.campaignId!);
 
     // If no active category, all are exhausted/capped — generate a new batch
     if (!activeCategory) {
-      // Check category cap before generating more
       const countResult = await pool.query(
         `SELECT COUNT(*) AS cnt FROM campaign_categories WHERE campaign_id = $1`,
         [ctx.campaignId]
@@ -403,9 +432,6 @@ export async function discoverCycle(ctx: OrgContext): Promise<number> {
     if (found > 0) return found;
 
     // Category was exhausted (0 outlets) — loop to try the next one
-    console.log(`[outlets-service] discoverCycle: category "${activeCategory.categoryName}" yielded 0, trying next (attempt ${attempt + 1}/${MAX_CATEGORY_ATTEMPTS})`);
+    console.log(`[outlets-service] discoverCycle: category "${activeCategory.categoryName}" yielded 0, trying next`);
   }
-
-  console.log(`[outlets-service] discoverCycle: exhausted ${MAX_CATEGORY_ATTEMPTS} category attempts for campaign ${ctx.campaignId}`);
-  return 0;
 }

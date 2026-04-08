@@ -301,14 +301,11 @@ describe("POST /orgs/buffer/next", () => {
     expect(mockDiscoverCycle).toHaveBeenCalledTimes(1);
   });
 
-  it("returns empty outlets array when discover cycle finds nothing after all attempts", async () => {
-    // All 5 discover attempts return 0
-    for (let i = 0; i < 5; i++) {
-      mockQuery.mockResolvedValueOnce({ rows: [] }); // claimNext → empty
-      mockDiscoverCycle.mockResolvedValueOnce(0);
-    }
-    // Final claimNext after attempts exhausted
+  it("returns empty outlets array when discover cycle is exhausted (category cap)", async () => {
+    // claimNext → empty
     mockQuery.mockResolvedValueOnce({ rows: [] });
+    // discoverCycle returns 0 (category cap reached)
+    mockDiscoverCycle.mockResolvedValueOnce(0);
 
     const res = await withHeaders(
       request(app).post("/orgs/buffer/next")
@@ -316,10 +313,10 @@ describe("POST /orgs/buffer/next", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(0);
-    expect(mockDiscoverCycle).toHaveBeenCalledTimes(5);
+    expect(mockDiscoverCycle).toHaveBeenCalledTimes(1);
   });
 
-  it("retries discover cycle up to MAX_DISCOVER_ATTEMPTS when buffer keeps emptying", async () => {
+  it("keeps discovering when buffer empties after blocked outlets", async () => {
     // First claim → empty
     mockQuery.mockResolvedValueOnce({ rows: [] });
     // Discover attempt 1 → fills 2 outlets
@@ -352,7 +349,7 @@ describe("POST /orgs/buffer/next", () => {
     expect(mockDiscoverCycle).toHaveBeenCalledTimes(2);
   });
 
-  it("returns partial results when buffer runs dry mid-collection", async () => {
+  it("returns partial results when discover cycle exhausts after collecting some", async () => {
     // claimNext → outlet 1
     mockQuery.mockResolvedValueOnce({ rows: [makeOutletRow()] });
     // block cache check → no cache hit
@@ -360,13 +357,10 @@ describe("POST /orgs/buffer/next", () => {
     // journalists-service → not blocked
     mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
 
-    // All 5 discover attempts return 0
-    for (let i = 0; i < 5; i++) {
-      mockQuery.mockResolvedValueOnce({ rows: [] }); // claimNext → empty
-      mockDiscoverCycle.mockResolvedValueOnce(0);
-    }
-    // Final claimNext after attempts exhausted
+    // claimNext → empty
     mockQuery.mockResolvedValueOnce({ rows: [] });
+    // discoverCycle → 0 (category cap)
+    mockDiscoverCycle.mockResolvedValueOnce(0);
 
     const res = await withHeaders(
       request(app).post("/orgs/buffer/next")
@@ -396,13 +390,14 @@ describe("POST /orgs/buffer/next", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns 502 when discover cycle fails with upstream error", async () => {
-    // claimNext → buffer empty
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+  it("returns 502 when discover cycle fails persistently with upstream error", async () => {
+    const upstreamError = new Error("brand-service /orgs/brands/extract-fields failed (503): Service Unavailable");
 
-    mockDiscoverCycle.mockRejectedValueOnce(
-      new Error("brand-service /orgs/brands/extract-fields failed (503): Service Unavailable")
-    );
+    // claimNext → buffer empty, then discoverCycle throws — repeated for all retries
+    for (let i = 0; i <= 3; i++) {
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // claimNext → empty
+      mockDiscoverCycle.mockRejectedValueOnce(upstreamError);
+    }
 
     const res = await withHeaders(
       request(app).post("/orgs/buffer/next")
@@ -430,35 +425,25 @@ describe("POST /orgs/buffer/next", () => {
     expect(mockQuery).toHaveBeenCalledTimes(2); // claim + block cache check only
   });
 
-  it("retries discover cycle up to MAX_DISCOVER_ATTEMPTS when it keeps returning 0", async () => {
-    // claimNext → buffer empty (repeated for each discover attempt)
-    for (let i = 0; i < 5; i++) {
-      mockQuery.mockResolvedValueOnce({ rows: [] }); // claimNext → empty
-      mockDiscoverCycle.mockResolvedValueOnce(0); // discover → 0
-    }
-    // After 5 failed attempts, one more claimNext that hits the attempts cap
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+  it("retries on transient errors up to MAX_TRANSIENT_RETRIES then throws", async () => {
+    // claimNext throws transient DB errors 4 times (exceeds MAX_TRANSIENT_RETRIES=3)
+    mockQuery.mockRejectedValueOnce(new Error("connection reset"));
+    mockQuery.mockRejectedValueOnce(new Error("connection reset"));
+    mockQuery.mockRejectedValueOnce(new Error("connection reset"));
+    mockQuery.mockRejectedValueOnce(new Error("connection reset"));
 
     const res = await withHeaders(
       request(app).post("/orgs/buffer/next")
     ).send({});
 
-    expect(res.status).toBe(200);
-    expect(res.body.outlets).toHaveLength(0);
-    // Should have called discoverCycle 5 times (MAX_DISCOVER_ATTEMPTS)
-    expect(mockDiscoverCycle).toHaveBeenCalledTimes(5);
+    expect(res.status).toBe(500);
+    expect(res.body.error).toContain("connection reset");
   });
 
-  it("succeeds on second discover attempt after first returns 0", async () => {
-    // claimNext → empty
-    mockQuery.mockResolvedValueOnce({ rows: [] });
-    // discover attempt 1 → 0
-    mockDiscoverCycle.mockResolvedValueOnce(0);
-    // claimNext → still empty
-    mockQuery.mockResolvedValueOnce({ rows: [] });
-    // discover attempt 2 → fills 2
-    mockDiscoverCycle.mockResolvedValueOnce(2);
-    // claimNext → got one
+  it("recovers from transient error on claimNext then succeeds", async () => {
+    // claimNext → transient DB error
+    mockQuery.mockRejectedValueOnce(new Error("connection reset"));
+    // claimNext retry → found outlet
     mockQuery.mockResolvedValueOnce({ rows: [makeOutletRow()] });
     // block cache check → no hit
     mockQuery.mockResolvedValueOnce({ rows: [] });
@@ -471,6 +456,5 @@ describe("POST /orgs/buffer/next", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(1);
-    expect(mockDiscoverCycle).toHaveBeenCalledTimes(2);
   });
 });

@@ -170,23 +170,63 @@ describe("generateCategoryBatch", () => {
     expect(result).toBe(1);
   });
 
-  it("returns 0 when LLM returns invalid JSON", async () => {
+  it("retries LLM up to 4 times on invalid JSON then returns 0", async () => {
     setupBrandMocks();
 
     mockQuery.mockResolvedValueOnce({ rows: [] });
     mockQuery.mockResolvedValueOnce({ rows: [{ max_batch: 0 }] });
     mockQuery.mockResolvedValueOnce({ rows: [{ max_rank: 0 }] });
 
+    // All 4 attempts (1 + 3 retries) return invalid JSON
+    for (let i = 0; i < 4; i++) {
+      mockChatComplete.mockResolvedValueOnce({
+        content: "bad response",
+        json: { invalid: true },
+        tokensInput: 50,
+        tokensOutput: 20,
+        model: "flash-lite",
+      });
+    }
+
+    const result = await generateCategoryBatch(ctx);
+    expect(result).toBe(0);
+    expect(mockChatComplete).toHaveBeenCalledTimes(4);
+  });
+
+  it("succeeds on second LLM attempt after first returns invalid JSON", async () => {
+    setupBrandMocks();
+
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ max_batch: 0 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ max_rank: 0 }] });
+
+    // First attempt → invalid
     mockChatComplete.mockResolvedValueOnce({
-      content: "bad response",
+      content: "bad",
       json: { invalid: true },
       tokensInput: 50,
       tokensOutput: 20,
       model: "flash-lite",
     });
+    // Second attempt → valid
+    mockChatComplete.mockResolvedValueOnce({
+      content: "",
+      json: {
+        categories: [
+          { name: "Tech News", geo: "US", rank: 1, rationale: "Good" },
+        ],
+      },
+      tokensInput: 100,
+      tokensOutput: 80,
+      model: "flash-lite",
+    });
+
+    // INSERT
+    mockQuery.mockResolvedValueOnce({ rowCount: 1 });
 
     const result = await generateCategoryBatch(ctx);
-    expect(result).toBe(0);
+    expect(result).toBe(1);
+    expect(mockChatComplete).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -851,7 +891,7 @@ describe("discoverCycle", () => {
     expect(mockChatComplete).not.toHaveBeenCalled();
   });
 
-  it("returns 0 when no new categories can be generated", async () => {
+  it("returns 0 when no new categories can be generated (LLM fails after retries)", async () => {
     setupBrandMocks();
 
     // Check existing → some exist
@@ -861,17 +901,19 @@ describe("discoverCycle", () => {
     // Cap check → under limit
     mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "10" }] });
 
-    // generateCategoryBatch → fails
+    // generateCategoryBatch → all 4 LLM attempts fail
     mockQuery.mockResolvedValueOnce({ rows: [{ category_name: "X", category_geo: "Y" }] }); // existing
     mockQuery.mockResolvedValueOnce({ rows: [{ max_batch: 2 }] });
     mockQuery.mockResolvedValueOnce({ rows: [{ max_rank: 20 }] });
-    mockChatComplete.mockResolvedValueOnce({
-      content: "bad",
-      json: { invalid: true },
-      tokensInput: 50,
-      tokensOutput: 20,
-      model: "flash-lite",
-    });
+    for (let i = 0; i < 4; i++) {
+      mockChatComplete.mockResolvedValueOnce({
+        content: "bad",
+        json: { invalid: true },
+        tokensInput: 50,
+        tokensOutput: 20,
+        model: "flash-lite",
+      });
+    }
 
     const result = await discoverCycle(ctx);
     expect(result).toBe(0);
