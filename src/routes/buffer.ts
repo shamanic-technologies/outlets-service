@@ -145,8 +145,8 @@ router.post(
           const filled = await discoverCycle(ctx);
 
           if (filled === 0) {
-            console.log(`[outlets-service] buffer/next: discover cycle found 0 outlets for campaign ${ctx.campaignId}`);
-            break;
+            console.log(`[outlets-service] buffer/next: discover cycle found 0 outlets for campaign ${ctx.campaignId} (attempt ${discoverAttempts}/${MAX_DISCOVER_ATTEMPTS})`);
+            continue;
           }
           continue; // retry claim from freshly filled buffer
         }

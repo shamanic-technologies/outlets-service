@@ -633,6 +633,201 @@ describe("discoverCycle", () => {
     expect(categoryGenCall.message).toContain("SaaS Blogs");
   });
 
+  it("loops to the next category when current one is exhausted", async () => {
+    setupBrandMocks();
+
+    // Check existing categories → some exist
+    mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "5" }] });
+
+    // getActiveCategory → first active category
+    mockQuery.mockResolvedValueOnce({
+      rows: [{
+        id: CATEGORY_ID,
+        campaign_id: CAMPAIGN_ID,
+        category_name: "Tech News",
+        category_geo: "US",
+        relevance_rank: 1,
+        status: "active",
+        outlets_found: 50,
+        batch_number: 1,
+      }],
+    });
+
+    // discoverOutletsInCategory for "Tech News" → all duplicates, returns 0
+    setupBrandMocks();
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ outlet_domain: "techcrunch.com" }, { outlet_domain: "theverge.com" }],
+    });
+    mockChatComplete.mockResolvedValueOnce({
+      content: "",
+      json: {
+        outlets: [
+          { name: "TechCrunch", domain: "techcrunch.com", whyRelevant: "Dup", relevanceScore: 80 },
+        ],
+      },
+      tokensInput: 100,
+      tokensOutput: 80,
+      model: "flash-lite",
+    });
+    // markCategoryStatus → exhausted
+    mockQuery.mockResolvedValueOnce({});
+
+    // Loop iteration 2: getActiveCategory → second category
+    const CATEGORY_ID_2 = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee";
+    mockQuery.mockResolvedValueOnce({
+      rows: [{
+        id: CATEGORY_ID_2,
+        campaign_id: CAMPAIGN_ID,
+        category_name: "SaaS Blogs",
+        category_geo: "US",
+        relevance_rank: 2,
+        status: "active",
+        outlets_found: 0,
+        batch_number: 1,
+      }],
+    });
+
+    // discoverOutletsInCategory for "SaaS Blogs" → finds 1 outlet
+    setupBrandMocks();
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // known domains
+    mockChatComplete.mockResolvedValueOnce({
+      content: "",
+      json: {
+        outlets: [
+          { name: "SaaStr", domain: "saastr.com", whyRelevant: "SaaS community", relevanceScore: 78 },
+        ],
+      },
+      tokensInput: 100,
+      tokensOutput: 80,
+      model: "flash-lite",
+    });
+    mockValidateOutletBatch.mockResolvedValueOnce([
+      { name: "SaaStr", domain: "saastr.com", valid: true },
+    ]);
+    mockClientQuery
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({ rows: [{ id: "outlet-1" }] })
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({}); // COMMIT
+    mockQuery.mockResolvedValueOnce({}); // counter
+    mockQuery.mockResolvedValueOnce({ rows: [{ outlets_found: 1 }] }); // cap check
+
+    const result = await discoverCycle(ctx);
+
+    expect(result).toBe(1);
+    // Should have called chatComplete twice: once for exhausted category, once for successful one
+    expect(mockChatComplete).toHaveBeenCalledTimes(2);
+  });
+
+  it("generates new batch and continues when all categories exhausted during loop", async () => {
+    setupBrandMocks();
+
+    // Check existing categories → some exist
+    mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "2" }] });
+
+    // getActiveCategory → only one left, it's active
+    mockQuery.mockResolvedValueOnce({
+      rows: [{
+        id: CATEGORY_ID,
+        campaign_id: CAMPAIGN_ID,
+        category_name: "Last Category",
+        category_geo: "US",
+        relevance_rank: 2,
+        status: "active",
+        outlets_found: 20,
+        batch_number: 1,
+      }],
+    });
+
+    // discoverOutletsInCategory → all duplicates → exhausted → returns 0
+    setupBrandMocks();
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ outlet_domain: "example.com" }],
+    });
+    mockChatComplete.mockResolvedValueOnce({
+      content: "",
+      json: {
+        outlets: [
+          { name: "Example", domain: "example.com", whyRelevant: "Dup", relevanceScore: 70 },
+        ],
+      },
+      tokensInput: 100,
+      tokensOutput: 80,
+      model: "flash-lite",
+    });
+    mockQuery.mockResolvedValueOnce({}); // markCategoryStatus exhausted
+
+    // Loop iteration 2: getActiveCategory → none (all exhausted now)
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    // generateCategoryBatch triggered
+    setupBrandMocks();
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { category_name: "Last Category", category_geo: "US" },
+        { category_name: "Other", category_geo: "US" },
+      ],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ max_batch: 1 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ max_rank: 2 }] });
+    mockChatComplete.mockResolvedValueOnce({
+      content: "",
+      json: {
+        categories: [
+          { name: "New Niche", geo: "US", rank: 1, rationale: "Fresh" },
+        ],
+      },
+      tokensInput: 100,
+      tokensOutput: 80,
+      model: "flash-lite",
+    });
+    mockQuery.mockResolvedValueOnce({ rowCount: 1 }); // INSERT category
+
+    // getActiveCategory → the new category
+    const NEW_CAT_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    mockQuery.mockResolvedValueOnce({
+      rows: [{
+        id: NEW_CAT_ID,
+        campaign_id: CAMPAIGN_ID,
+        category_name: "New Niche",
+        category_geo: "US",
+        relevance_rank: 3,
+        status: "active",
+        outlets_found: 0,
+        batch_number: 2,
+      }],
+    });
+
+    // discoverOutletsInCategory for "New Niche" → finds 1 outlet
+    setupBrandMocks();
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // known domains
+    mockChatComplete.mockResolvedValueOnce({
+      content: "",
+      json: {
+        outlets: [
+          { name: "Niche Pub", domain: "nichepub.com", whyRelevant: "Perfect", relevanceScore: 85 },
+        ],
+      },
+      tokensInput: 100,
+      tokensOutput: 80,
+      model: "flash-lite",
+    });
+    mockValidateOutletBatch.mockResolvedValueOnce([
+      { name: "Niche Pub", domain: "nichepub.com", valid: true },
+    ]);
+    mockClientQuery
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({ rows: [{ id: "outlet-new" }] })
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({}); // COMMIT
+    mockQuery.mockResolvedValueOnce({}); // counter
+    mockQuery.mockResolvedValueOnce({ rows: [{ outlets_found: 1 }] }); // cap check
+
+    const result = await discoverCycle(ctx);
+
+    expect(result).toBe(1);
+  });
+
   it("returns 0 when no new categories can be generated", async () => {
     setupBrandMocks();
 

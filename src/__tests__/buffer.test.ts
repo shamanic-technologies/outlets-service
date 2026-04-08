@@ -301,12 +301,14 @@ describe("POST /orgs/buffer/next", () => {
     expect(mockDiscoverCycle).toHaveBeenCalledTimes(1);
   });
 
-  it("returns empty outlets array when discover cycle finds nothing", async () => {
-    // claimNext → buffer empty
+  it("returns empty outlets array when discover cycle finds nothing after all attempts", async () => {
+    // All 5 discover attempts return 0
+    for (let i = 0; i < 5; i++) {
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // claimNext → empty
+      mockDiscoverCycle.mockResolvedValueOnce(0);
+    }
+    // Final claimNext after attempts exhausted
     mockQuery.mockResolvedValueOnce({ rows: [] });
-
-    // discoverCycle → 0 outlets
-    mockDiscoverCycle.mockResolvedValueOnce(0);
 
     const res = await withHeaders(
       request(app).post("/orgs/buffer/next")
@@ -314,6 +316,7 @@ describe("POST /orgs/buffer/next", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(0);
+    expect(mockDiscoverCycle).toHaveBeenCalledTimes(5);
   });
 
   it("retries discover cycle up to MAX_DISCOVER_ATTEMPTS when buffer keeps emptying", async () => {
@@ -356,11 +359,14 @@ describe("POST /orgs/buffer/next", () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     // journalists-service → not blocked
     mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
-    // claimNext → buffer empty
-    mockQuery.mockResolvedValueOnce({ rows: [] });
 
-    // discoverCycle → finds nothing
-    mockDiscoverCycle.mockResolvedValueOnce(0);
+    // All 5 discover attempts return 0
+    for (let i = 0; i < 5; i++) {
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // claimNext → empty
+      mockDiscoverCycle.mockResolvedValueOnce(0);
+    }
+    // Final claimNext after attempts exhausted
+    mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const res = await withHeaders(
       request(app).post("/orgs/buffer/next")
@@ -424,12 +430,14 @@ describe("POST /orgs/buffer/next", () => {
     expect(mockQuery).toHaveBeenCalledTimes(2); // claim + block cache check only
   });
 
-  it("does not retry discover when first attempt returns 0", async () => {
-    // claimNext → buffer empty
+  it("retries discover cycle up to MAX_DISCOVER_ATTEMPTS when it keeps returning 0", async () => {
+    // claimNext → buffer empty (repeated for each discover attempt)
+    for (let i = 0; i < 5; i++) {
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // claimNext → empty
+      mockDiscoverCycle.mockResolvedValueOnce(0); // discover → 0
+    }
+    // After 5 failed attempts, one more claimNext that hits the attempts cap
     mockQuery.mockResolvedValueOnce({ rows: [] });
-
-    // discoverCycle → 0
-    mockDiscoverCycle.mockResolvedValueOnce(0);
 
     const res = await withHeaders(
       request(app).post("/orgs/buffer/next")
@@ -437,7 +445,32 @@ describe("POST /orgs/buffer/next", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(0);
-    // Should only have called discoverCycle once — breaks on 0
-    expect(mockDiscoverCycle).toHaveBeenCalledTimes(1);
+    // Should have called discoverCycle 5 times (MAX_DISCOVER_ATTEMPTS)
+    expect(mockDiscoverCycle).toHaveBeenCalledTimes(5);
+  });
+
+  it("succeeds on second discover attempt after first returns 0", async () => {
+    // claimNext → empty
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    // discover attempt 1 → 0
+    mockDiscoverCycle.mockResolvedValueOnce(0);
+    // claimNext → still empty
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    // discover attempt 2 → fills 2
+    mockDiscoverCycle.mockResolvedValueOnce(2);
+    // claimNext → got one
+    mockQuery.mockResolvedValueOnce({ rows: [makeOutletRow()] });
+    // block cache check → no hit
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    // not blocked
+    mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
+
+    const res = await withHeaders(
+      request(app).post("/orgs/buffer/next")
+    ).send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.outlets).toHaveLength(1);
+    expect(mockDiscoverCycle).toHaveBeenCalledTimes(2);
   });
 });
