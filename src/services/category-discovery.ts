@@ -16,6 +16,7 @@ import type { OrgContext } from "../middleware/org-context";
 const CATEGORY_BATCH_SIZE = 10;
 const OUTLET_BATCH_SIZE = 10;
 const CATEGORY_CAP = 100;
+const MAX_CATEGORIES_PER_CAMPAIGN = 100;
 
 const BRAND_FIELDS = [
   { key: "brand_name", description: "The brand's display name" },
@@ -377,7 +378,18 @@ export async function discoverCycle(ctx: OrgContext): Promise<number> {
 
     // If no active category, all are exhausted/capped — generate a new batch
     if (!activeCategory) {
-      console.log(`[outlets-service] discoverCycle: all categories exhausted for campaign ${ctx.campaignId}, generating new batch`);
+      // Check category cap before generating more
+      const countResult = await pool.query(
+        `SELECT COUNT(*) AS cnt FROM campaign_categories WHERE campaign_id = $1`,
+        [ctx.campaignId]
+      );
+      const totalCategories = Number(countResult.rows[0].cnt);
+      if (totalCategories >= MAX_CATEGORIES_PER_CAMPAIGN) {
+        console.log(`[outlets-service] discoverCycle: campaign ${ctx.campaignId} reached category cap (${totalCategories}/${MAX_CATEGORIES_PER_CAMPAIGN})`);
+        return 0;
+      }
+
+      console.log(`[outlets-service] discoverCycle: all categories exhausted for campaign ${ctx.campaignId}, generating new batch (${totalCategories}/${MAX_CATEGORIES_PER_CAMPAIGN})`);
       const generated = await generateCategoryBatch(ctx);
       if (generated === 0) {
         console.log(`[outlets-service] discoverCycle: could not generate new categories for campaign ${ctx.campaignId}`);
