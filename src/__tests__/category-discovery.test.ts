@@ -561,6 +561,8 @@ describe("discoverCycle", () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "5" }] });
     // getActiveCategory → none active (all exhausted)
     mockQuery.mockResolvedValueOnce({ rows: [] });
+    // Cap check → under limit
+    mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "5" }] });
 
     // generateCategoryBatch (new batch):
     // getAllCategories → existing exhausted ones
@@ -759,6 +761,8 @@ describe("discoverCycle", () => {
 
     // Loop iteration 2: getActiveCategory → none (all exhausted now)
     mockQuery.mockResolvedValueOnce({ rows: [] });
+    // Cap check → under limit
+    mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "2" }] });
 
     // generateCategoryBatch triggered
     setupBrandMocks();
@@ -828,6 +832,25 @@ describe("discoverCycle", () => {
     expect(result).toBe(1);
   });
 
+  it("returns 0 when campaign reaches 100-category cap", async () => {
+    setupBrandMocks();
+
+    // Check existing categories → some exist
+    mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "100" }] });
+
+    // getActiveCategory → none active (all exhausted)
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    // COUNT check for cap → 100 categories already
+    mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "100" }] });
+
+    const result = await discoverCycle(ctx);
+
+    expect(result).toBe(0);
+    // Should NOT have called chatComplete — stopped at cap check
+    expect(mockChatComplete).not.toHaveBeenCalled();
+  });
+
   it("returns 0 when no new categories can be generated", async () => {
     setupBrandMocks();
 
@@ -835,6 +858,8 @@ describe("discoverCycle", () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "10" }] });
     // getActiveCategory → none
     mockQuery.mockResolvedValueOnce({ rows: [] });
+    // Cap check → under limit
+    mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "10" }] });
 
     // generateCategoryBatch → fails
     mockQuery.mockResolvedValueOnce({ rows: [{ category_name: "X", category_geo: "Y" }] }); // existing
