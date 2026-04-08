@@ -144,6 +144,7 @@ const spec = {
                           outletUrl: { type: "string" },
                           outletDomain: { type: "string" },
                           createdAt: { type: "string", format: "date-time" },
+                          relevanceScore: { type: "number", description: "High watermark relevance score across all campaigns for this outlet (max of per-campaign scores)." },
                           outreachStatus: { type: "string", enum: ["open", "ended", "denied", "served", "contacted", "delivered", "replied", "skipped"], description: "High watermark outreach status from journalists-service at the query's scope (campaign or brand). Falls back to most advanced DB status when no journalist data exists." },
                           replyClassification: { type: "string", nullable: true, enum: ["positive", "negative", "neutral"], description: "Best reply classification when outreachStatus is 'replied'. Null otherwise." },
                           campaigns: {
@@ -169,7 +170,7 @@ const spec = {
                             },
                           },
                         },
-                        required: ["id", "outletName", "outletUrl", "outletDomain", "createdAt", "outreachStatus", "replyClassification", "campaigns"],
+                        required: ["id", "outletName", "outletUrl", "outletDomain", "createdAt", "relevanceScore", "outreachStatus", "replyClassification", "campaigns"],
                       },
                     },
                     total: { type: "integer" },
@@ -184,6 +185,7 @@ const spec = {
                       outletUrl: "https://techcrunch.com",
                       outletDomain: "techcrunch.com",
                       createdAt: "2026-01-01T00:00:00Z",
+                      relevanceScore: 85,
                       outreachStatus: "delivered",
                       replyClassification: null,
                       campaigns: [
