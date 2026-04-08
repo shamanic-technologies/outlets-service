@@ -10,7 +10,7 @@ import {
   getWorkflowDynastyMap,
   getFeatureDynastyMap,
 } from "../services/dynasty";
-import { fetchOutletStatuses } from "../services/outlet-status";
+import { fetchOutletStatuses, type ScopeFilters } from "../services/outlet-status";
 
 const router = Router();
 
@@ -242,48 +242,41 @@ router.get(
           params
         );
 
-        // --- byStatus breakdown with enrichment from journalists-service ---
-        const statusResult = await pool.query(
-          `SELECT co.status, array_agg(DISTINCT co.outlet_id) AS outlet_ids
+        // --- byOutreachStatus breakdown with enrichment from journalists-service ---
+        // Get all distinct outlet IDs matching filters
+        const allOutletsResult = await pool.query(
+          `SELECT DISTINCT co.outlet_id, co.status
            FROM campaign_outlets co
-           WHERE ${where}
-           GROUP BY co.status`,
+           WHERE ${where}`,
           params
         );
 
-        const byStatus: Record<string, number> = {};
-        const servedOutletIds: string[] = [];
-
-        for (const r of statusResult.rows) {
-          const status = r.status as string;
-          const ids = r.outlet_ids as string[];
-          if (status === "served") {
-            servedOutletIds.push(...ids);
-          } else {
-            byStatus[status] = ids.length;
+        const byOutreachStatus: Record<string, number> = {};
+        const allOutletIds = [...new Set(allOutletsResult.rows.map((r: any) => r.outlet_id as string))];
+        // DB status fallback map: outlet → most advanced DB status
+        const STATUS_PRIORITY: Record<string, number> = {
+          skipped: 0, denied: 0, ended: 0, open: 1, served: 2, contacted: 3, delivered: 4, replied: 5,
+        };
+        const dbStatusMap = new Map<string, string>();
+        for (const r of allOutletsResult.rows) {
+          const existing = dbStatusMap.get(r.outlet_id);
+          if (!existing || (STATUS_PRIORITY[r.status] ?? 0) > (STATUS_PRIORITY[existing] ?? 0)) {
+            dbStatusMap.set(r.outlet_id, r.status);
           }
         }
 
-        // Enrich "served" outlets via journalists-service
-        // Only enrich when full context is available (journalists-service requires all 7 headers)
-        const hasFullContext = !!(ctx.campaignId && ctx.brandIds.length > 0 && ctx.featureSlug && ctx.workflowSlug);
-        if (hasFullContext && servedOutletIds.length > 0) {
-          const enriched = await fetchOutletStatuses(servedOutletIds, ctx);
-          let remainingServed = 0;
-          for (const outletId of servedOutletIds) {
+        // Enrich ALL outlets via journalists-service
+        const scopeFilters: ScopeFilters = {};
+        if (q.campaignId) scopeFilters.campaignId = q.campaignId;
+        if (q.brandId) scopeFilters.brandId = q.brandId;
+
+        if (allOutletIds.length > 0) {
+          const enriched = await fetchOutletStatuses(allOutletIds, ctx, scopeFilters);
+          for (const outletId of allOutletIds) {
             const e = enriched.get(outletId);
-            const enrichedStatus = e?.status ?? "served";
-            if (enrichedStatus === "served") {
-              remainingServed++;
-            } else {
-              byStatus[enrichedStatus] = (byStatus[enrichedStatus] ?? 0) + 1;
-            }
+            const outreachStatus = e?.outreachStatus ?? dbStatusMap.get(outletId) ?? "open";
+            byOutreachStatus[outreachStatus] = (byOutreachStatus[outreachStatus] ?? 0) + 1;
           }
-          if (remainingServed > 0) {
-            byStatus["served"] = remainingServed;
-          }
-        } else if (servedOutletIds.length > 0) {
-          byStatus["served"] = servedOutletIds.length;
         }
 
         const row = result.rows[0];
@@ -291,7 +284,7 @@ router.get(
           outletsDiscovered: row.outlets_discovered ?? 0,
           avgRelevanceScore: Number(row.avg_relevance_score ?? 0),
           searchQueriesUsed: row.search_queries_used ?? 0,
-          byStatus,
+          byOutreachStatus,
         });
       }
     } catch (err) {

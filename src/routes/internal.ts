@@ -1,7 +1,10 @@
 import { Router, Request, Response } from "express";
 import { pool } from "../db/pool";
+import { config } from "../config";
 import { validateQuery } from "../middleware/validate";
 import { internalOutletsQuerySchema } from "../schemas";
+import { fetchOutletStatuses } from "../services/outlet-status";
+import { buildServiceHeaders } from "../services/headers";
 
 const router = Router();
 
@@ -34,7 +37,7 @@ router.get(
         const result = await pool.query(
           `SELECT
             o.id, o.outlet_name, o.outlet_url, o.outlet_domain,
-            co.brand_ids, co.why_relevant, co.why_not_relevant, co.relevance_score, co.status AS outlet_status,
+            co.org_id, co.brand_ids, co.why_relevant, co.why_not_relevant, co.relevance_score, co.status AS outlet_status,
             co.overall_relevance, co.relevance_rationale,
             o.created_at, o.updated_at
            FROM campaign_outlets co
@@ -44,23 +47,39 @@ router.get(
           params
         );
 
+        // Enrich with outreach status from journalists-service
+        const outletIds = result.rows.map((r: any) => r.id as string);
+        // Internal endpoints don't have orgContext, so build a minimal one from the first row
+        const firstRow = result.rows[0];
+        const enrichedStatuses = outletIds.length > 0 && firstRow
+          ? await fetchOutletStatuses(
+              outletIds,
+              { orgId: firstRow.org_id, brandIds: firstRow.brand_ids ?? [] },
+              { campaignId }
+            )
+          : new Map();
+
         res.json({
-          outlets: result.rows.map((r: any) => ({
-            id: r.id,
-            outletName: r.outlet_name,
-            outletUrl: r.outlet_url,
-            outletDomain: r.outlet_domain,
-            campaignId,
-            brandIds: r.brand_ids,
-            whyRelevant: r.why_relevant,
-            whyNotRelevant: r.why_not_relevant,
-            relevanceScore: Number(r.relevance_score),
-            status: r.outlet_status,
-            overallRelevance: r.overall_relevance,
-            relevanceRationale: r.relevance_rationale,
-            createdAt: r.created_at,
-            updatedAt: r.updated_at,
-          })),
+          outlets: result.rows.map((r: any) => {
+            const enriched = enrichedStatuses.get(r.id);
+            return {
+              id: r.id,
+              outletName: r.outlet_name,
+              outletUrl: r.outlet_url,
+              outletDomain: r.outlet_domain,
+              campaignId,
+              brandIds: r.brand_ids,
+              whyRelevant: r.why_relevant,
+              whyNotRelevant: r.why_not_relevant,
+              relevanceScore: Number(r.relevance_score),
+              outreachStatus: enriched?.outreachStatus ?? r.outlet_status,
+              replyClassification: enriched?.replyClassification ?? null,
+              overallRelevance: r.overall_relevance,
+              relevanceRationale: r.relevance_rationale,
+              createdAt: r.created_at,
+              updatedAt: r.updated_at,
+            };
+          }),
         });
         return;
       }

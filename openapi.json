@@ -370,15 +370,27 @@
           "relevanceScore": {
             "type": "number"
           },
-          "status": {
+          "outreachStatus": {
             "type": "string",
             "enum": [
               "open",
               "ended",
               "denied",
               "served",
+              "contacted",
+              "delivered",
+              "replied",
               "skipped"
             ]
+          },
+          "replyClassification": {
+            "type": "string",
+            "enum": [
+              "positive",
+              "negative",
+              "neutral"
+            ],
+            "nullable": true
           },
           "overallRelevance": {
             "type": "string",
@@ -405,7 +417,8 @@
           "whyRelevant",
           "whyNotRelevant",
           "relevanceScore",
-          "status",
+          "outreachStatus",
+          "replyClassification",
           "overallRelevance",
           "relevanceRationale",
           "runId"
@@ -423,7 +436,7 @@
           "searchQueriesUsed": {
             "type": "number"
           },
-          "byStatus": {
+          "byOutreachStatus": {
             "type": "object",
             "additionalProperties": true
           }
@@ -704,7 +717,7 @@
       },
       "get": {
         "summary": "List outlets with filters (deduplicated, org-scoped)",
-        "description": "Returns outlets deduplicated by outlet_id with nested campaign data. Always scoped by x-org-id. Filter by campaignId, brandId, status, featureSlug(s), or featureDynastySlug.",
+        "description": "Returns outlets deduplicated by outlet_id with nested campaign data. Always scoped by x-org-id. At least one of brandId or campaignId is required (org-only scoping returns 400). Outreach status is enriched from journalists-service at the query's granularity.",
         "parameters": [
           {
             "in": "header",
@@ -851,7 +864,7 @@
         ],
         "responses": {
           "200": {
-            "description": "List of deduplicated outlets with nested campaigns",
+            "description": "List of deduplicated outlets with nested campaigns. Requires at least brandId or campaignId.",
             "content": {
               "application/json": {
                 "schema": {
@@ -879,7 +892,7 @@
                             "type": "string",
                             "format": "date-time"
                           },
-                          "latestStatus": {
+                          "outreachStatus": {
                             "type": "string",
                             "enum": [
                               "open",
@@ -890,10 +903,18 @@
                               "delivered",
                               "replied",
                               "skipped"
-                            ]
+                            ],
+                            "description": "High watermark outreach status from journalists-service at the query's scope (campaign or brand). Falls back to DB status when no journalist data exists."
                           },
-                          "latestRelevanceScore": {
-                            "type": "number"
+                          "replyClassification": {
+                            "type": "string",
+                            "nullable": true,
+                            "enum": [
+                              "positive",
+                              "negative",
+                              "neutral"
+                            ],
+                            "description": "Best reply classification when outreachStatus is replied. Null otherwise."
                           },
                           "campaigns": {
                             "type": "array",
@@ -923,7 +944,7 @@
                                 "relevanceScore": {
                                   "type": "number"
                                 },
-                                "status": {
+                                "outreachStatus": {
                                   "type": "string",
                                   "enum": [
                                     "open",
@@ -934,7 +955,8 @@
                                     "delivered",
                                     "replied",
                                     "skipped"
-                                  ]
+                                  ],
+                                  "description": "Outreach status scoped to this campaign."
                                 },
                                 "overallRelevance": {
                                   "type": "string",
@@ -967,7 +989,7 @@
                                 "featureSlug",
                                 "brandIds",
                                 "relevanceScore",
-                                "status",
+                                "outreachStatus",
                                 "updatedAt"
                               ]
                             }
@@ -979,8 +1001,8 @@
                           "outletUrl",
                           "outletDomain",
                           "createdAt",
-                          "latestStatus",
-                          "latestRelevanceScore",
+                          "outreachStatus",
+                          "replyClassification",
                           "campaigns"
                         ]
                       }

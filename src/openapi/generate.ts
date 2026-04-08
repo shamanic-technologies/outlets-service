@@ -17,7 +17,7 @@ import {
   discoverSchema,
   discoverResponseSchema,
   statsCostsResponseSchema,
-  enrichedOutletStatusEnum,
+  outreachStatusEnum,
 } from "../schemas";
 import { zodToJsonSchema } from "./zod-to-json";
 
@@ -114,7 +114,7 @@ const spec = {
       },
       get: {
         summary: "List outlets with filters (deduplicated, org-scoped)",
-        description: "Returns outlets deduplicated by outlet_id with nested campaign data. Always scoped by x-org-id. Filter by campaignId, brandId, status, featureSlug(s), or featureDynastySlug.",
+        description: "Returns outlets deduplicated by outlet_id with nested campaign data. Always scoped by x-org-id. At least one of brandId or campaignId is required (org-only scoping returns 400). Outreach status is enriched from journalists-service at the query's granularity.",
         parameters: [
           ...orgHeaders,
           { in: "query", name: "campaignId", schema: { type: "string", format: "uuid" }, description: "Filter by campaign ID" },
@@ -128,7 +128,7 @@ const spec = {
         ],
         responses: {
           "200": {
-            description: "List of deduplicated outlets with nested campaigns",
+            description: "List of deduplicated outlets with nested campaigns. Requires at least brandId or campaignId.",
             content: {
               "application/json": {
                 schema: {
@@ -144,8 +144,8 @@ const spec = {
                           outletUrl: { type: "string" },
                           outletDomain: { type: "string" },
                           createdAt: { type: "string", format: "date-time" },
-                          latestStatus: { type: "string", enum: ["open", "ended", "denied", "served", "contacted", "delivered", "replied", "skipped"] },
-                          latestRelevanceScore: { type: "number" },
+                          outreachStatus: { type: "string", enum: ["open", "ended", "denied", "served", "contacted", "delivered", "replied", "skipped"], description: "High watermark outreach status from journalists-service at the query's scope (campaign or brand). Falls back to DB status when no journalist data exists." },
+                          replyClassification: { type: "string", nullable: true, enum: ["positive", "negative", "neutral"], description: "Best reply classification when outreachStatus is replied. Null otherwise." },
                           campaigns: {
                             type: "array",
                             items: {
@@ -157,18 +157,18 @@ const spec = {
                                 whyRelevant: { type: "string" },
                                 whyNotRelevant: { type: "string" },
                                 relevanceScore: { type: "number" },
-                                status: { type: "string", enum: ["open", "ended", "denied", "served", "contacted", "delivered", "replied", "skipped"] },
+                                outreachStatus: { type: "string", enum: ["open", "ended", "denied", "served", "contacted", "delivered", "replied", "skipped"], description: "Outreach status scoped to this campaign." },
                                 overallRelevance: { type: "string", nullable: true },
                                 relevanceRationale: { type: "string", nullable: true },
                                 replyClassification: { type: "string", nullable: true, enum: ["positive", "negative", "neutral"] },
                                 runId: { type: "string", nullable: true },
                                 updatedAt: { type: "string", format: "date-time" },
                               },
-                              required: ["campaignId", "featureSlug", "brandIds", "relevanceScore", "status", "updatedAt"],
+                              required: ["campaignId", "featureSlug", "brandIds", "relevanceScore", "outreachStatus", "updatedAt"],
                             },
                           },
                         },
-                        required: ["id", "outletName", "outletUrl", "outletDomain", "createdAt", "latestStatus", "latestRelevanceScore", "campaigns"],
+                        required: ["id", "outletName", "outletUrl", "outletDomain", "createdAt", "outreachStatus", "replyClassification", "campaigns"],
                       },
                     },
                     total: { type: "integer" },

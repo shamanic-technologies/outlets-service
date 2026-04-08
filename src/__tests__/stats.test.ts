@@ -70,8 +70,8 @@ function withIdentity(req: request.Test): request.Test {
 
 let app: Express;
 
-/** Mock the byStatus breakdown query (empty = no outlets by status). */
-function mockEmptyStatusBreakdown() {
+/** Mock the byOutreachStatus breakdown query (empty = no outlets). */
+function mockEmptyOutreachStatusBreakdown() {
   mockQuery.mockResolvedValueOnce({ rows: [] });
 }
 
@@ -89,7 +89,7 @@ describe("GET /orgs/outlets/stats?featureSlug=...", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 5, avg_relevance_score: "72.50", search_queries_used: 10 }],
     });
-    mockEmptyStatusBreakdown();
+    mockEmptyOutreachStatusBreakdown();
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
       featureSlug: "cold-email-sophia",
@@ -112,7 +112,7 @@ describe("GET /orgs/outlets/stats?workflowSlug=...", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 3, avg_relevance_score: "80.00", search_queries_used: 6 }],
     });
-    mockEmptyStatusBreakdown();
+    mockEmptyOutreachStatusBreakdown();
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
       workflowSlug: "cold-email-v2",
@@ -133,7 +133,7 @@ describe("GET /orgs/outlets/stats?workflowSlugs=...", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 10, avg_relevance_score: "75.00", search_queries_used: 20 }],
     });
-    mockEmptyStatusBreakdown();
+    mockEmptyOutreachStatusBreakdown();
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
       workflowSlugs: "cold-email-v2,warm-intro-v1",
@@ -150,7 +150,7 @@ describe("GET /orgs/outlets/stats?workflowSlugs=...", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 5, avg_relevance_score: "70.00", search_queries_used: 10 }],
     });
-    mockEmptyStatusBreakdown();
+    mockEmptyOutreachStatusBreakdown();
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
       workflowSlugs: "",
@@ -186,7 +186,7 @@ describe("GET /orgs/outlets/stats?workflowSlugs=...", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 8, avg_relevance_score: "70.00", search_queries_used: 15 }],
     });
-    mockEmptyStatusBreakdown();
+    mockEmptyOutreachStatusBreakdown();
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
       workflowDynastySlug: "cold-email",
@@ -209,7 +209,7 @@ describe("GET /orgs/outlets/stats?featureSlugs=...", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 7, avg_relevance_score: "65.00", search_queries_used: 14 }],
     });
-    mockEmptyStatusBreakdown();
+    mockEmptyOutreachStatusBreakdown();
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
       featureSlugs: "feat-alpha,feat-beta",
@@ -227,7 +227,7 @@ describe("GET /orgs/outlets/stats?featureSlugs=...", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 7, avg_relevance_score: "65.00", search_queries_used: 14 }],
     });
-    mockEmptyStatusBreakdown();
+    mockEmptyOutreachStatusBreakdown();
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
       featureDynastySlug: "feat-alpha",
@@ -250,7 +250,7 @@ describe("GET /orgs/outlets/stats?workflowDynastySlug=...", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 12, avg_relevance_score: "75.00", search_queries_used: 20 }],
     });
-    mockEmptyStatusBreakdown();
+    mockEmptyOutreachStatusBreakdown();
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
       workflowDynastySlug: "cold-email",
@@ -280,7 +280,7 @@ describe("GET /orgs/outlets/stats?workflowDynastySlug=...", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 8, avg_relevance_score: "70.00", search_queries_used: 15 }],
     });
-    mockEmptyStatusBreakdown();
+    mockEmptyOutreachStatusBreakdown();
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
       workflowDynastySlug: "cold-email",
@@ -303,7 +303,7 @@ describe("GET /orgs/outlets/stats?featureDynastySlug=...", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 7, avg_relevance_score: "65.00", search_queries_used: 14 }],
     });
-    mockEmptyStatusBreakdown();
+    mockEmptyOutreachStatusBreakdown();
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
       featureDynastySlug: "feat-alpha",
@@ -337,7 +337,7 @@ describe("GET /orgs/outlets/stats with combined dynasty + other filters", () => 
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 4, avg_relevance_score: "80.00", search_queries_used: 8 }],
     });
-    mockEmptyStatusBreakdown();
+    mockEmptyOutreachStatusBreakdown();
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
       brandId: "55555555-5555-5555-5555-555555555555",
@@ -678,7 +678,7 @@ describe("Stats endpoints with base headers only", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 5, avg_relevance_score: "72.50", search_queries_used: 10 }],
     });
-    mockEmptyStatusBreakdown();
+    mockEmptyOutreachStatusBreakdown();
 
     const res = await request(app)
       .get("/orgs/outlets/stats")
@@ -703,72 +703,70 @@ describe("Stats endpoints with base headers only", () => {
 });
 
 // ========================
-// byStatus enrichment
+// byOutreachStatus enrichment
 // ========================
 const OUTLET_A = "aaaa0001-0001-0001-0001-000000000001";
 const OUTLET_B = "aaaa0002-0002-0002-0002-000000000002";
 const OUTLET_C = "aaaa0003-0003-0003-0003-000000000003";
 
-describe("GET /orgs/outlets/stats byStatus enrichment", () => {
-  it("returns byStatus with enriched statuses from journalists-service", async () => {
+describe("GET /orgs/outlets/stats byOutreachStatus enrichment", () => {
+  it("returns byOutreachStatus with enriched statuses from journalists-service", async () => {
     // Aggregate query
     mockQuery.mockResolvedValueOnce({
-      rows: [{ outlets_discovered: 5, avg_relevance_score: "70.00", search_queries_used: 10 }],
+      rows: [{ outlets_discovered: 3, avg_relevance_score: "70.00", search_queries_used: 10 }],
     });
-    // Status breakdown query
+    // All distinct outlets query (used for enrichment)
     mockQuery.mockResolvedValueOnce({
       rows: [
-        { status: "open", outlet_ids: [OUTLET_A] },
-        { status: "served", outlet_ids: [OUTLET_B, OUTLET_C] },
+        { outlet_id: OUTLET_A, status: "open" },
+        { outlet_id: OUTLET_B, status: "served" },
+        { outlet_id: OUTLET_C, status: "served" },
       ],
     });
-    // Journalists-service returns enriched statuses
+    // Journalists-service returns enriched statuses for ALL outlets
     mockFetchOutletStatuses.mockResolvedValueOnce(
       new Map([
-        [OUTLET_B, { status: "contacted", replyClassification: null }],
-        [OUTLET_C, { status: "replied", replyClassification: "positive" }],
+        [OUTLET_A, { outreachStatus: "open", replyClassification: null }],
+        [OUTLET_B, { outreachStatus: "contacted", replyClassification: null }],
+        [OUTLET_C, { outreachStatus: "replied", replyClassification: "positive" }],
       ])
     );
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats"));
 
     expect(res.status).toBe(200);
-    expect(res.body.outletsDiscovered).toBe(5);
-    expect(res.body.byStatus).toEqual({
+    expect(res.body.outletsDiscovered).toBe(3);
+    expect(res.body.byOutreachStatus).toEqual({
       open: 1,
       contacted: 1,
       replied: 1,
     });
   });
 
-  it("keeps served count when journalists-service returns no enrichment", async () => {
+  it("falls back to DB status when journalists-service returns no data for an outlet", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 3, avg_relevance_score: "80.00", search_queries_used: 6 }],
     });
     mockQuery.mockResolvedValueOnce({
       rows: [
-        { status: "served", outlet_ids: [OUTLET_A, OUTLET_B] },
-        { status: "ended", outlet_ids: [OUTLET_C] },
+        { outlet_id: OUTLET_A, status: "served" },
+        { outlet_id: OUTLET_B, status: "served" },
+        { outlet_id: OUTLET_C, status: "ended" },
       ],
     });
-    // Journalists-service returns all as "served" (no enrichment)
-    mockFetchOutletStatuses.mockResolvedValueOnce(
-      new Map([
-        [OUTLET_A, { status: "served", replyClassification: null }],
-        [OUTLET_B, { status: "served", replyClassification: null }],
-      ])
-    );
+    // Journalists-service returns nothing — fallback to DB status
+    mockFetchOutletStatuses.mockResolvedValueOnce(new Map());
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats"));
 
     expect(res.status).toBe(200);
-    expect(res.body.byStatus).toEqual({
+    expect(res.body.byOutreachStatus).toEqual({
       served: 2,
       ended: 1,
     });
   });
 
-  it("returns empty byStatus when no outlets match", async () => {
+  it("returns empty byOutreachStatus when no outlets match", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 0, avg_relevance_score: null, search_queries_used: 0 }],
     });
@@ -777,24 +775,32 @@ describe("GET /orgs/outlets/stats byStatus enrichment", () => {
     const res = await withIdentity(request(app).get("/orgs/outlets/stats"));
 
     expect(res.status).toBe(200);
-    expect(res.body.byStatus).toEqual({});
+    expect(res.body.byOutreachStatus).toEqual({});
+    expect(mockFetchOutletStatuses).not.toHaveBeenCalled();
   });
 
-  it("does not call journalists-service when no served outlets", async () => {
+  it("enriches ALL outlets (not just served)", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 2, avg_relevance_score: "60.00", search_queries_used: 4 }],
     });
     mockQuery.mockResolvedValueOnce({
       rows: [
-        { status: "open", outlet_ids: [OUTLET_A] },
-        { status: "ended", outlet_ids: [OUTLET_B] },
+        { outlet_id: OUTLET_A, status: "open" },
+        { outlet_id: OUTLET_B, status: "ended" },
       ],
     });
+    // Journalists-service enriches even the "open" outlet
+    mockFetchOutletStatuses.mockResolvedValueOnce(
+      new Map([
+        [OUTLET_A, { outreachStatus: "delivered", replyClassification: null }],
+      ])
+    );
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats"));
 
     expect(res.status).toBe(200);
-    expect(res.body.byStatus).toEqual({ open: 1, ended: 1 });
-    expect(mockFetchOutletStatuses).not.toHaveBeenCalled();
+    expect(res.body.byOutreachStatus).toEqual({ delivered: 1, ended: 1 });
+    // Enrichment is called for ALL outlets
+    expect(mockFetchOutletStatuses).toHaveBeenCalledOnce();
   });
 });
