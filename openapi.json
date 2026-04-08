@@ -892,6 +892,10 @@
                             "type": "string",
                             "format": "date-time"
                           },
+                          "relevanceScore": {
+                            "type": "number",
+                            "description": "High watermark relevance score across all campaigns for this outlet (max of per-campaign scores)."
+                          },
                           "outreachStatus": {
                             "type": "string",
                             "enum": [
@@ -1002,6 +1006,7 @@
                           "outletUrl",
                           "outletDomain",
                           "createdAt",
+                          "relevanceScore",
                           "outreachStatus",
                           "replyClassification",
                           "campaigns"
@@ -1025,6 +1030,7 @@
                       "outletUrl": "https://techcrunch.com",
                       "outletDomain": "techcrunch.com",
                       "createdAt": "2026-01-01T00:00:00Z",
+                      "relevanceScore": 85,
                       "outreachStatus": "delivered",
                       "replyClassification": null,
                       "campaigns": [

@@ -209,6 +209,7 @@ describe("GET /orgs/outlets", () => {
     expect(res.body.outlets).toHaveLength(1);
     const outlet = res.body.outlets[0];
     expect(outlet.outletName).toBe("TechCrunch");
+    expect(outlet.relevanceScore).toBe(85);
     expect(outlet.outreachStatus).toBe("contacted");
     expect(outlet.replyClassification).toBeNull();
     expect(outlet.campaigns).toHaveLength(1);
@@ -336,6 +337,8 @@ describe("GET /orgs/outlets", () => {
 
     expect(res.status).toBe(200);
     const outlet = res.body.outlets[0];
+    // Outlet-level relevanceScore = max(90, 85) = 90
+    expect(outlet.relevanceScore).toBe(90);
     // Outlet-level = enriched high watermark for the brand
     expect(outlet.outreachStatus).toBe("delivered");
     // Per-campaign = from byCampaign breakdown
@@ -407,6 +410,8 @@ describe("GET /orgs/outlets", () => {
     expect(outlet.campaigns).toHaveLength(2);
     expect(outlet.campaigns[0].campaignId).toBe(CAMPAIGN_ID);
     expect(outlet.campaigns[1].campaignId).toBe(CAMPAIGN_ID_2);
+    // Outlet-level relevanceScore = max(90, 85) = 90
+    expect(outlet.relevanceScore).toBe(90);
     // Fallback: most advanced DB status = "served"
     expect(outlet.outreachStatus).toBe("served");
     // Per-campaign fallback to DB status

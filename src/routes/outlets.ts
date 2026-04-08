@@ -357,12 +357,16 @@ router.get(
           );
         }
 
+        // Outlet-level relevanceScore = max across campaigns (high watermark, same logic as outreachStatus)
+        const outletRelevanceScore = Math.max(...outlet.campaigns.map((c) => c.relevanceScore));
+
         return {
           id: outlet.id,
           outletName: outlet.outletName,
           outletUrl: outlet.outletUrl,
           outletDomain: outlet.outletDomain,
           createdAt: outlet.createdAt,
+          relevanceScore: outletRelevanceScore,
           outreachStatus: outletOutreachStatus,
           replyClassification: outletReplyClassification,
           campaigns: campaignsOut,
