@@ -117,6 +117,8 @@ router.post(
     const ctx = req.orgContext!;
     const { count, idempotencyKey } = req.body as { count: number; idempotencyKey?: string };
 
+    console.log(`[outlets-service] buffer/next: received request for campaign ${ctx.campaignId} (count=${count})`);
+
     try {
       // Check idempotency cache
       if (idempotencyKey) {
@@ -138,8 +140,12 @@ router.post(
           const claimed = await claimNext(ctx.campaignId!);
 
           if (!claimed) {
-            // Buffer empty — discover more outlets (loops until found or category cap)
-            console.log(`[outlets-service] buffer/next: buffer empty for campaign ${ctx.campaignId}, triggering discover cycle`);
+            // Diagnostic: verify buffer is truly empty
+            const openCount = await pool.query(
+              `SELECT COUNT(*) AS cnt FROM campaign_outlets WHERE campaign_id = $1 AND status = 'open'`,
+              [ctx.campaignId]
+            );
+            console.log(`[outlets-service] buffer/next: claimNext returned null for campaign ${ctx.campaignId}, open outlets in DB: ${openCount.rows[0].cnt}`);
             const filled = await discoverCycle(ctx);
 
             if (filled === 0) {
