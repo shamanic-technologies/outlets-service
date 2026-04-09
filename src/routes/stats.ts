@@ -253,9 +253,9 @@ router.get(
 
         const byOutreachStatus: Record<string, number> = {};
         const allOutletIds = [...new Set(allOutletsResult.rows.map((r: any) => r.outlet_id as string))];
-        // DB status fallback map: outlet → most advanced DB status
+        // Priority ordering: replied > delivered > contacted > served > claimed > buffered > open > skipped/denied/ended
         const STATUS_PRIORITY: Record<string, number> = {
-          skipped: 0, denied: 0, ended: 0, open: 1, served: 2, contacted: 3, delivered: 4, replied: 5,
+          ended: 0, denied: 0, skipped: 0, open: 1, buffered: 2, claimed: 3, served: 4, contacted: 5, delivered: 6, replied: 7,
         };
         const dbStatusMap = new Map<string, string>();
         for (const r of allOutletsResult.rows) {
