@@ -202,9 +202,7 @@
           },
           "limit": {
             "type": "integer",
-            "minimum": 0,
-            "maximum": 100,
-            "default": 20
+            "minimum": 0
           }
         },
         "required": [
@@ -847,10 +845,9 @@
             "in": "query",
             "name": "limit",
             "schema": {
-              "type": "integer",
-              "default": 100
+              "type": "integer"
             },
-            "description": "Max distinct outlets (default 100, max 1000)"
+            "description": "Max distinct outlets per page. Omit to return all outlets."
           },
           {
             "in": "query",
@@ -859,7 +856,7 @@
               "type": "integer",
               "default": 0
             },
-            "description": "Pagination offset"
+            "description": "Pagination offset (only used when limit is provided)"
           }
         ],
         "responses": {
@@ -1014,12 +1011,28 @@
                       }
                     },
                     "total": {
-                      "type": "integer"
+                      "type": "integer",
+                      "description": "Total distinct outlets matching filters (not truncated by pagination)"
+                    },
+                    "byOutreachStatus": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "integer"
+                      },
+                      "description": "Count of outlets per outreach status across ALL outlets matching filters (not truncated by pagination). Enriched from journalists-service.",
+                      "example": {
+                        "open": 50,
+                        "served": 120,
+                        "contacted": 30,
+                        "delivered": 37,
+                        "replied": 5
+                      }
                     }
                   },
                   "required": [
                     "outlets",
-                    "total"
+                    "total",
+                    "byOutreachStatus"
                   ]
                 },
                 "example": {
@@ -1053,7 +1066,10 @@
                       ]
                     }
                   ],
-                  "total": 1
+                  "total": 1,
+                  "byOutreachStatus": {
+                    "delivered": 1
+                  }
                 }
               }
             }

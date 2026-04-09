@@ -139,7 +139,7 @@ router.get(
           ctx
         );
         if (slugs.length === 0) {
-          res.json({ outlets: [], total: 0 });
+          res.json({ outlets: [], total: 0, byOutreachStatus: {} });
           return;
         }
         const placeholders = slugs.map((_, i) => `$${paramIdx + i}`).join(", ");
@@ -149,7 +149,7 @@ router.get(
       } else if (q.featureSlugs) {
         const slugs = q.featureSlugs.split(",").map((s: string) => s.trim()).filter(Boolean);
         if (slugs.length === 0) {
-          res.json({ outlets: [], total: 0 });
+          res.json({ outlets: [], total: 0, byOutreachStatus: {} });
           return;
         }
         const placeholders = slugs.map((_: string, i: number) => `$${paramIdx + i}`).join(", ");
@@ -160,36 +160,31 @@ router.get(
 
       const where = `WHERE ${conditions.join(" AND ")}`;
 
-      // Step 1: Get paginated distinct outlet IDs + total count
-      const idsResult = await pool.query(
+      // Step 1: Get ALL distinct outlet IDs matching filters (no pagination — used for total + enrichment)
+      const allIdsResult = await pool.query(
         `SELECT DISTINCT o.id
          FROM outlets o
          JOIN campaign_outlets co ON o.id = co.outlet_id
          ${where}
-         ORDER BY o.id
-         LIMIT $${paramIdx++} OFFSET $${paramIdx++}`,
-        [...params, q.limit, q.offset]
+         ORDER BY o.id`,
+        params
       );
 
-      if (idsResult.rows.length === 0) {
-        res.json({ outlets: [], total: 0 });
+      if (allIdsResult.rows.length === 0) {
+        res.json({ outlets: [], total: 0, byOutreachStatus: {} });
         return;
       }
 
-      const outletIds = idsResult.rows.map((r: any) => r.id as string);
+      const allOutletIds = allIdsResult.rows.map((r: any) => r.id as string);
+      const total = allOutletIds.length;
 
-      // Step 2: Count total distinct outlets matching filters
-      const countResult = await pool.query(
-        `SELECT COUNT(DISTINCT o.id)::int AS total
-         FROM outlets o
-         JOIN campaign_outlets co ON o.id = co.outlet_id
-         ${where}`,
-        params
-      );
-      const total = countResult.rows[0]?.total ?? 0;
+      // Step 2: Paginate in JS (only if limit is provided)
+      const pageOutletIds = q.limit != null
+        ? allOutletIds.slice(q.offset ?? 0, (q.offset ?? 0) + q.limit)
+        : allOutletIds;
 
-      // Step 3: Fetch all campaign_outlet rows for the paginated outlet IDs (with filters)
-      const dataParams: unknown[] = [outletIds, ctx.orgId];
+      // Step 3: Fetch all campaign_outlet rows for the page outlet IDs (with filters)
+      const dataParams: unknown[] = [pageOutletIds, ctx.orgId];
       let dataIdx = 3;
       const dataConditions: string[] = ["o.id = ANY($1)", "co.org_id = $2"];
 
@@ -292,8 +287,7 @@ router.get(
         });
       }
 
-      // Enrich ALL outlets via journalists-service with scope filters from query params
-      const allOutletIds = Array.from(outletsMap.keys());
+      // Enrich ALL outlets (not just the page) via journalists-service
       const scopeFilters: ScopeFilters = {};
       if (q.campaignId) scopeFilters.campaignId = q.campaignId;
       if (q.brandId) scopeFilters.brandId = q.brandId;
@@ -305,7 +299,31 @@ router.get(
         skipped: 0, denied: 0, ended: 0, open: 1, served: 2, contacted: 3, delivered: 4, replied: 5,
       };
 
-      // Build final response
+      // Compute byOutreachStatus across ALL outlets (not truncated by pagination)
+      // Need DB status fallback for outlets not in the enrichment map
+      const allDbStatusResult = await pool.query(
+        `SELECT o.id AS outlet_id, co.status
+         FROM outlets o
+         JOIN campaign_outlets co ON o.id = co.outlet_id
+         ${where}`,
+        params
+      );
+      const dbStatusMap = new Map<string, string>();
+      for (const r of allDbStatusResult.rows) {
+        const existing = dbStatusMap.get(r.outlet_id);
+        if (!existing || (STATUS_PRIORITY[r.status] ?? 0) > (STATUS_PRIORITY[existing] ?? 0)) {
+          dbStatusMap.set(r.outlet_id, r.status);
+        }
+      }
+
+      const byOutreachStatus: Record<string, number> = {};
+      for (const outletId of allOutletIds) {
+        const e = enrichedStatuses.get(outletId);
+        const status = e?.outreachStatus ?? dbStatusMap.get(outletId) ?? "open";
+        byOutreachStatus[status] = (byOutreachStatus[status] ?? 0) + 1;
+      }
+
+      // Build final response (page only)
       const outlets = Array.from(outletsMap.values()).map((outlet) => {
         const enriched = enrichedStatuses.get(outlet.id);
 
@@ -373,7 +391,7 @@ router.get(
         };
       });
 
-      res.json({ outlets, total });
+      res.json({ outlets, total, byOutreachStatus });
     } catch (err) {
       console.error("[outlets-service] Error listing outlets:", err);
       res.status(500).json({ error: "Internal server error" });
@@ -593,7 +611,12 @@ router.post(
         campaignFilter = `AND co.campaign_id = $${paramIdx++}`;
         params.push(campaignId);
       }
-      params.push(limit);
+
+      let limitClause = "";
+      if (limit != null) {
+        limitClause = `LIMIT $${paramIdx++}`;
+        params.push(limit);
+      }
 
       const result = await pool.query(
         `SELECT DISTINCT o.id, o.outlet_name, o.outlet_url, o.outlet_domain, o.created_at, o.updated_at
@@ -601,7 +624,7 @@ router.post(
          JOIN campaign_outlets co ON o.id = co.outlet_id
          WHERE (o.outlet_name ILIKE $1 OR o.outlet_url ILIKE $2) AND co.org_id = $3 ${campaignFilter}
          ORDER BY o.outlet_name
-         LIMIT $${paramIdx}`,
+         ${limitClause}`,
         params
       );
 
