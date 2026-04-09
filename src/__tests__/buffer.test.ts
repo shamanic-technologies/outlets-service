@@ -20,8 +20,10 @@ vi.mock("../db/pool", () => ({
 }));
 
 // Mock category discovery
+const mockReuseCycle = vi.fn();
 const mockDiscoverCycle = vi.fn();
 vi.mock("../services/category-discovery", () => ({
+  reuseCycle: (...args: unknown[]) => mockReuseCycle(...args),
   discoverCycle: (...args: unknown[]) => mockDiscoverCycle(...args),
 }));
 
@@ -281,6 +283,8 @@ describe("POST /orgs/buffer/next", () => {
     // diagnostic open count
     mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "0" }] });
 
+    // reuseCycle → exhausted (no reusable outlets)
+    mockReuseCycle.mockResolvedValueOnce(0);
     // discoverCycle fills the buffer with 3 outlets
     mockDiscoverCycle.mockResolvedValueOnce(3);
 
@@ -308,6 +312,8 @@ describe("POST /orgs/buffer/next", () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     // diagnostic open count
     mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "0" }] });
+    // reuseCycle → exhausted
+    mockReuseCycle.mockResolvedValueOnce(0);
     // discoverCycle returns 0 (category cap reached)
     mockDiscoverCycle.mockResolvedValueOnce(0);
 
@@ -325,6 +331,8 @@ describe("POST /orgs/buffer/next", () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     // diagnostic open count
     mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "0" }] });
+    // reuseCycle → exhausted
+    mockReuseCycle.mockResolvedValueOnce(0);
     // Discover attempt 1 → fills 2 outlets
     mockDiscoverCycle.mockResolvedValueOnce(2);
     // Claim → gets one but it's blocked
@@ -341,6 +349,8 @@ describe("POST /orgs/buffer/next", () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     // diagnostic open count
     mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "0" }] });
+    // reuseCycle → exhausted
+    mockReuseCycle.mockResolvedValueOnce(0);
     // Discover attempt 2 → fills 1 outlet
     mockDiscoverCycle.mockResolvedValueOnce(1);
     // Claim → gets one, not blocked
@@ -369,6 +379,8 @@ describe("POST /orgs/buffer/next", () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     // diagnostic open count
     mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "0" }] });
+    // reuseCycle → exhausted
+    mockReuseCycle.mockResolvedValueOnce(0);
     // discoverCycle → 0 (category cap)
     mockDiscoverCycle.mockResolvedValueOnce(0);
 
@@ -403,10 +415,11 @@ describe("POST /orgs/buffer/next", () => {
   it("returns 502 when discover cycle fails persistently with upstream error", async () => {
     const upstreamError = new Error("brand-service /orgs/brands/extract-fields failed (503): Service Unavailable");
 
-    // claimNext → buffer empty, then discoverCycle throws — repeated for all retries
+    // claimNext → buffer empty, then reuseCycle → 0, then discoverCycle throws — repeated for all retries
     for (let i = 0; i <= 3; i++) {
       mockQuery.mockResolvedValueOnce({ rows: [] }); // claimNext → empty
       mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "0" }] }); // diagnostic open count
+      mockReuseCycle.mockResolvedValueOnce(0); // reuseCycle → exhausted
       mockDiscoverCycle.mockRejectedValueOnce(upstreamError);
     }
 
@@ -449,6 +462,33 @@ describe("POST /orgs/buffer/next", () => {
 
     expect(res.status).toBe(500);
     expect(res.body.error).toContain("connection reset");
+  });
+
+  it("uses reuse cycle before discover cycle when buffer is empty", async () => {
+    // claimNext → buffer empty
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    // diagnostic open count
+    mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "0" }] });
+
+    // reuseCycle fills the buffer with 5 reused outlets
+    mockReuseCycle.mockResolvedValueOnce(5);
+
+    // claimNext retry → found outlet (from reused batch)
+    mockQuery.mockResolvedValueOnce({ rows: [makeOutletRow()] });
+    // block cache → no hit
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    // not blocked
+    mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
+
+    const res = await withHeaders(
+      request(app).post("/orgs/buffer/next")
+    ).send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.outlets).toHaveLength(1);
+    // reuseCycle was called, discoverCycle was NOT called
+    expect(mockReuseCycle).toHaveBeenCalledTimes(1);
+    expect(mockDiscoverCycle).not.toHaveBeenCalled();
   });
 
   it("recovers from transient error on claimNext then succeeds", async () => {

@@ -47,11 +47,18 @@ vi.mock("../services/campaign", () => ({
   getFeatureInputs: (...args: unknown[]) => mockGetFeatureInputs(...args),
 }));
 
+// Mock journalists service
+const mockIsOutletBlocked = vi.fn();
+vi.mock("../services/journalists", () => ({
+  isOutletBlocked: (...args: unknown[]) => mockIsOutletBlocked(...args),
+}));
+
 import {
   generateCategoryBatch,
   getActiveCategory,
   discoverOutletsInCategory,
   discoverCycle,
+  reuseCycle,
   type CampaignCategory,
 } from "../services/category-discovery";
 import type { OrgContext } from "../middleware/org-context";
@@ -1065,5 +1072,138 @@ describe("discoverCycle", () => {
 
     const result = await discoverCycle(ctx);
     expect(result).toBe(0);
+  });
+});
+
+describe("reuseCycle", () => {
+  const OUTLET_ID_1 = "11111111-1111-1111-1111-111111111111";
+  const OUTLET_ID_2 = "22222222-2222-2222-2222-222222222222";
+  const OUTLET_ID_3 = "33333333-3333-3333-3333-333333333333";
+
+  it("returns 0 when no reusable outlets exist", async () => {
+    // Query for reusable outlets → none
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const result = await reuseCycle(ctx);
+    expect(result).toBe(0);
+    expect(mockIsOutletBlocked).not.toHaveBeenCalled();
+    expect(mockChatComplete).not.toHaveBeenCalled();
+  });
+
+  it("inserts blocked outlets as skipped without calling LLM", async () => {
+    // Query for reusable outlets → 2 found
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { outlet_id: OUTLET_ID_1, outlet_name: "Blocked Outlet", outlet_domain: "blocked.com" },
+        { outlet_id: OUTLET_ID_2, outlet_name: "Also Blocked", outlet_domain: "alsoblocked.com" },
+      ],
+    });
+
+    // Both blocked
+    mockIsOutletBlocked.mockResolvedValueOnce({ blocked: true });
+    mockIsOutletBlocked.mockResolvedValueOnce({ blocked: true });
+
+    // INSERT skipped for each
+    mockQuery.mockResolvedValueOnce({ rowCount: 1 }); // outlet 1
+    mockQuery.mockResolvedValueOnce({ rowCount: 1 }); // outlet 2
+
+    const result = await reuseCycle(ctx);
+
+    expect(result).toBe(2);
+    expect(mockIsOutletBlocked).toHaveBeenCalledTimes(2);
+    // LLM should NOT have been called — all blocked
+    expect(mockChatComplete).not.toHaveBeenCalled();
+    // Verify skipped status in INSERT
+    const insertCalls = mockQuery.mock.calls.filter(
+      (call) => typeof call[0] === "string" && call[0].includes("INSERT INTO campaign_outlets")
+    );
+    expect(insertCalls).toHaveLength(2);
+    // Status is 'skipped' (10th positional param in VALUES)
+    expect(insertCalls[0][0]).toContain("'skipped'");
+  });
+
+  it("scores non-blocked outlets via LLM and inserts all", async () => {
+    setupBrandMocks();
+
+    // Query for reusable outlets → 3 found
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { outlet_id: OUTLET_ID_1, outlet_name: "Blocked One", outlet_domain: "blocked.com" },
+        { outlet_id: OUTLET_ID_2, outlet_name: "Good Outlet", outlet_domain: "good.com" },
+        { outlet_id: OUTLET_ID_3, outlet_name: "Great Outlet", outlet_domain: "great.com" },
+      ],
+    });
+
+    // 1 blocked, 2 not
+    mockIsOutletBlocked.mockResolvedValueOnce({ blocked: true });
+    mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
+    mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
+
+    // INSERT skipped for blocked outlet
+    mockQuery.mockResolvedValueOnce({ rowCount: 1 });
+
+    // LLM scores the 2 non-blocked outlets
+    mockChatComplete.mockResolvedValueOnce({
+      content: "",
+      json: {
+        outlets: [
+          { outletId: OUTLET_ID_2, relevanceScore: 75, whyRelevant: "Good fit" },
+          { outletId: OUTLET_ID_3, relevanceScore: 15, whyRelevant: "Not great fit" },
+        ],
+      },
+      tokensInput: 100,
+      tokensOutput: 80,
+      model: "flash-lite",
+    });
+
+    // INSERT open for each scored outlet
+    mockQuery.mockResolvedValueOnce({ rowCount: 1 }); // outlet 2
+    mockQuery.mockResolvedValueOnce({ rowCount: 1 }); // outlet 3
+
+    const result = await reuseCycle(ctx);
+
+    expect(result).toBe(3); // 1 blocked + 2 scored = 3 total
+    expect(mockIsOutletBlocked).toHaveBeenCalledTimes(3);
+    expect(mockChatComplete).toHaveBeenCalledTimes(1);
+
+    // Verify LLM was only called with the 2 non-blocked outlets
+    const llmCall = mockChatComplete.mock.calls[0][0];
+    expect(llmCall.message).toContain("Good Outlet");
+    expect(llmCall.message).toContain("Great Outlet");
+    expect(llmCall.message).not.toContain("Blocked One");
+  });
+
+  it("inserts with default score 50 when LLM fails", async () => {
+    setupBrandMocks();
+
+    // Query for reusable outlets → 1 found, not blocked
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ outlet_id: OUTLET_ID_1, outlet_name: "Some Outlet", outlet_domain: "some.com" }],
+    });
+    mockIsOutletBlocked.mockResolvedValueOnce({ blocked: false });
+
+    // LLM fails all retries (4 attempts)
+    for (let i = 0; i < 4; i++) {
+      mockChatComplete.mockResolvedValueOnce({
+        content: "bad",
+        json: { invalid: true },
+        tokensInput: 50,
+        tokensOutput: 20,
+        model: "flash-lite",
+      });
+    }
+
+    // INSERT with default score
+    mockQuery.mockResolvedValueOnce({ rowCount: 1 });
+
+    const result = await reuseCycle(ctx);
+
+    expect(result).toBe(1);
+    // Verify default score 50 was used
+    const insertCall = mockQuery.mock.calls.find(
+      (call) => typeof call[0] === "string" && call[0].includes("INSERT INTO campaign_outlets") && call[0].includes("'open'")
+    );
+    expect(insertCall).toBeDefined();
+    expect(insertCall![1][8]).toBe(50); // relevance_score param
   });
 });

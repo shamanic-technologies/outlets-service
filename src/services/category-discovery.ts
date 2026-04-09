@@ -7,10 +7,13 @@ import { getFeatureInputs } from "./campaign";
 import {
   GENERATE_CATEGORIES_SYSTEM_PROMPT,
   GENERATE_OUTLETS_SYSTEM_PROMPT,
+  SCORE_OUTLETS_SYSTEM_PROMPT,
   buildCategoryGenerationMessage,
   buildOutletGenerationMessage,
+  buildReuseScoringMessage,
   type BrandPromptContext,
 } from "../prompts";
+import { isOutletBlocked } from "./journalists";
 import type { OrgContext } from "../middleware/org-context";
 
 const CATEGORY_BATCH_SIZE = 10;
@@ -47,6 +50,16 @@ const outletGenerationSchema = z.object({
       domain: z.string(),
       whyRelevant: z.string(),
       relevanceScore: z.number().int().min(1).max(100),
+    })
+  ),
+});
+
+const reuseScoringSchema = z.object({
+  outlets: z.array(
+    z.object({
+      outletId: z.string(),
+      relevanceScore: z.number().int().min(1).max(100),
+      whyRelevant: z.string(),
     })
   ),
 });
@@ -406,6 +419,183 @@ async function markCategoryStatus(categoryId: string, status: "exhausted" | "cap
     `UPDATE campaign_categories SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
     [status, categoryId]
   );
+}
+
+const REUSE_BATCH_SIZE = 10;
+
+/**
+ * Reuse cycle: recycle outlets already known for this brand but not yet in this campaign.
+ * 1. Fetch 10 reusable outlets
+ * 2. Check blocked via journalists-service (free call) → insert blocked as 'skipped'
+ * 3. Score non-blocked via LLM → insert all with 'open'
+ * Returns total inserted (blocked + scored). Returns 0 when no reusable outlets remain.
+ */
+export async function reuseCycle(ctx: OrgContext): Promise<number> {
+  // Find outlets associated with this brand in other campaigns, not yet in this campaign
+  const reusable = await pool.query(
+    `SELECT DISTINCT o.id AS outlet_id, o.outlet_name, o.outlet_domain
+     FROM campaign_outlets co
+     JOIN outlets o ON o.id = co.outlet_id
+     WHERE co.brand_ids && $1
+       AND co.outlet_id NOT IN (
+         SELECT outlet_id FROM campaign_outlets WHERE campaign_id = $2
+       )
+     LIMIT $3`,
+    [ctx.brandIds, ctx.campaignId, REUSE_BATCH_SIZE]
+  );
+
+  if (reusable.rows.length === 0) {
+    console.log(`[outlets-service] reuseCycle: no reusable outlets for campaign ${ctx.campaignId}`);
+    return 0;
+  }
+
+  const outlets = reusable.rows.map((r: { outlet_id: string; outlet_name: string; outlet_domain: string }) => ({
+    outletId: r.outlet_id,
+    outletName: r.outlet_name,
+    outletDomain: r.outlet_domain,
+  }));
+
+  console.log(`[outlets-service] reuseCycle: checking ${outlets.length} reusable outlets for campaign ${ctx.campaignId}`);
+
+  // Step 1: Check blocked status (free call — no LLM cost)
+  const blocked: typeof outlets = [];
+  const available: typeof outlets = [];
+
+  for (const o of outlets) {
+    const result = await isOutletBlocked(o.outletId, ctx);
+    if (result.blocked) {
+      blocked.push(o);
+    } else {
+      available.push(o);
+    }
+  }
+
+  let inserted = 0;
+
+  // Step 2: Insert blocked outlets as 'skipped' (no LLM needed)
+  for (const o of blocked) {
+    const result = await pool.query(
+      `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_ids, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, overall_relevance, run_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'skipped', $10, $11)
+       ON CONFLICT (campaign_id, outlet_id) DO NOTHING`,
+      [
+        ctx.campaignId,
+        o.outletId,
+        ctx.orgId,
+        ctx.brandIds,
+        ctx.featureSlug,
+        ctx.workflowSlug,
+        "Reused from previous campaign",
+        "Blocked — journalist contacted in cooldown period",
+        0,
+        "low",
+        ctx.runId,
+      ]
+    );
+    if (result.rowCount && result.rowCount > 0) inserted++;
+  }
+
+  if (blocked.length > 0) {
+    console.log(`[outlets-service] reuseCycle: ${blocked.length} outlets blocked, inserted as skipped`);
+  }
+
+  // Step 3: Score non-blocked outlets via LLM
+  if (available.length === 0) {
+    console.log(`[outlets-service] reuseCycle: all ${outlets.length} outlets blocked for campaign ${ctx.campaignId}`);
+    return inserted;
+  }
+
+  const { brandContext, featureInput } = await buildBrandContext(ctx);
+
+  let parsedScores: z.infer<typeof reuseScoringSchema>["outlets"] | null = null;
+
+  for (let retry = 0; retry <= MAX_LLM_RETRIES; retry++) {
+    const response = await chatComplete(
+      {
+        provider: "google",
+        model: "flash-lite",
+        message: buildReuseScoringMessage(brandContext, available, featureInput ?? undefined),
+        systemPrompt: SCORE_OUTLETS_SYSTEM_PROMPT,
+        responseFormat: "json",
+        temperature: 0.3,
+        maxTokens: 2000,
+      },
+      ctx
+    );
+
+    const parsed = reuseScoringSchema.safeParse(response.json);
+    if (parsed.success && parsed.data.outlets.length > 0) {
+      parsedScores = parsed.data.outlets;
+      break;
+    }
+
+    if (retry < MAX_LLM_RETRIES) {
+      console.warn(`[outlets-service] reuseCycle: LLM returned invalid format (attempt ${retry + 1}/${MAX_LLM_RETRIES + 1}), retrying in ${LLM_RETRY_DELAY_MS}ms:`, response.content);
+      await new Promise((r) => setTimeout(r, LLM_RETRY_DELAY_MS));
+    } else {
+      console.error(`[outlets-service] reuseCycle: LLM failed after ${MAX_LLM_RETRIES + 1} attempts`);
+    }
+  }
+
+  if (!parsedScores) {
+    // LLM failed — insert all with a neutral score so we don't re-process them
+    console.warn(`[outlets-service] reuseCycle: LLM scoring failed, inserting ${available.length} outlets with default score 50`);
+    for (const o of available) {
+      const result = await pool.query(
+        `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_ids, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, overall_relevance, run_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'open', $10, $11)
+         ON CONFLICT (campaign_id, outlet_id) DO NOTHING`,
+        [
+          ctx.campaignId,
+          o.outletId,
+          ctx.orgId,
+          ctx.brandIds,
+          ctx.featureSlug,
+          ctx.workflowSlug,
+          "Reused from previous campaign (scoring failed)",
+          "",
+          50,
+          "medium",
+          ctx.runId,
+        ]
+      );
+      if (result.rowCount && result.rowCount > 0) inserted++;
+    }
+    console.log(`[outlets-service] reuseCycle: inserted ${inserted} outlets (${blocked.length} blocked + ${available.length} default-scored) for campaign ${ctx.campaignId}`);
+    return inserted;
+  }
+
+  // Build a map of scores by outletId
+  const scoreMap = new Map(parsedScores.map((s) => [s.outletId, s]));
+
+  for (const o of available) {
+    const score = scoreMap.get(o.outletId);
+    const relevanceScore = score?.relevanceScore ?? 50;
+    const whyRelevant = score?.whyRelevant ?? "Reused from previous campaign";
+
+    const result = await pool.query(
+      `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_ids, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, overall_relevance, run_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'open', $10, $11)
+       ON CONFLICT (campaign_id, outlet_id) DO NOTHING`,
+      [
+        ctx.campaignId,
+        o.outletId,
+        ctx.orgId,
+        ctx.brandIds,
+        ctx.featureSlug,
+        ctx.workflowSlug,
+        whyRelevant,
+        "Reused from previous campaign",
+        relevanceScore,
+        relevanceScore >= 60 ? "high" : relevanceScore >= 30 ? "medium" : "low",
+        ctx.runId,
+      ]
+    );
+    if (result.rowCount && result.rowCount > 0) inserted++;
+  }
+
+  console.log(`[outlets-service] reuseCycle: inserted ${inserted} outlets (${blocked.length} blocked/skipped, ${available.length} scored) for campaign ${ctx.campaignId}`);
+  return inserted;
 }
 
 /**
