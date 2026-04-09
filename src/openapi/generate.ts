@@ -123,8 +123,8 @@ const spec = {
           { in: "query", name: "runId", schema: { type: "string" }, description: "Filter by run ID" },
           { in: "query", name: "featureSlugs", schema: { type: "string" }, description: "Filter by feature slugs (comma-separated)" },
           { in: "query", name: "featureDynastySlug", schema: { type: "string" }, description: "Filter by feature dynasty slug (resolved via features-service)" },
-          { in: "query", name: "limit", schema: { type: "integer", default: 100 }, description: "Max distinct outlets (default 100, max 1000)" },
-          { in: "query", name: "offset", schema: { type: "integer", default: 0 }, description: "Pagination offset" },
+          { in: "query", name: "limit", schema: { type: "integer" }, description: "Max distinct outlets per page. Omit to return all outlets." },
+          { in: "query", name: "offset", schema: { type: "integer", default: 0 }, description: "Pagination offset (only used when limit is provided)" },
         ],
         responses: {
           "200": {
@@ -173,9 +173,15 @@ const spec = {
                         required: ["id", "outletName", "outletUrl", "outletDomain", "createdAt", "relevanceScore", "outreachStatus", "replyClassification", "campaigns"],
                       },
                     },
-                    total: { type: "integer" },
+                    total: { type: "integer", description: "Total distinct outlets matching filters (not truncated by pagination)" },
+                    byOutreachStatus: {
+                      type: "object",
+                      additionalProperties: { type: "integer" },
+                      description: "Count of outlets per outreach status across ALL outlets matching filters (not truncated by pagination). Enriched from journalists-service.",
+                      example: { open: 50, served: 120, contacted: 30, delivered: 37, replied: 5 },
+                    },
                   },
-                  required: ["outlets", "total"],
+                  required: ["outlets", "total", "byOutreachStatus"],
                 },
                 example: {
                   outlets: [
@@ -207,6 +213,7 @@ const spec = {
                     },
                   ],
                   total: 1,
+                  byOutreachStatus: { delivered: 1 },
                 },
               },
             },
