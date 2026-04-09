@@ -98,6 +98,41 @@ export function buildCategoryGenerationMessage(
   return appendFeatureInput(msg, featureInput);
 }
 
+// --- Reuse scoring ---
+
+export const SCORE_OUTLETS_SYSTEM_PROMPT = `You are a PR research assistant. Given a brand context, campaign context, and a list of press outlets, score each outlet's relevance to this specific campaign.
+
+Rules:
+- Score each outlet with a "relevanceScore" (integer 1–100) based on: audience overlap with the campaign's target, editorial focus alignment, geographic match, and likelihood of covering this brand's campaign angle
+- Provide a brief "whyRelevant" for each outlet explaining the score
+- Use the full range — a niche blog with perfect campaign fit might score 85, a major outlet with tangential coverage might score 40, an irrelevant outlet might score 10
+- Be honest: if an outlet is not relevant to this specific campaign, give it a low score
+
+Respond with JSON matching this schema:
+{
+  "outlets": [
+    {
+      "outletId": "uuid-here",
+      "relevanceScore": 82,
+      "whyRelevant": "Strong audience overlap with campaign target"
+    }
+  ]
+}`;
+
+export function buildReuseScoringMessage(
+  brand: BrandPromptContext,
+  outlets: Array<{ outletId: string; outletName: string; outletDomain: string }>,
+  featureInput?: Record<string, unknown>
+): string {
+  const parts = buildBrandParts(brand);
+
+  let msg = `Score the following press outlets for relevance to this brand's campaign:\n\n${parts.join("\n")}`;
+
+  msg += `\n\n## Outlets to Score\n${outlets.map((o) => `- ${o.outletName} (${o.outletDomain}) [id: ${o.outletId}]`).join("\n")}`;
+
+  return appendFeatureInput(msg, featureInput);
+}
+
 export function buildOutletGenerationMessage(
   brand: BrandPromptContext,
   categoryName: string,

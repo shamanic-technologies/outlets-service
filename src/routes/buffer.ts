@@ -3,7 +3,7 @@ import { validateBody } from "../middleware/validate";
 import type { OrgContext } from "../middleware/org-context";
 import { pool } from "../db/pool";
 import { isOutletBlocked } from "../services/journalists";
-import { discoverCycle } from "../services/category-discovery";
+import { reuseCycle, discoverCycle } from "../services/category-discovery";
 import { bufferNextSchema } from "../schemas";
 
 const MIN_RELEVANCE_SCORE = 30;
@@ -146,8 +146,14 @@ router.post(
               [ctx.campaignId]
             );
             console.log(`[outlets-service] buffer/next: claimNext returned null for campaign ${ctx.campaignId}, open outlets in DB: ${openCount.rows[0].cnt}`);
-            const filled = await discoverCycle(ctx);
 
+            // Try reuse cycle first (recycle known outlets for this brand), then discover cycle
+            const reused = await reuseCycle(ctx);
+            if (reused > 0) {
+              continue; // retry claim from reused outlets
+            }
+
+            const filled = await discoverCycle(ctx);
             if (filled === 0) {
               console.log(`[outlets-service] buffer/next: discover cycle exhausted (category cap) for campaign ${ctx.campaignId}`);
               break;
