@@ -14,6 +14,7 @@ Rules:
 - Include a brief rationale for each
 - Mix broad and niche categories
 - Mix geographies relevant to the brand's target markets
+- Categories should be as mutually exclusive as possible — minimize overlap so each category discovers a distinct set of outlets. Avoid categories that would return the same publications (e.g. "Tech News / US" and "Startup Media / US" overlap heavily).
 - Do NOT repeat categories that were already generated (see "already used" list)
 
 Respond with JSON matching this schema:
