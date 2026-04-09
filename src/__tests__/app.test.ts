@@ -163,16 +163,12 @@ describe("GET /orgs/outlets", () => {
   });
 
   it("returns deduplicated outlets with outreachStatus (campaign-scoped)", async () => {
-    // Step 1: paginated distinct outlet IDs
+    // Step 1: ALL distinct outlet IDs
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: "11111111-1111-1111-1111-111111111111" }],
       rowCount: 1,
     });
-    // Step 2: count total
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ total: 1 }],
-    });
-    // Step 3: all campaign_outlet rows for those outlet IDs
+    // Step 2: all campaign_outlet rows for page outlet IDs
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
@@ -200,6 +196,10 @@ describe("GET /orgs/outlets", () => {
     mockFetchOutletStatuses.mockResolvedValueOnce(
       new Map([["11111111-1111-1111-1111-111111111111", { outreachStatus: "contacted", replyClassification: null }]])
     );
+    // Step 3: DB status query for byOutreachStatus computation
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ outlet_id: "11111111-1111-1111-1111-111111111111", status: "served" }],
+    });
 
     const res = await withIdentity(request(app).get("/orgs/outlets")).query({
       campaignId: CAMPAIGN_ID,
@@ -207,6 +207,7 @@ describe("GET /orgs/outlets", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(1);
+    expect(res.body.byOutreachStatus).toEqual({ contacted: 1 });
     const outlet = res.body.outlets[0];
     expect(outlet.outletName).toBe("TechCrunch");
     expect(outlet.relevanceScore).toBe(85);
@@ -226,11 +227,12 @@ describe("GET /orgs/outlets", () => {
   });
 
   it("enriches ALL outlets (not just served) with base identity only", async () => {
+    // Step 1: ALL distinct outlet IDs
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: "11111111-1111-1111-1111-111111111111" }],
       rowCount: 1,
     });
-    mockQuery.mockResolvedValueOnce({ rows: [{ total: 1 }] });
+    // Step 2: data query
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
@@ -257,6 +259,10 @@ describe("GET /orgs/outlets", () => {
     mockFetchOutletStatuses.mockResolvedValueOnce(
       new Map([["11111111-1111-1111-1111-111111111111", { outreachStatus: "delivered", replyClassification: null }]])
     );
+    // Step 3: DB status query for byOutreachStatus
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ outlet_id: "11111111-1111-1111-1111-111111111111", status: "open" }],
+    });
 
     const res = await withBaseIdentity(request(app).get("/orgs/outlets")).query({
       campaignId: CAMPAIGN_ID,
@@ -266,6 +272,7 @@ describe("GET /orgs/outlets", () => {
     const outlet = res.body.outlets[0];
     expect(outlet.outreachStatus).toBe("delivered");
     expect(outlet.campaigns[0].outreachStatus).toBe("delivered");
+    expect(res.body.byOutreachStatus).toEqual({ delivered: 1 });
     expect(mockFetchOutletStatuses).toHaveBeenCalledOnce();
   });
 
@@ -273,11 +280,12 @@ describe("GET /orgs/outlets", () => {
     const OUTLET_ID = "11111111-1111-1111-1111-111111111111";
     const CAMPAIGN_ID_2 = "33333333-3333-3333-3333-333333333333";
 
+    // Step 1: ALL distinct outlet IDs
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: OUTLET_ID }],
       rowCount: 1,
     });
-    mockQuery.mockResolvedValueOnce({ rows: [{ total: 1 }] });
+    // Step 2: data query
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
@@ -330,6 +338,13 @@ describe("GET /orgs/outlets", () => {
         },
       }]])
     );
+    // Step 3: DB status query for byOutreachStatus
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { outlet_id: OUTLET_ID, status: "open" },
+        { outlet_id: OUTLET_ID, status: "served" },
+      ],
+    });
 
     const res = await withIdentity(request(app).get("/orgs/outlets")).query({
       brandId: BRAND_ID,
@@ -344,17 +359,19 @@ describe("GET /orgs/outlets", () => {
     // Per-campaign = from byCampaign breakdown
     expect(outlet.campaigns[0].outreachStatus).toBe("contacted");
     expect(outlet.campaigns[1].outreachStatus).toBe("delivered");
+    expect(res.body.byOutreachStatus).toEqual({ delivered: 1 });
   });
 
   it("falls back to DB status when no journalist data exists", async () => {
     const OUTLET_ID = "11111111-1111-1111-1111-111111111111";
     const CAMPAIGN_ID_2 = "33333333-3333-3333-3333-333333333333";
 
+    // Step 1: ALL distinct outlet IDs
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: OUTLET_ID }],
       rowCount: 1,
     });
-    mockQuery.mockResolvedValueOnce({ rows: [{ total: 1 }] });
+    // Step 2: data query
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
@@ -398,6 +415,13 @@ describe("GET /orgs/outlets", () => {
 
     // No journalist data for this outlet
     mockFetchOutletStatuses.mockResolvedValueOnce(new Map());
+    // Step 3: DB status query for byOutreachStatus
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { outlet_id: OUTLET_ID, status: "served" },
+        { outlet_id: OUTLET_ID, status: "open" },
+      ],
+    });
 
     const res = await withIdentity(request(app).get("/orgs/outlets")).query({
       brandId: BRAND_ID,
@@ -417,6 +441,8 @@ describe("GET /orgs/outlets", () => {
     // Per-campaign fallback to DB status
     expect(outlet.campaigns[0].outreachStatus).toBe("served");
     expect(outlet.campaigns[1].outreachStatus).toBe("open");
+    // byOutreachStatus: fallback to DB = served (most advanced)
+    expect(res.body.byOutreachStatus).toEqual({ served: 1 });
   });
 
   it("filters by featureSlugs (comma-separated)", async () => {
@@ -447,11 +473,12 @@ describe("GET /orgs/outlets", () => {
   });
 
   it("crashes with 500 when status enrichment fails", async () => {
+    // Step 1: ALL distinct outlet IDs
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: "11111111-1111-1111-1111-111111111111" }],
       rowCount: 1,
     });
-    mockQuery.mockResolvedValueOnce({ rows: [{ total: 1 }] });
+    // Step 2: data query
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
@@ -495,6 +522,7 @@ describe("GET /orgs/outlets", () => {
     expect(res.status).toBe(200);
     expect(res.body.outlets).toEqual([]);
     expect(res.body.total).toBe(0);
+    expect(res.body.byOutreachStatus).toEqual({});
   });
 });
 

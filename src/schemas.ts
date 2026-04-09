@@ -48,7 +48,7 @@ export const listOutletsQuerySchema = z.object({
   runId: z.string().optional(),
   featureSlugs: z.string().optional(),
   featureDynastySlug: z.string().optional(),
-  limit: z.coerce.number().int().positive().max(1000).optional().default(100),
+  limit: z.coerce.number().int().positive().optional(),
   offset: z.coerce.number().int().min(0).optional().default(0),
 });
 
@@ -59,7 +59,7 @@ export const bulkCreateOutletsSchema = z.object({
 export const searchOutletsSchema = z.object({
   query: z.string().min(1),
   campaignId: z.string().uuid().optional(),
-  limit: z.coerce.number().int().positive().max(100).optional().default(20),
+  limit: z.coerce.number().int().positive().optional(),
 });
 
 // --- Response schemas ---
