@@ -218,11 +218,11 @@ export async function discoverOutletsInCategory(
 ): Promise<number> {
   const { brandContext, featureInput } = await buildBrandContext(ctx);
 
-  // Get already-known domains for this category
+  // Get already-known domains for this category (from the per-category tracking table)
   const knownResult = await pool.query(
-    `SELECT o.outlet_domain FROM campaign_outlets co
-     JOIN outlets o ON o.id = co.outlet_id
-     WHERE co.category_id = $1`,
+    `SELECT o.outlet_domain FROM campaign_category_outlets cco
+     JOIN outlets o ON o.id = cco.outlet_id
+     WHERE cco.category_id = $1`,
     [category.id]
   );
   const knownDomains: string[] = knownResult.rows.map((r: { outlet_domain: string }) => r.outlet_domain);
@@ -287,10 +287,28 @@ export async function discoverOutletsInCategory(
     return 0;
   }
 
-  // Validate via Google
-  console.log(`[outlets-service] Validating ${candidates.length} outlet candidates via Google for category "${category.categoryName} / ${category.categoryGeo}"`);
-  const validated = await validateOutletBatch(candidates, ctx);
-  const validOutlets = validated.filter((o) => o.valid);
+  // Split candidates: already in outlets table (previously validated) vs truly new
+  const existingResult = await pool.query(
+    `SELECT outlet_domain FROM outlets WHERE outlet_domain = ANY($1)`,
+    [candidates.map((c) => c.domain)]
+  );
+  const existingDomains = new Set(
+    existingResult.rows.map((r: { outlet_domain: string }) => r.outlet_domain)
+  );
+  const alreadyValidated = candidates.filter((c) => existingDomains.has(c.domain));
+  const needsValidation = candidates.filter((c) => !existingDomains.has(c.domain));
+
+  // Only validate truly new domains via Google
+  let validOutlets: typeof candidates;
+  if (needsValidation.length > 0) {
+    console.log(`[outlets-service] Validating ${needsValidation.length} new outlet candidates via Google for category "${category.categoryName} / ${category.categoryGeo}" (${alreadyValidated.length} already known)`);
+    const validated = await validateOutletBatch(needsValidation, ctx);
+    const googleValid = validated.filter((o) => o.valid);
+    validOutlets = [...alreadyValidated, ...googleValid];
+  } else {
+    console.log(`[outlets-service] All ${alreadyValidated.length} outlet candidates already known for category "${category.categoryName} / ${category.categoryGeo}", skipping Google validation`);
+    validOutlets = alreadyValidated;
+  }
 
   if (validOutlets.length === 0) {
     // No valid outlets — mark exhausted
@@ -319,9 +337,19 @@ export async function discoverOutletsInCategory(
       );
       const outletId = outletResult.rows[0].id;
 
+      // Track in per-category table (always succeeds for new category+outlet pair)
+      const ccoResult = await client.query(
+        `INSERT INTO campaign_category_outlets (campaign_id, category_id, outlet_id)
+         VALUES ($1, $2, $3)
+         ON CONFLICT DO NOTHING`,
+        [ctx.campaignId, category.id, outletId]
+      );
+      if (ccoResult.rowCount && ccoResult.rowCount > 0) inserted++;
+
       const relevanceScore = o.relevanceScore;
 
-      const insertResult = await client.query(
+      // Insert into campaign buffer (may conflict if outlet already in campaign from another category)
+      await client.query(
         `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_ids, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, overall_relevance, run_id, category_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'open', $10, $11, $12)
          ON CONFLICT (campaign_id, outlet_id) DO NOTHING`,
@@ -340,7 +368,6 @@ export async function discoverOutletsInCategory(
           category.id,
         ]
       );
-      if (insertResult.rowCount && insertResult.rowCount > 0) inserted++;
     }
 
     await client.query("COMMIT");

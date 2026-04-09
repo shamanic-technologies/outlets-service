@@ -219,6 +219,30 @@ export async function runMigration(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_campaign_outlets_category ON campaign_outlets(category_id);
   `);
 
+  // Step 13: Create campaign_category_outlets table for per-category outlet tracking
+  // This table tracks which outlets each category discovered, independently of campaign_outlets.
+  // PK is (campaign_id, category_id, outlet_id) — same outlet can appear in multiple categories.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS campaign_category_outlets (
+      campaign_id UUID NOT NULL,
+      category_id UUID NOT NULL REFERENCES campaign_categories(id) ON DELETE CASCADE,
+      outlet_id UUID NOT NULL REFERENCES outlets(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (campaign_id, category_id, outlet_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_cco_category ON campaign_category_outlets(category_id);
+    CREATE INDEX IF NOT EXISTS idx_cco_campaign ON campaign_category_outlets(campaign_id);
+  `);
+
+  // Step 14: Backfill campaign_category_outlets from existing campaign_outlets
+  await pool.query(`
+    INSERT INTO campaign_category_outlets (campaign_id, category_id, outlet_id)
+    SELECT campaign_id, category_id, outlet_id
+    FROM campaign_outlets
+    WHERE category_id IS NOT NULL
+    ON CONFLICT DO NOTHING;
+  `);
+
   console.log("[outlets-service] Migration complete.");
 }
 

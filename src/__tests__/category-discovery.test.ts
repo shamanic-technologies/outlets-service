@@ -272,7 +272,7 @@ describe("discoverOutletsInCategory", () => {
     batchNumber: 1,
   };
 
-  it("generates outlets, validates them, and inserts valid ones", async () => {
+  it("generates outlets, validates new ones via Google, and inserts valid ones", async () => {
     setupBrandMocks();
 
     // Get known domains for category → none
@@ -293,7 +293,10 @@ describe("discoverOutletsInCategory", () => {
       model: "flash-lite",
     });
 
-    // Google validation: 2 valid, 1 invalid
+    // Check which domains already exist in outlets table → none
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    // Google validation: 2 valid, 1 invalid (all 3 need validation since none are known)
     mockValidateOutletBatch.mockResolvedValueOnce([
       { name: "TechCrunch", domain: "techcrunch.com", valid: true },
       { name: "The Verge", domain: "theverge.com", valid: true },
@@ -304,8 +307,10 @@ describe("discoverOutletsInCategory", () => {
     mockClientQuery
       .mockResolvedValueOnce({}) // BEGIN
       .mockResolvedValueOnce({ rows: [{ id: "outlet-1" }] }) // INSERT outlets (TechCrunch)
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_category_outlets
       .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_outlets
       .mockResolvedValueOnce({ rows: [{ id: "outlet-2" }] }) // INSERT outlets (The Verge)
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_category_outlets
       .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_outlets
       .mockResolvedValueOnce({}); // COMMIT
 
@@ -318,8 +323,125 @@ describe("discoverOutletsInCategory", () => {
 
     expect(result).toBe(2);
     expect(mockValidateOutletBatch).toHaveBeenCalledTimes(1);
-    // Verify validation was called with 3 candidates
+    // Verify validation was called with all 3 candidates (none were pre-known)
     expect(mockValidateOutletBatch.mock.calls[0][0]).toHaveLength(3);
+  });
+
+  it("skips Google validation for outlets already in outlets table", async () => {
+    setupBrandMocks();
+
+    // Get known domains for category → none
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    // LLM returns 3 outlets
+    mockChatComplete.mockResolvedValueOnce({
+      content: "",
+      json: {
+        outlets: [
+          { name: "TechCrunch", domain: "techcrunch.com", whyRelevant: "Major tech pub", relevanceScore: 85 },
+          { name: "The Verge", domain: "theverge.com", whyRelevant: "Tech culture", relevanceScore: 62 },
+          { name: "New Outlet", domain: "newoutlet.com", whyRelevant: "Fresh", relevanceScore: 50 },
+        ],
+      },
+      tokensInput: 200,
+      tokensOutput: 150,
+      model: "flash-lite",
+    });
+
+    // Check existing outlets → TechCrunch and The Verge already exist
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { outlet_domain: "techcrunch.com" },
+        { outlet_domain: "theverge.com" },
+      ],
+    });
+
+    // Google validation: only called for newoutlet.com (the truly new one)
+    mockValidateOutletBatch.mockResolvedValueOnce([
+      { name: "New Outlet", domain: "newoutlet.com", valid: true },
+    ]);
+
+    // DB inserts: 3 outlets (2 already validated + 1 Google-validated)
+    mockClientQuery
+      .mockResolvedValueOnce({}) // BEGIN
+      // TechCrunch (already validated)
+      .mockResolvedValueOnce({ rows: [{ id: "outlet-1" }] }) // INSERT outlets
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_category_outlets
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_outlets
+      // The Verge (already validated)
+      .mockResolvedValueOnce({ rows: [{ id: "outlet-2" }] }) // INSERT outlets
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_category_outlets
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_outlets
+      // New Outlet (Google-validated)
+      .mockResolvedValueOnce({ rows: [{ id: "outlet-3" }] }) // INSERT outlets
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_category_outlets
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_outlets
+      .mockResolvedValueOnce({}); // COMMIT
+
+    // Update outlets_found counter
+    mockQuery.mockResolvedValueOnce({});
+    // Check cap
+    mockQuery.mockResolvedValueOnce({ rows: [{ outlets_found: 3 }] });
+
+    const result = await discoverOutletsInCategory(category, ctx);
+
+    expect(result).toBe(3);
+    // Google validation should only be called with 1 candidate (newoutlet.com)
+    expect(mockValidateOutletBatch).toHaveBeenCalledTimes(1);
+    expect(mockValidateOutletBatch.mock.calls[0][0]).toHaveLength(1);
+    expect(mockValidateOutletBatch.mock.calls[0][0][0].domain).toBe("newoutlet.com");
+  });
+
+  it("counts via campaign_category_outlets even when campaign_outlets conflicts", async () => {
+    setupBrandMocks();
+
+    // Get known domains for category → none
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    // LLM returns 2 outlets
+    mockChatComplete.mockResolvedValueOnce({
+      content: "",
+      json: {
+        outlets: [
+          { name: "TechCrunch", domain: "techcrunch.com", whyRelevant: "Tech pub", relevanceScore: 85 },
+          { name: "The Verge", domain: "theverge.com", whyRelevant: "Tech culture", relevanceScore: 62 },
+        ],
+      },
+      tokensInput: 200,
+      tokensOutput: 150,
+      model: "flash-lite",
+    });
+
+    // Both already exist in outlets table (skip Google)
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { outlet_domain: "techcrunch.com" },
+        { outlet_domain: "theverge.com" },
+      ],
+    });
+
+    // DB inserts: campaign_category_outlets succeeds, campaign_outlets conflicts (already in campaign)
+    mockClientQuery
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({ rows: [{ id: "outlet-1" }] }) // INSERT outlets (upsert)
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_category_outlets → SUCCESS
+      .mockResolvedValueOnce({ rowCount: 0 }) // INSERT campaign_outlets → CONFLICT (already in campaign)
+      .mockResolvedValueOnce({ rows: [{ id: "outlet-2" }] }) // INSERT outlets (upsert)
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_category_outlets → SUCCESS
+      .mockResolvedValueOnce({ rowCount: 0 }) // INSERT campaign_outlets → CONFLICT (already in campaign)
+      .mockResolvedValueOnce({}); // COMMIT
+
+    // Update outlets_found counter
+    mockQuery.mockResolvedValueOnce({});
+    // Check cap
+    mockQuery.mockResolvedValueOnce({ rows: [{ outlets_found: 2 }] });
+
+    const result = await discoverOutletsInCategory(category, ctx);
+
+    // KEY ASSERTION: returns 2, not 0 — the infinite loop bug is fixed
+    expect(result).toBe(2);
+    // No Google validation needed
+    expect(mockValidateOutletBatch).not.toHaveBeenCalled();
   });
 
   it("stores per-outlet relevanceScore from LLM instead of flat category-rank score", async () => {
@@ -342,6 +464,9 @@ describe("discoverOutletsInCategory", () => {
       model: "flash-lite",
     });
 
+    // Neither exists in outlets table
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
     // Both pass validation
     mockValidateOutletBatch.mockResolvedValueOnce([
       { name: "TechCrunch", domain: "techcrunch.com", relevanceScore: 92, valid: true },
@@ -352,8 +477,10 @@ describe("discoverOutletsInCategory", () => {
     mockClientQuery
       .mockResolvedValueOnce({}) // BEGIN
       .mockResolvedValueOnce({ rows: [{ id: "outlet-1" }] }) // INSERT outlets (TechCrunch)
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_category_outlets
       .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_outlets
       .mockResolvedValueOnce({ rows: [{ id: "outlet-2" }] }) // INSERT outlets (Niche Blog)
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_category_outlets
       .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_outlets
       .mockResolvedValueOnce({}); // COMMIT
 
@@ -366,7 +493,7 @@ describe("discoverOutletsInCategory", () => {
 
     expect(result).toBe(2);
 
-    // Extract the campaign_outlets INSERT calls — they are the 3rd and 5th mockClientQuery calls (indices 2 and 4)
+    // Extract the campaign_outlets INSERT calls
     const campaignOutletInserts = mockClientQuery.mock.calls.filter(
       (call) => typeof call[0] === "string" && call[0].includes("INTO campaign_outlets")
     );
@@ -398,6 +525,9 @@ describe("discoverOutletsInCategory", () => {
       model: "flash-lite",
     });
 
+    // Neither exists in outlets table
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
     // All fail validation
     mockValidateOutletBatch.mockResolvedValueOnce([
       { name: "Fake 1", domain: "fake1.xyz", valid: false },
@@ -421,7 +551,7 @@ describe("discoverOutletsInCategory", () => {
   it("marks category exhausted when all outlets are duplicates", async () => {
     setupBrandMocks();
 
-    // Get known domains → all already known
+    // Get known domains → all already known in this category
     mockQuery.mockResolvedValueOnce({
       rows: [
         { outlet_domain: "techcrunch.com" },
@@ -429,7 +559,7 @@ describe("discoverOutletsInCategory", () => {
       ],
     });
 
-    // LLM returns only domains that are already known
+    // LLM returns only domains that are already known in this category
     mockChatComplete.mockResolvedValueOnce({
       content: "",
       json: {
@@ -476,6 +606,9 @@ describe("discoverOutletsInCategory", () => {
       model: "flash-lite",
     });
 
+    // None exist in outlets table
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
     // All valid
     mockValidateOutletBatch.mockResolvedValueOnce([
       { name: "Outlet A", domain: "outleta.com", valid: true },
@@ -487,11 +620,14 @@ describe("discoverOutletsInCategory", () => {
     mockClientQuery
       .mockResolvedValueOnce({}) // BEGIN
       .mockResolvedValueOnce({ rows: [{ id: "o1" }] })
-      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rowCount: 1 }) // campaign_category_outlets
+      .mockResolvedValueOnce({ rowCount: 1 }) // campaign_outlets
       .mockResolvedValueOnce({ rows: [{ id: "o2" }] })
-      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rowCount: 1 }) // campaign_category_outlets
+      .mockResolvedValueOnce({ rowCount: 1 }) // campaign_outlets
       .mockResolvedValueOnce({ rows: [{ id: "o3" }] })
-      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rowCount: 1 }) // campaign_category_outlets
+      .mockResolvedValueOnce({ rowCount: 1 }) // campaign_outlets
       .mockResolvedValueOnce({}); // COMMIT
 
     // Update outlets_found
@@ -572,6 +708,8 @@ describe("discoverCycle", () => {
       tokensOutput: 80,
       model: "flash-lite",
     });
+    // Check existing outlets → none
+    mockQuery.mockResolvedValueOnce({ rows: [] });
     // Validation → valid
     mockValidateOutletBatch.mockResolvedValueOnce([
       { name: "TechCrunch", domain: "techcrunch.com", valid: true },
@@ -579,8 +717,9 @@ describe("discoverCycle", () => {
     // DB insert
     mockClientQuery
       .mockResolvedValueOnce({}) // BEGIN
-      .mockResolvedValueOnce({ rows: [{ id: "outlet-1" }] })
-      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ id: "outlet-1" }] }) // INSERT outlets
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_category_outlets
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_outlets
       .mockResolvedValueOnce({}); // COMMIT
     // Update counter
     mockQuery.mockResolvedValueOnce({});
@@ -655,14 +794,17 @@ describe("discoverCycle", () => {
       tokensOutput: 80,
       model: "flash-lite",
     });
+    // Check existing outlets → none
+    mockQuery.mockResolvedValueOnce({ rows: [] });
     mockValidateOutletBatch.mockResolvedValueOnce([
       { name: "SHRM", domain: "shrm.org", valid: true },
     ]);
     mockClientQuery
-      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({}) // BEGIN
       .mockResolvedValueOnce({ rows: [{ id: "outlet-1" }] })
-      .mockResolvedValueOnce({ rowCount: 1 })
-      .mockResolvedValueOnce({});
+      .mockResolvedValueOnce({ rowCount: 1 }) // campaign_category_outlets
+      .mockResolvedValueOnce({ rowCount: 1 }) // campaign_outlets
+      .mockResolvedValueOnce({}); // COMMIT
     mockQuery.mockResolvedValueOnce({}); // counter
     mockQuery.mockResolvedValueOnce({ rows: [{ outlets_found: 1 }] }); // cap check
 
@@ -743,13 +885,16 @@ describe("discoverCycle", () => {
       tokensOutput: 80,
       model: "flash-lite",
     });
+    // Check existing outlets → none
+    mockQuery.mockResolvedValueOnce({ rows: [] });
     mockValidateOutletBatch.mockResolvedValueOnce([
       { name: "SaaStr", domain: "saastr.com", valid: true },
     ]);
     mockClientQuery
       .mockResolvedValueOnce({}) // BEGIN
       .mockResolvedValueOnce({ rows: [{ id: "outlet-1" }] })
-      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rowCount: 1 }) // campaign_category_outlets
+      .mockResolvedValueOnce({ rowCount: 1 }) // campaign_outlets
       .mockResolvedValueOnce({}); // COMMIT
     mockQuery.mockResolvedValueOnce({}); // counter
     mockQuery.mockResolvedValueOnce({ rows: [{ outlets_found: 1 }] }); // cap check
@@ -856,13 +1001,16 @@ describe("discoverCycle", () => {
       tokensOutput: 80,
       model: "flash-lite",
     });
+    // Check existing outlets → none
+    mockQuery.mockResolvedValueOnce({ rows: [] });
     mockValidateOutletBatch.mockResolvedValueOnce([
       { name: "Niche Pub", domain: "nichepub.com", valid: true },
     ]);
     mockClientQuery
       .mockResolvedValueOnce({}) // BEGIN
       .mockResolvedValueOnce({ rows: [{ id: "outlet-new" }] })
-      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rowCount: 1 }) // campaign_category_outlets
+      .mockResolvedValueOnce({ rowCount: 1 }) // campaign_outlets
       .mockResolvedValueOnce({}); // COMMIT
     mockQuery.mockResolvedValueOnce({}); // counter
     mockQuery.mockResolvedValueOnce({ rows: [{ outlets_found: 1 }] }); // cap check
