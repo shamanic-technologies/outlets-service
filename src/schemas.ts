@@ -4,9 +4,24 @@ import { z } from "zod";
 /** DB-level statuses (what gets written to campaign_outlets). */
 export const outletStatusEnum = z.enum(["open", "ended", "denied", "served", "skipped"]);
 
-/** Outreach statuses returned in responses — includes downstream delivery states from journalists-service. */
+/**
+ * Outreach statuses returned in responses — includes downstream delivery states from journalists-service.
+ * Ordered by pipeline progression (most advanced first):
+ *   replied > delivered > contacted > served > claimed > buffered > open > skipped > denied > ended
+ *
+ * - replied:    At least one journalist replied (see replyClassification for positive/negative/neutral)
+ * - delivered:  At least one email delivered to journalist inbox
+ * - contacted:  At least one email sent to a journalist
+ * - served:     Journalists served to the email-sending pipeline
+ * - claimed:    Journalists claimed by the sending workflow, not yet served
+ * - buffered:   Journalists created but not yet processed
+ * - open:       Outlet in buffer, not yet claimed by any workflow
+ * - skipped:    Outlet skipped (cross-campaign duplicate, blocked, or low-relevance)
+ * - denied:     Outlet denied
+ * - ended:      Outlet ended manually
+ */
 export const outreachStatusEnum = z.enum([
-  "open", "ended", "denied", "served", "contacted", "delivered", "replied", "skipped",
+  "replied", "delivered", "contacted", "served", "claimed", "buffered", "open", "skipped", "denied", "ended",
 ]);
 
 export const replyClassificationEnum = z.enum(["positive", "negative", "neutral"]);
