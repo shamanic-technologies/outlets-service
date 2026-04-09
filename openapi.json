@@ -371,14 +371,16 @@
           "outreachStatus": {
             "type": "string",
             "enum": [
-              "open",
-              "ended",
-              "denied",
-              "served",
-              "contacted",
-              "delivered",
               "replied",
-              "skipped"
+              "delivered",
+              "contacted",
+              "served",
+              "claimed",
+              "buffered",
+              "open",
+              "skipped",
+              "denied",
+              "ended"
             ]
           },
           "replyClassification": {
@@ -896,16 +898,18 @@
                           "outreachStatus": {
                             "type": "string",
                             "enum": [
-                              "open",
-                              "ended",
-                              "denied",
-                              "served",
-                              "contacted",
-                              "delivered",
                               "replied",
-                              "skipped"
+                              "delivered",
+                              "contacted",
+                              "served",
+                              "claimed",
+                              "buffered",
+                              "open",
+                              "skipped",
+                              "denied",
+                              "ended"
                             ],
-                            "description": "High watermark outreach status from journalists-service at the query's scope (campaign or brand). Falls back to most advanced DB status when no journalist data exists."
+                            "description": "High watermark outreach status from journalists-service at the query's scope (campaign or brand). Falls back to most advanced DB status when no journalist data exists. Ordered by pipeline progression (most advanced first): replied > delivered > contacted > served > claimed > buffered > open > skipped > denied > ended."
                           },
                           "replyClassification": {
                             "type": "string",
@@ -949,16 +953,18 @@
                                 "outreachStatus": {
                                   "type": "string",
                                   "enum": [
-                                    "open",
-                                    "ended",
-                                    "denied",
-                                    "served",
-                                    "contacted",
-                                    "delivered",
                                     "replied",
-                                    "skipped"
+                                    "delivered",
+                                    "contacted",
+                                    "served",
+                                    "claimed",
+                                    "buffered",
+                                    "open",
+                                    "skipped",
+                                    "denied",
+                                    "ended"
                                   ],
-                                  "description": "Outreach status scoped to this specific campaign."
+                                  "description": "Outreach status scoped to this specific campaign. Ordered by pipeline progression (most advanced first): replied > delivered > contacted > served > claimed > buffered > open > skipped > denied > ended."
                                 },
                                 "overallRelevance": {
                                   "type": "string",

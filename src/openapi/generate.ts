@@ -145,7 +145,7 @@ const spec = {
                           outletDomain: { type: "string" },
                           createdAt: { type: "string", format: "date-time" },
                           relevanceScore: { type: "number", description: "High watermark relevance score across all campaigns for this outlet (max of per-campaign scores)." },
-                          outreachStatus: { type: "string", enum: ["open", "ended", "denied", "served", "contacted", "delivered", "replied", "skipped"], description: "High watermark outreach status from journalists-service at the query's scope (campaign or brand). Falls back to most advanced DB status when no journalist data exists." },
+                          outreachStatus: { type: "string", enum: ["replied", "delivered", "contacted", "served", "claimed", "buffered", "open", "skipped", "denied", "ended"], description: "High watermark outreach status from journalists-service at the query's scope (campaign or brand). Falls back to most advanced DB status when no journalist data exists. Ordered by pipeline progression (most advanced first): replied > delivered > contacted > served > claimed > buffered > open > skipped > denied > ended." },
                           replyClassification: { type: "string", nullable: true, enum: ["positive", "negative", "neutral"], description: "Best reply classification when outreachStatus is 'replied'. Null otherwise." },
                           campaigns: {
                             type: "array",
@@ -159,7 +159,7 @@ const spec = {
                                 whyRelevant: { type: "string" },
                                 whyNotRelevant: { type: "string" },
                                 relevanceScore: { type: "number" },
-                                outreachStatus: { type: "string", enum: ["open", "ended", "denied", "served", "contacted", "delivered", "replied", "skipped"], description: "Outreach status scoped to this specific campaign." },
+                                outreachStatus: { type: "string", enum: ["replied", "delivered", "contacted", "served", "claimed", "buffered", "open", "skipped", "denied", "ended"], description: "Outreach status scoped to this specific campaign. Ordered by pipeline progression (most advanced first): replied > delivered > contacted > served > claimed > buffered > open > skipped > denied > ended." },
                                 overallRelevance: { type: "string", nullable: true },
                                 relevanceRationale: { type: "string", nullable: true },
                                 replyClassification: { type: "string", nullable: true, enum: ["positive", "negative", "neutral"] },
