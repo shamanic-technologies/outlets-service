@@ -265,24 +265,17 @@ router.get(
           }
         }
 
-        // Enrich outlets via journalists-service (requires brandId or campaignId scope)
+        // Enrich ALL outlets via journalists-service
         const scopeFilters: ScopeFilters = {};
         if (q.campaignId) scopeFilters.campaignId = q.campaignId;
         if (q.brandId) scopeFilters.brandId = q.brandId;
-        const hasScopeFilters = scopeFilters.brandId || scopeFilters.campaignId;
 
-        if (allOutletIds.length > 0 && hasScopeFilters) {
+        if (allOutletIds.length > 0) {
           const enriched = await fetchOutletStatuses(allOutletIds, ctx, scopeFilters);
           for (const outletId of allOutletIds) {
             const e = enriched.get(outletId);
             const outreachStatus = e?.outreachStatus ?? dbStatusMap.get(outletId) ?? "open";
             byOutreachStatus[outreachStatus] = (byOutreachStatus[outreachStatus] ?? 0) + 1;
-          }
-        } else {
-          // No scope filters — use DB statuses only (journalists-service requires brandId or campaignId)
-          for (const outletId of allOutletIds) {
-            const status = dbStatusMap.get(outletId) ?? "open";
-            byOutreachStatus[status] = (byOutreachStatus[status] ?? 0) + 1;
           }
         }
 
