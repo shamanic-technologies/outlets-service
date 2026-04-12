@@ -92,6 +92,7 @@ describe("GET /orgs/outlets/stats?featureSlug=...", () => {
     mockEmptyOutreachStatusBreakdown();
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
+      campaignId: CAMPAIGN_ID,
       featureSlug: "cold-email-sophia",
     });
 
@@ -99,7 +100,7 @@ describe("GET /orgs/outlets/stats?featureSlug=...", () => {
     expect(res.body.outletsDiscovered).toBe(5);
     // Verify the SQL contains feature_slug filter
     const sql = mockQuery.mock.calls[0][0] as string;
-    expect(sql).toContain("co.feature_slug = $2");
+    expect(sql).toContain("co.feature_slug = $3");
     expect(mockQuery.mock.calls[0][1]).toContain("cold-email-sophia");
   });
 });
@@ -115,13 +116,14 @@ describe("GET /orgs/outlets/stats?workflowSlug=...", () => {
     mockEmptyOutreachStatusBreakdown();
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
+      campaignId: CAMPAIGN_ID,
       workflowSlug: "cold-email-v2",
     });
 
     expect(res.status).toBe(200);
     expect(res.body.outletsDiscovered).toBe(3);
     const sql = mockQuery.mock.calls[0][0] as string;
-    expect(sql).toContain("co.workflow_slug = $2");
+    expect(sql).toContain("co.workflow_slug = $3");
   });
 });
 
@@ -136,14 +138,15 @@ describe("GET /orgs/outlets/stats?workflowSlugs=...", () => {
     mockEmptyOutreachStatusBreakdown();
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
+      campaignId: CAMPAIGN_ID,
       workflowSlugs: "cold-email-v2,warm-intro-v1",
     });
 
     expect(res.status).toBe(200);
     expect(res.body.outletsDiscovered).toBe(10);
     const sql = mockQuery.mock.calls[0][0] as string;
-    expect(sql).toContain("co.workflow_slug IN ($2, $3)");
-    expect(mockQuery.mock.calls[0][1]).toEqual([ORG_ID, "cold-email-v2", "warm-intro-v1"]);
+    expect(sql).toContain("co.workflow_slug IN ($3, $4)");
+    expect(mockQuery.mock.calls[0][1]).toEqual([ORG_ID, CAMPAIGN_ID, "cold-email-v2", "warm-intro-v1"]);
   });
 
   it("ignores empty workflowSlugs string (treated as no filter)", async () => {
@@ -153,6 +156,7 @@ describe("GET /orgs/outlets/stats?workflowSlugs=...", () => {
     mockEmptyOutreachStatusBreakdown();
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
+      campaignId: CAMPAIGN_ID,
       workflowSlugs: "",
     });
 
@@ -172,6 +176,7 @@ describe("GET /orgs/outlets/stats?workflowSlugs=...", () => {
     });
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
+      campaignId: CAMPAIGN_ID,
       workflowSlugs: "cold-email-v2,warm-intro-v1",
       groupBy: "workflowSlug",
     });
@@ -189,6 +194,7 @@ describe("GET /orgs/outlets/stats?workflowSlugs=...", () => {
     mockEmptyOutreachStatusBreakdown();
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
+      campaignId: CAMPAIGN_ID,
       workflowDynastySlug: "cold-email",
       workflowSlugs: "ignored-slug-1,ignored-slug-2",
     });
@@ -212,14 +218,15 @@ describe("GET /orgs/outlets/stats?featureSlugs=...", () => {
     mockEmptyOutreachStatusBreakdown();
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
+      campaignId: CAMPAIGN_ID,
       featureSlugs: "feat-alpha,feat-beta",
     });
 
     expect(res.status).toBe(200);
     expect(res.body.outletsDiscovered).toBe(7);
     const sql = mockQuery.mock.calls[0][0] as string;
-    expect(sql).toContain("co.feature_slug IN ($2, $3)");
-    expect(mockQuery.mock.calls[0][1]).toEqual([ORG_ID, "feat-alpha", "feat-beta"]);
+    expect(sql).toContain("co.feature_slug IN ($3, $4)");
+    expect(mockQuery.mock.calls[0][1]).toEqual([ORG_ID, CAMPAIGN_ID, "feat-alpha", "feat-beta"]);
   });
 
   it("is overridden by featureDynastySlug", async () => {
@@ -230,6 +237,7 @@ describe("GET /orgs/outlets/stats?featureSlugs=...", () => {
     mockEmptyOutreachStatusBreakdown();
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
+      campaignId: CAMPAIGN_ID,
       featureDynastySlug: "feat-alpha",
       featureSlugs: "ignored-1,ignored-2",
     });
@@ -253,20 +261,22 @@ describe("GET /orgs/outlets/stats?workflowDynastySlug=...", () => {
     mockEmptyOutreachStatusBreakdown();
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
+      campaignId: CAMPAIGN_ID,
       workflowDynastySlug: "cold-email",
     });
 
     expect(res.status).toBe(200);
     expect(res.body.outletsDiscovered).toBe(12);
     const sql = mockQuery.mock.calls[0][0] as string;
-    expect(sql).toContain("co.workflow_slug IN ($2, $3, $4)");
-    expect(mockQuery.mock.calls[0][1]).toEqual([ORG_ID, "cold-email", "cold-email-v2", "cold-email-v3"]);
+    expect(sql).toContain("co.workflow_slug IN ($3, $4, $5)");
+    expect(mockQuery.mock.calls[0][1]).toEqual([ORG_ID, CAMPAIGN_ID, "cold-email", "cold-email-v2", "cold-email-v3"]);
   });
 
   it("returns zero stats when dynasty resolves to empty list", async () => {
     mockedResolveWorkflow.mockResolvedValueOnce([]);
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
+      campaignId: CAMPAIGN_ID,
       workflowDynastySlug: "nonexistent-dynasty",
     });
 
@@ -283,6 +293,7 @@ describe("GET /orgs/outlets/stats?workflowDynastySlug=...", () => {
     mockEmptyOutreachStatusBreakdown();
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
+      campaignId: CAMPAIGN_ID,
       workflowDynastySlug: "cold-email",
       workflowSlug: "cold-email-v2", // should be ignored
     });
@@ -306,19 +317,21 @@ describe("GET /orgs/outlets/stats?featureDynastySlug=...", () => {
     mockEmptyOutreachStatusBreakdown();
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
+      campaignId: CAMPAIGN_ID,
       featureDynastySlug: "feat-alpha",
     });
 
     expect(res.status).toBe(200);
     expect(res.body.outletsDiscovered).toBe(7);
     const sql = mockQuery.mock.calls[0][0] as string;
-    expect(sql).toContain("co.feature_slug IN ($2, $3)");
+    expect(sql).toContain("co.feature_slug IN ($3, $4)");
   });
 
   it("returns zero stats when dynasty resolves to empty list", async () => {
     mockedResolveFeature.mockResolvedValueOnce([]);
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
+      campaignId: CAMPAIGN_ID,
       featureDynastySlug: "empty-dynasty",
     });
 
@@ -363,6 +376,7 @@ describe("GET /orgs/outlets/stats?groupBy=featureSlug", () => {
     });
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
+      campaignId: CAMPAIGN_ID,
       groupBy: "featureSlug",
     });
 
@@ -398,6 +412,7 @@ describe("GET /orgs/outlets/stats?groupBy=workflowDynastySlug", () => {
     );
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
+      campaignId: CAMPAIGN_ID,
       groupBy: "workflowDynastySlug",
     });
 
@@ -427,6 +442,7 @@ describe("GET /orgs/outlets/stats?groupBy=workflowDynastySlug", () => {
     mockedGetWorkflowMap.mockResolvedValueOnce(new Map()); // empty map
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
+      campaignId: CAMPAIGN_ID,
       groupBy: "workflowDynastySlug",
     });
 
@@ -456,6 +472,7 @@ describe("GET /orgs/outlets/stats?groupBy=featureDynastySlug", () => {
     );
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
+      campaignId: CAMPAIGN_ID,
       groupBy: "featureDynastySlug",
     });
 
@@ -478,6 +495,7 @@ describe("GET /orgs/outlets/stats?groupBy=featureDynastySlug", () => {
     mockedGetFeatureMap.mockResolvedValueOnce(new Map());
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
+      campaignId: CAMPAIGN_ID,
       groupBy: "featureDynastySlug",
     });
 
@@ -494,6 +512,7 @@ describe("GET /orgs/outlets/stats with empty dynasty filter + groupBy", () => {
     mockedResolveWorkflow.mockResolvedValueOnce([]);
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
+      campaignId: CAMPAIGN_ID,
       workflowDynastySlug: "nonexistent",
       groupBy: "brandId",
     });
@@ -674,19 +693,14 @@ describe("GET /orgs/outlets/stats/costs", () => {
 // Base headers only (no workflow context)
 // ========================
 describe("Stats endpoints with base headers only", () => {
-  it("GET /orgs/outlets/stats works with only x-org-id", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ outlets_discovered: 5, avg_relevance_score: "72.50", search_queries_used: 10 }],
-    });
-    mockEmptyOutreachStatusBreakdown();
-
+  it("GET /orgs/outlets/stats returns 400 without brandId or campaignId", async () => {
     const res = await request(app)
       .get("/orgs/outlets/stats")
       .set("x-api-key", API_KEY)
       .set("x-org-id", ORG_ID);
 
-    expect(res.status).toBe(200);
-    expect(res.body.outletsDiscovered).toBe(5);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("Validation error");
   });
 
   it("GET /orgs/outlets/stats/costs works with only x-org-id", async () => {
@@ -732,7 +746,8 @@ describe("GET /orgs/outlets/stats byOutreachStatus enrichment", () => {
       ])
     );
 
-    const res = await withIdentity(request(app).get("/orgs/outlets/stats"));
+    const res = await withIdentity(request(app).get("/orgs/outlets/stats"))
+      .query({ campaignId: CAMPAIGN_ID });
 
     expect(res.status).toBe(200);
     expect(res.body.outletsDiscovered).toBe(3);
@@ -757,7 +772,8 @@ describe("GET /orgs/outlets/stats byOutreachStatus enrichment", () => {
     // Journalists-service returns nothing — fallback to DB status
     mockFetchOutletStatuses.mockResolvedValueOnce(new Map());
 
-    const res = await withIdentity(request(app).get("/orgs/outlets/stats"));
+    const res = await withIdentity(request(app).get("/orgs/outlets/stats"))
+      .query({ brandId: BRAND_ID });
 
     expect(res.status).toBe(200);
     expect(res.body.byOutreachStatus).toEqual({
@@ -772,7 +788,8 @@ describe("GET /orgs/outlets/stats byOutreachStatus enrichment", () => {
     });
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
-    const res = await withIdentity(request(app).get("/orgs/outlets/stats"));
+    const res = await withIdentity(request(app).get("/orgs/outlets/stats"))
+      .query({ campaignId: CAMPAIGN_ID });
 
     expect(res.status).toBe(200);
     expect(res.body.byOutreachStatus).toEqual({});
@@ -796,7 +813,8 @@ describe("GET /orgs/outlets/stats byOutreachStatus enrichment", () => {
       ])
     );
 
-    const res = await withIdentity(request(app).get("/orgs/outlets/stats"));
+    const res = await withIdentity(request(app).get("/orgs/outlets/stats"))
+      .query({ campaignId: CAMPAIGN_ID });
 
     expect(res.status).toBe(200);
     expect(res.body.byOutreachStatus).toEqual({ delivered: 1, ended: 1 });
