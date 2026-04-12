@@ -140,6 +140,8 @@ export const statsQuerySchema = z.object({
   workflowDynastySlug: z.string().optional(),
   featureDynastySlug: z.string().optional(),
   groupBy: statsGroupByEnum.optional(),
+}).refine((data) => data.brandId || data.campaignId, {
+  message: "brandId or campaignId is required",
 });
 
 export const statsResponseSchema = z.object({
