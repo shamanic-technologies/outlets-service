@@ -1,24 +1,20 @@
 import { Router, Request, Response } from "express";
 import { pool } from "../db/pool";
 import { config } from "../config";
-import { validateQuery } from "../middleware/validate";
-import { internalOutletsQuerySchema } from "../schemas";
+import { validateBody } from "../middleware/validate";
+import { internalOutletsBodySchema } from "../schemas";
 import { fetchOutletStatuses } from "../services/outlet-status";
 import { buildServiceHeaders } from "../services/headers";
 
 const router = Router();
 
-// GET /internal/outlets — unified lookup by IDs and/or campaignId
-router.get(
+// POST /internal/outlets — lookup by IDs and/or campaignId
+router.post(
   "/outlets",
-  validateQuery(internalOutletsQuerySchema),
+  validateBody(internalOutletsBodySchema),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const q = req.query as Record<string, string | undefined>;
-      const ids = q.ids
-        ? q.ids.split(",").map((id) => id.trim()).filter(Boolean)
-        : [];
-      const campaignId = q.campaignId;
+      const { ids = [], campaignId } = req.body as { ids?: string[]; campaignId?: string };
 
       // When campaignId is provided, join campaign_outlets for enriched data
       if (campaignId) {
@@ -27,7 +23,7 @@ router.get(
         let idx = 2;
 
         if (ids.length > 0) {
-          const placeholders = ids.map((_, i) => `$${idx + i}`).join(", ");
+          const placeholders = ids.map((_: string, i: number) => `$${idx + i}`).join(", ");
           conditions.push(`o.id IN (${placeholders})`);
           params.push(...ids);
           idx += ids.length;
@@ -90,7 +86,7 @@ router.get(
         return;
       }
 
-      const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
+      const placeholders = ids.map((_: string, i: number) => `$${i + 1}`).join(", ");
       const result = await pool.query(
         `SELECT id, outlet_name, outlet_url, outlet_domain, created_at, updated_at
          FROM outlets

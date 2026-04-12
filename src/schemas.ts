@@ -112,10 +112,10 @@ export const errorResponseSchema = z.object({
 
 // --- Internal ---
 
-export const internalOutletsQuerySchema = z.object({
-  ids: z.string().optional(),
+export const internalOutletsBodySchema = z.object({
+  ids: z.array(z.string().uuid()).optional(),
   campaignId: z.string().uuid().optional(),
-}).refine((data) => data.ids || data.campaignId, {
+}).refine((data) => (data.ids && data.ids.length > 0) || data.campaignId, {
   message: "At least one of ids or campaignId is required",
 });
 

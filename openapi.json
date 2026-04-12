@@ -2212,30 +2212,34 @@
       }
     },
     "/internal/outlets": {
-      "get": {
+      "post": {
         "summary": "Lookup outlets by IDs and/or campaignId",
         "description": "Internal endpoint — requires only x-api-key, no org context. At least one of `ids` or `campaignId` must be provided. When `campaignId` is provided, returns enriched campaign-outlet data including `outreachStatus` and `replyClassification` from journalists-service. Without `campaignId`, returns basic outlet data only.",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "ids",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Comma-separated outlet IDs"
-          },
-          {
-            "in": "query",
-            "name": "campaignId",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "description": "Filter by campaign ID"
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "description": "Outlet UUIDs to look up"
+                  },
+                  "campaignId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Filter by campaign ID"
+                  }
+                }
+              }
+            }
           }
-        ],
+        },
         "responses": {
           "200": {
             "description": "Outlets found",
