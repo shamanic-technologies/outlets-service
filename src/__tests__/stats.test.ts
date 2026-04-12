@@ -732,7 +732,8 @@ describe("GET /orgs/outlets/stats byOutreachStatus enrichment", () => {
       ])
     );
 
-    const res = await withIdentity(request(app).get("/orgs/outlets/stats"));
+    const res = await withIdentity(request(app).get("/orgs/outlets/stats"))
+      .query({ campaignId: CAMPAIGN_ID });
 
     expect(res.status).toBe(200);
     expect(res.body.outletsDiscovered).toBe(3);
@@ -757,7 +758,8 @@ describe("GET /orgs/outlets/stats byOutreachStatus enrichment", () => {
     // Journalists-service returns nothing — fallback to DB status
     mockFetchOutletStatuses.mockResolvedValueOnce(new Map());
 
-    const res = await withIdentity(request(app).get("/orgs/outlets/stats"));
+    const res = await withIdentity(request(app).get("/orgs/outlets/stats"))
+      .query({ brandId: BRAND_ID });
 
     expect(res.status).toBe(200);
     expect(res.body.byOutreachStatus).toEqual({
@@ -779,6 +781,27 @@ describe("GET /orgs/outlets/stats byOutreachStatus enrichment", () => {
     expect(mockFetchOutletStatuses).not.toHaveBeenCalled();
   });
 
+  it("skips journalists-service and uses DB statuses when no brandId/campaignId", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ outlets_discovered: 3, avg_relevance_score: "70.00", search_queries_used: 6 }],
+    });
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { outlet_id: OUTLET_A, status: "served" },
+        { outlet_id: OUTLET_B, status: "open" },
+        { outlet_id: OUTLET_C, status: "served" },
+      ],
+    });
+
+    // Call without brandId or campaignId query params
+    const res = await withBaseIdentity(request(app).get("/orgs/outlets/stats"));
+
+    expect(res.status).toBe(200);
+    expect(res.body.byOutreachStatus).toEqual({ served: 2, open: 1 });
+    // Must NOT call journalists-service — no scope filters available
+    expect(mockFetchOutletStatuses).not.toHaveBeenCalled();
+  });
+
   it("enriches ALL outlets (not just served)", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 2, avg_relevance_score: "60.00", search_queries_used: 4 }],
@@ -796,7 +819,8 @@ describe("GET /orgs/outlets/stats byOutreachStatus enrichment", () => {
       ])
     );
 
-    const res = await withIdentity(request(app).get("/orgs/outlets/stats"));
+    const res = await withIdentity(request(app).get("/orgs/outlets/stats"))
+      .query({ campaignId: CAMPAIGN_ID });
 
     expect(res.status).toBe(200);
     expect(res.body.byOutreachStatus).toEqual({ delivered: 1, ended: 1 });
