@@ -701,9 +701,9 @@ describe("POST /orgs/outlets/search", () => {
 });
 
 // ========================
-// Internal (unified GET /internal/outlets)
+// Internal (POST /internal/outlets)
 // ========================
-describe("GET /internal/outlets", () => {
+describe("POST /internal/outlets", () => {
   it("returns outlets by IDs (no campaignId — no enrichment)", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [
@@ -719,9 +719,9 @@ describe("GET /internal/outlets", () => {
     });
 
     const res = await request(app)
-      .get("/internal/outlets")
+      .post("/internal/outlets")
       .set("x-api-key", API_KEY)
-      .query({ ids: "11111111-1111-1111-1111-111111111111" });
+      .send({ ids: ["11111111-1111-1111-1111-111111111111"] });
 
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(1);
@@ -732,8 +732,17 @@ describe("GET /internal/outlets", () => {
 
   it("returns 400 without ids or campaignId", async () => {
     const res = await request(app)
-      .get("/internal/outlets")
-      .set("x-api-key", API_KEY);
+      .post("/internal/outlets")
+      .set("x-api-key", API_KEY)
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 with empty ids array and no campaignId", async () => {
+    const res = await request(app)
+      .post("/internal/outlets")
+      .set("x-api-key", API_KEY)
+      .send({ ids: [] });
     expect(res.status).toBe(400);
   });
 
@@ -764,9 +773,9 @@ describe("GET /internal/outlets", () => {
     );
 
     const res = await request(app)
-      .get("/internal/outlets")
+      .post("/internal/outlets")
       .set("x-api-key", API_KEY)
-      .query({ campaignId: CAMPAIGN_ID });
+      .send({ campaignId: CAMPAIGN_ID });
 
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(1);
@@ -803,9 +812,9 @@ describe("GET /internal/outlets", () => {
     mockFetchOutletStatuses.mockResolvedValueOnce(new Map());
 
     const res = await request(app)
-      .get("/internal/outlets")
+      .post("/internal/outlets")
       .set("x-api-key", API_KEY)
-      .query({ campaignId: CAMPAIGN_ID });
+      .send({ campaignId: CAMPAIGN_ID });
 
     expect(res.status).toBe(200);
     expect(res.body.outlets[0].outreachStatus).toBe("served");
@@ -836,9 +845,9 @@ describe("GET /internal/outlets", () => {
     mockFetchOutletStatuses.mockResolvedValueOnce(new Map());
 
     const res = await request(app)
-      .get("/internal/outlets")
+      .post("/internal/outlets")
       .set("x-api-key", API_KEY)
-      .query({ ids: "11111111-1111-1111-1111-111111111111", campaignId: CAMPAIGN_ID });
+      .send({ ids: ["11111111-1111-1111-1111-111111111111"], campaignId: CAMPAIGN_ID });
 
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(1);
@@ -863,9 +872,9 @@ describe("GET /internal/outlets", () => {
     });
 
     const res = await request(app)
-      .get("/internal/outlets")
+      .post("/internal/outlets")
       .set("x-api-key", API_KEY)
-      .query({ ids: "11111111-1111-1111-1111-111111111111" });
+      .send({ ids: ["11111111-1111-1111-1111-111111111111"] });
 
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(1);
