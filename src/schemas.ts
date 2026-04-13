@@ -2,29 +2,7 @@ import { z } from "zod";
 
 // Enums
 /** DB-level statuses (what gets written to campaign_outlets). */
-export const outletStatusEnum = z.enum(["open", "ended", "denied", "served", "skipped"]);
-
-/**
- * Outreach statuses returned in responses — includes downstream delivery states from journalists-service.
- * Ordered by pipeline progression (most advanced first):
- *   replied > delivered > contacted > served > claimed > buffered > open > skipped > denied > ended
- *
- * - replied:    At least one journalist replied (see replyClassification for positive/negative/neutral)
- * - delivered:  At least one email delivered to journalist inbox
- * - contacted:  At least one email sent to a journalist
- * - served:     Journalists served to the email-sending pipeline
- * - claimed:    Journalists claimed by the sending workflow, not yet served
- * - buffered:   Journalists created but not yet processed
- * - open:       Outlet in buffer, not yet claimed by any workflow
- * - skipped:    Outlet skipped (cross-campaign duplicate, blocked, or low-relevance)
- * - denied:     Outlet denied
- * - ended:      Outlet ended manually
- */
-export const outreachStatusEnum = z.enum([
-  "replied", "delivered", "contacted", "served", "claimed", "buffered", "open", "skipped", "denied", "ended",
-]);
-
-export const replyClassificationEnum = z.enum(["positive", "negative", "neutral"]);
+export const outletStatusEnum = z.enum(["open", "served", "skipped"]);
 
 // --- Outlets ---
 
@@ -88,14 +66,31 @@ export const outletResponseSchema = z.object({
   updatedAt: z.string(),
 });
 
+/** Status counts schema — cumulative journalist counts from journalists-service. */
+export const statusCountsSchema = z.object({
+  buffered: z.number(),
+  claimed: z.number(),
+  served: z.number(),
+  skipped: z.number(),
+  contacted: z.number(),
+  sent: z.number(),
+  delivered: z.number(),
+  opened: z.number(),
+  clicked: z.number(),
+  replied: z.number(),
+  repliesPositive: z.number(),
+  repliesNegative: z.number(),
+  repliesNeutral: z.number(),
+  bounced: z.number(),
+  unsubscribed: z.number(),
+});
+
 export const campaignOutletResponseSchema = outletResponseSchema.extend({
   campaignId: z.string().uuid(),
   brandIds: z.array(z.string().uuid()),
   whyRelevant: z.string(),
   whyNotRelevant: z.string(),
   relevanceScore: z.number(),
-  outreachStatus: outreachStatusEnum,
-  replyClassification: replyClassificationEnum.nullable(),
   overallRelevance: z.string().nullable(),
   relevanceRationale: z.string().nullable(),
   runId: z.string().nullable(),
@@ -148,7 +143,7 @@ export const statsResponseSchema = z.object({
   outletsDiscovered: z.number(),
   avgRelevanceScore: z.number(),
   searchQueriesUsed: z.number(),
-  byOutreachStatus: z.record(outreachStatusEnum, z.number()).optional(),
+  byOutreachStatus: statusCountsSchema.optional(),
 });
 
 export const statsGroupedResponseSchema = z.object({

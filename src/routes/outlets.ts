@@ -2,7 +2,6 @@ import { Router, Request, Response } from "express";
 import { pool } from "../db/pool";
 import { config } from "../config";
 import { validateBody, validateQuery } from "../middleware/validate";
-import type { OrgContext } from "../middleware/org-context";
 import {
   createOutletSchema,
   updateOutletSchema,
@@ -292,91 +291,26 @@ router.get(
       if (q.campaignId) scopeFilters.campaignId = q.campaignId;
       if (q.brandId) scopeFilters.brandId = q.brandId;
 
-      const enrichedStatuses = await fetchOutletStatuses(allOutletIds, ctx, scopeFilters);
-
-      // Status priority for fallback computation
-      // Priority ordering: replied > delivered > contacted > served > claimed > buffered > open > skipped/denied/ended
-      const STATUS_PRIORITY: Record<string, number> = {
-        ended: 0, denied: 0, skipped: 0, open: 1, buffered: 2, claimed: 3, served: 4, contacted: 5, delivered: 6, replied: 7,
-      };
-
-      // Compute byOutreachStatus across ALL outlets (not truncated by pagination)
-      // Need DB status fallback for outlets not in the enrichment map
-      const allDbStatusResult = await pool.query(
-        `SELECT o.id AS outlet_id, co.status
-         FROM outlets o
-         JOIN campaign_outlets co ON o.id = co.outlet_id
-         ${where}`,
-        params
-      );
-      const dbStatusMap = new Map<string, string>();
-      for (const r of allDbStatusResult.rows) {
-        const existing = dbStatusMap.get(r.outlet_id);
-        if (!existing || (STATUS_PRIORITY[r.status] ?? 0) > (STATUS_PRIORITY[existing] ?? 0)) {
-          dbStatusMap.set(r.outlet_id, r.status);
-        }
-      }
-
-      const byOutreachStatus: Record<string, number> = {};
-      for (const outletId of allOutletIds) {
-        const e = enrichedStatuses.get(outletId);
-        const status = e?.outreachStatus ?? dbStatusMap.get(outletId) ?? "open";
-        byOutreachStatus[status] = (byOutreachStatus[status] ?? 0) + 1;
-      }
+      const enrichment = await fetchOutletStatuses(allOutletIds, ctx, scopeFilters);
 
       // Build final response (page only)
       const outlets = Array.from(outletsMap.values()).map((outlet) => {
-        const enriched = enrichedStatuses.get(outlet.id);
+        const outletStatus = enrichment.results.get(outlet.id) ?? null;
 
-        // Per-campaign outreach status (from byCampaign breakdown, or the top-level enriched status for single-campaign queries)
-        const campaignsOut = outlet.campaigns.map((c) => {
-          let outreachStatus: string;
-          let replyClassification: string | null = null;
+        const campaignsOut = outlet.campaigns.map((c) => ({
+          campaignId: c.campaignId,
+          featureSlug: c.featureSlug,
+          brandIds: c.brandIds,
+          whyRelevant: c.whyRelevant,
+          whyNotRelevant: c.whyNotRelevant,
+          relevanceScore: c.relevanceScore,
+          overallRelevance: c.overallRelevance,
+          relevanceRationale: c.relevanceRationale,
+          runId: c.runId,
+          updatedAt: c.updatedAt,
+        }));
 
-          if (enriched?.byCampaign?.[c.campaignId]) {
-            // Brand-scoped: use per-campaign breakdown from journalists-service
-            outreachStatus = enriched.byCampaign[c.campaignId].outreachStatus;
-            replyClassification = enriched.byCampaign[c.campaignId].replyClassification;
-          } else if (q.campaignId && enriched) {
-            // Campaign-scoped: single enriched status applies to the one campaign
-            outreachStatus = enriched.outreachStatus;
-            replyClassification = enriched.replyClassification;
-          } else {
-            // Fallback: use DB status
-            outreachStatus = c.dbStatus;
-          }
-
-          return {
-            campaignId: c.campaignId,
-            featureSlug: c.featureSlug,
-            brandIds: c.brandIds,
-            whyRelevant: c.whyRelevant,
-            whyNotRelevant: c.whyNotRelevant,
-            relevanceScore: c.relevanceScore,
-            outreachStatus,
-            overallRelevance: c.overallRelevance,
-            relevanceRationale: c.relevanceRationale,
-            replyClassification,
-            runId: c.runId,
-            updatedAt: c.updatedAt,
-          };
-        });
-
-        // Outlet-level outreachStatus = enriched top-level (high watermark for the scope), or fallback to most advanced DB status
-        let outletOutreachStatus: string;
-        let outletReplyClassification: string | null = null;
-        if (enriched) {
-          outletOutreachStatus = enriched.outreachStatus;
-          outletReplyClassification = enriched.replyClassification;
-        } else {
-          // Fallback: most advanced DB status across campaigns
-          outletOutreachStatus = outlet.campaigns.reduce(
-            (best, c) => (STATUS_PRIORITY[c.dbStatus] ?? 0) > (STATUS_PRIORITY[best] ?? 0) ? c.dbStatus : best,
-            outlet.campaigns[0].dbStatus,
-          );
-        }
-
-        // Outlet-level relevanceScore = max across campaigns (high watermark, same logic as outreachStatus)
+        // Outlet-level relevanceScore = max across campaigns
         const outletRelevanceScore = Math.max(...outlet.campaigns.map((c) => c.relevanceScore));
 
         return {
@@ -386,13 +320,12 @@ router.get(
           outletDomain: outlet.outletDomain,
           createdAt: outlet.createdAt,
           relevanceScore: outletRelevanceScore,
-          outreachStatus: outletOutreachStatus,
-          replyClassification: outletReplyClassification,
+          status: outletStatus,
           campaigns: campaignsOut,
         };
       });
 
-      res.json({ outlets, total, byOutreachStatus });
+      res.json({ outlets, total, byOutreachStatus: enrichment.byOutreachStatus });
     } catch (err) {
       console.error("[outlets-service] Error listing outlets:", err);
       res.status(500).json({ error: "Internal server error" });
@@ -503,7 +436,6 @@ router.patch(
       const result = await pool.query(
         `UPDATE campaign_outlets
          SET status = $1, relevance_rationale = COALESCE($2, relevance_rationale),
-             ended_at = ${status === "ended" ? "CURRENT_TIMESTAMP" : "ended_at"},
              updated_at = CURRENT_TIMESTAMP
          WHERE outlet_id = $3 AND campaign_id = $4 AND org_id = $5
          RETURNING campaign_id, outlet_id, status, relevance_rationale, updated_at`,
