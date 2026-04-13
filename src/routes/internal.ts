@@ -47,17 +47,17 @@ router.post(
         const outletIds = result.rows.map((r: any) => r.id as string);
         // Internal endpoints don't have orgContext, so build a minimal one from the first row
         const firstRow = result.rows[0];
-        const enrichedStatuses = outletIds.length > 0 && firstRow
+        const enrichment = outletIds.length > 0 && firstRow
           ? await fetchOutletStatuses(
               outletIds,
               { orgId: firstRow.org_id, brandIds: firstRow.brand_ids ?? [] },
               { campaignId }
             )
-          : new Map();
+          : null;
 
         res.json({
           outlets: result.rows.map((r: any) => {
-            const enriched = enrichedStatuses.get(r.id);
+            const outletStatus = enrichment?.results.get(r.id) ?? null;
             return {
               id: r.id,
               outletName: r.outlet_name,
@@ -68,8 +68,7 @@ router.post(
               whyRelevant: r.why_relevant,
               whyNotRelevant: r.why_not_relevant,
               relevanceScore: Number(r.relevance_score),
-              outreachStatus: enriched?.outreachStatus ?? r.outlet_status,
-              replyClassification: enriched?.replyClassification ?? null,
+              status: outletStatus,
               overallRelevance: r.overall_relevance,
               relevanceRationale: r.relevance_rationale,
               createdAt: r.created_at,

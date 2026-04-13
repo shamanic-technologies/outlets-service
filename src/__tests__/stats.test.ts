@@ -52,6 +52,17 @@ const RUN_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc";
 const CAMPAIGN_ID = "dddddddd-dddd-dddd-dddd-dddddddddddd";
 const BRAND_ID = "55555555-5555-5555-5555-555555555555";
 
+const ZERO_STATUS_COUNTS = {
+  buffered: 0, claimed: 0, served: 0, skipped: 0,
+  contacted: 0, sent: 0, delivered: 0, opened: 0, clicked: 0,
+  replied: 0, repliesPositive: 0, repliesNegative: 0, repliesNeutral: 0,
+  bounced: 0, unsubscribed: 0,
+};
+
+function emptyEnrichment() {
+  return { results: new Map(), total: 0, byOutreachStatus: { ...ZERO_STATUS_COUNTS } };
+}
+
 function withBaseIdentity(req: request.Test): request.Test {
   return req
     .set("x-api-key", API_KEY)
@@ -70,14 +81,9 @@ function withIdentity(req: request.Test): request.Test {
 
 let app: Express;
 
-/** Mock the byOutreachStatus breakdown query (empty = no outlets). */
-function mockEmptyOutreachStatusBreakdown() {
-  mockQuery.mockResolvedValueOnce({ rows: [] });
-}
-
 beforeEach(() => {
   vi.clearAllMocks();
-  mockFetchOutletStatuses.mockResolvedValue(new Map());
+  mockFetchOutletStatuses.mockResolvedValue(emptyEnrichment());
   app = createApp();
 });
 
@@ -89,7 +95,8 @@ describe("GET /orgs/outlets/stats?featureSlug=...", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 5, avg_relevance_score: "72.50", search_queries_used: 10 }],
     });
-    mockEmptyOutreachStatusBreakdown();
+    // Distinct outlet IDs query
+    mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
       campaignId: CAMPAIGN_ID,
@@ -113,7 +120,7 @@ describe("GET /orgs/outlets/stats?workflowSlug=...", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 3, avg_relevance_score: "80.00", search_queries_used: 6 }],
     });
-    mockEmptyOutreachStatusBreakdown();
+    mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
       campaignId: CAMPAIGN_ID,
@@ -135,7 +142,7 @@ describe("GET /orgs/outlets/stats?workflowSlugs=...", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 10, avg_relevance_score: "75.00", search_queries_used: 20 }],
     });
-    mockEmptyOutreachStatusBreakdown();
+    mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
       campaignId: CAMPAIGN_ID,
@@ -153,7 +160,7 @@ describe("GET /orgs/outlets/stats?workflowSlugs=...", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 5, avg_relevance_score: "70.00", search_queries_used: 10 }],
     });
-    mockEmptyOutreachStatusBreakdown();
+    mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
       campaignId: CAMPAIGN_ID,
@@ -191,7 +198,7 @@ describe("GET /orgs/outlets/stats?workflowSlugs=...", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 8, avg_relevance_score: "70.00", search_queries_used: 15 }],
     });
-    mockEmptyOutreachStatusBreakdown();
+    mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
       campaignId: CAMPAIGN_ID,
@@ -215,7 +222,7 @@ describe("GET /orgs/outlets/stats?featureSlugs=...", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 7, avg_relevance_score: "65.00", search_queries_used: 14 }],
     });
-    mockEmptyOutreachStatusBreakdown();
+    mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
       campaignId: CAMPAIGN_ID,
@@ -234,7 +241,7 @@ describe("GET /orgs/outlets/stats?featureSlugs=...", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 7, avg_relevance_score: "65.00", search_queries_used: 14 }],
     });
-    mockEmptyOutreachStatusBreakdown();
+    mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
       campaignId: CAMPAIGN_ID,
@@ -258,7 +265,7 @@ describe("GET /orgs/outlets/stats?workflowDynastySlug=...", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 12, avg_relevance_score: "75.00", search_queries_used: 20 }],
     });
-    mockEmptyOutreachStatusBreakdown();
+    mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
       campaignId: CAMPAIGN_ID,
@@ -290,7 +297,7 @@ describe("GET /orgs/outlets/stats?workflowDynastySlug=...", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 8, avg_relevance_score: "70.00", search_queries_used: 15 }],
     });
-    mockEmptyOutreachStatusBreakdown();
+    mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
       campaignId: CAMPAIGN_ID,
@@ -314,7 +321,7 @@ describe("GET /orgs/outlets/stats?featureDynastySlug=...", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 7, avg_relevance_score: "65.00", search_queries_used: 14 }],
     });
-    mockEmptyOutreachStatusBreakdown();
+    mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
       campaignId: CAMPAIGN_ID,
@@ -350,7 +357,7 @@ describe("GET /orgs/outlets/stats with combined dynasty + other filters", () => 
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 4, avg_relevance_score: "80.00", search_queries_used: 8 }],
     });
-    mockEmptyOutreachStatusBreakdown();
+    mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
       brandId: "55555555-5555-5555-5555-555555555555",
@@ -717,72 +724,45 @@ describe("Stats endpoints with base headers only", () => {
 });
 
 // ========================
-// byOutreachStatus enrichment
+// byOutreachStatus enrichment (pass-through from journalists-service)
 // ========================
 const OUTLET_A = "aaaa0001-0001-0001-0001-000000000001";
 const OUTLET_B = "aaaa0002-0002-0002-0002-000000000002";
 const OUTLET_C = "aaaa0003-0003-0003-0003-000000000003";
 
 describe("GET /orgs/outlets/stats byOutreachStatus enrichment", () => {
-  it("returns byOutreachStatus with enriched statuses from journalists-service", async () => {
+  it("returns byOutreachStatus passed through from journalists-service", async () => {
     // Aggregate query
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 3, avg_relevance_score: "70.00", search_queries_used: 10 }],
     });
-    // All distinct outlets query (used for enrichment)
+    // All distinct outlets query
     mockQuery.mockResolvedValueOnce({
-      rows: [
-        { outlet_id: OUTLET_A, status: "open" },
-        { outlet_id: OUTLET_B, status: "served" },
-        { outlet_id: OUTLET_C, status: "served" },
-      ],
+      rows: [{ outlet_id: OUTLET_A }, { outlet_id: OUTLET_B }, { outlet_id: OUTLET_C }],
     });
-    // Journalists-service returns enriched statuses for ALL outlets
-    mockFetchOutletStatuses.mockResolvedValueOnce(
-      new Map([
-        [OUTLET_A, { outreachStatus: "open", replyClassification: null }],
-        [OUTLET_B, { outreachStatus: "contacted", replyClassification: null }],
-        [OUTLET_C, { outreachStatus: "replied", replyClassification: "positive" }],
-      ])
-    );
+    // Journalists-service returns enriched statuses with aggregate byOutreachStatus
+    mockFetchOutletStatuses.mockResolvedValueOnce({
+      results: new Map([
+        [OUTLET_A, { totalJournalists: 1, brand: null, byCampaign: null, campaign: { ...ZERO_STATUS_COUNTS, buffered: 1 }, global: { bounced: 0, unsubscribed: 0 } }],
+        [OUTLET_B, { totalJournalists: 2, brand: null, byCampaign: null, campaign: { ...ZERO_STATUS_COUNTS, contacted: 2 }, global: { bounced: 0, unsubscribed: 0 } }],
+        [OUTLET_C, { totalJournalists: 1, brand: null, byCampaign: null, campaign: { ...ZERO_STATUS_COUNTS, replied: 1, repliesPositive: 1 }, global: { bounced: 0, unsubscribed: 0 } }],
+      ]),
+      total: 3,
+      byOutreachStatus: { ...ZERO_STATUS_COUNTS, buffered: 1, contacted: 2, replied: 1, repliesPositive: 1 },
+    });
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats"))
       .query({ campaignId: CAMPAIGN_ID });
 
     expect(res.status).toBe(200);
     expect(res.body.outletsDiscovered).toBe(3);
+    // byOutreachStatus is passed through from journalists-service
     expect(res.body.byOutreachStatus).toEqual({
-      open: 1,
-      contacted: 1,
-      replied: 1,
+      ...ZERO_STATUS_COUNTS, buffered: 1, contacted: 2, replied: 1, repliesPositive: 1,
     });
   });
 
-  it("falls back to DB status when journalists-service returns no data for an outlet", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ outlets_discovered: 3, avg_relevance_score: "80.00", search_queries_used: 6 }],
-    });
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        { outlet_id: OUTLET_A, status: "served" },
-        { outlet_id: OUTLET_B, status: "served" },
-        { outlet_id: OUTLET_C, status: "ended" },
-      ],
-    });
-    // Journalists-service returns nothing — fallback to DB status
-    mockFetchOutletStatuses.mockResolvedValueOnce(new Map());
-
-    const res = await withIdentity(request(app).get("/orgs/outlets/stats"))
-      .query({ brandId: BRAND_ID });
-
-    expect(res.status).toBe(200);
-    expect(res.body.byOutreachStatus).toEqual({
-      served: 2,
-      ended: 1,
-    });
-  });
-
-  it("returns empty byOutreachStatus when no outlets match", async () => {
+  it("returns undefined byOutreachStatus when no outlets match", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 0, avg_relevance_score: null, search_queries_used: 0 }],
     });
@@ -792,32 +772,32 @@ describe("GET /orgs/outlets/stats byOutreachStatus enrichment", () => {
       .query({ campaignId: CAMPAIGN_ID });
 
     expect(res.status).toBe(200);
-    expect(res.body.byOutreachStatus).toEqual({});
+    // byOutreachStatus is undefined when no outlets to enrich
+    expect(res.body.byOutreachStatus).toBeUndefined();
     expect(mockFetchOutletStatuses).not.toHaveBeenCalled();
   });
 
-  it("enriches ALL outlets (not just served)", async () => {
+  it("passes through byOutreachStatus for all outlets", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 2, avg_relevance_score: "60.00", search_queries_used: 4 }],
     });
     mockQuery.mockResolvedValueOnce({
-      rows: [
-        { outlet_id: OUTLET_A, status: "open" },
-        { outlet_id: OUTLET_B, status: "ended" },
-      ],
+      rows: [{ outlet_id: OUTLET_A }, { outlet_id: OUTLET_B }],
     });
-    // Journalists-service enriches even the "open" outlet
-    mockFetchOutletStatuses.mockResolvedValueOnce(
-      new Map([
-        [OUTLET_A, { outreachStatus: "delivered", replyClassification: null }],
-      ])
-    );
+    // Journalists-service enriches both outlets
+    mockFetchOutletStatuses.mockResolvedValueOnce({
+      results: new Map([
+        [OUTLET_A, { totalJournalists: 1, brand: null, byCampaign: null, campaign: { ...ZERO_STATUS_COUNTS, delivered: 1 }, global: { bounced: 0, unsubscribed: 0 } }],
+      ]),
+      total: 2,
+      byOutreachStatus: { ...ZERO_STATUS_COUNTS, delivered: 1 },
+    });
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats"))
       .query({ campaignId: CAMPAIGN_ID });
 
     expect(res.status).toBe(200);
-    expect(res.body.byOutreachStatus).toEqual({ delivered: 1, ended: 1 });
+    expect(res.body.byOutreachStatus).toEqual({ ...ZERO_STATUS_COUNTS, delivered: 1 });
     // Enrichment is called for ALL outlets
     expect(mockFetchOutletStatuses).toHaveBeenCalledOnce();
   });

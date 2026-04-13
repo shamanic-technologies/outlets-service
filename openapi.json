@@ -3,7 +3,7 @@
   "info": {
     "title": "Outlets Service",
     "description": "Manages press outlets (publications) and their campaign relevance data. Routes are organized under /org (requires x-api-key + x-org-id) and /internal (requires x-api-key only).",
-    "version": "5.0.0"
+    "version": "6.0.0"
   },
   "servers": [
     {
@@ -53,8 +53,6 @@
             "type": "string",
             "enum": [
               "open",
-              "ended",
-              "denied",
               "served",
               "skipped"
             ],
@@ -111,8 +109,6 @@
             "type": "string",
             "enum": [
               "open",
-              "ended",
-              "denied",
               "served",
               "skipped"
             ]
@@ -166,8 +162,6 @@
                   "type": "string",
                   "enum": [
                     "open",
-                    "ended",
-                    "denied",
                     "served",
                     "skipped"
                   ],
@@ -368,30 +362,6 @@
           "relevanceScore": {
             "type": "number"
           },
-          "outreachStatus": {
-            "type": "string",
-            "enum": [
-              "replied",
-              "delivered",
-              "contacted",
-              "served",
-              "claimed",
-              "buffered",
-              "open",
-              "skipped",
-              "denied",
-              "ended"
-            ]
-          },
-          "replyClassification": {
-            "type": "string",
-            "enum": [
-              "positive",
-              "negative",
-              "neutral"
-            ],
-            "nullable": true
-          },
           "overallRelevance": {
             "type": "string",
             "nullable": true
@@ -417,11 +387,76 @@
           "whyRelevant",
           "whyNotRelevant",
           "relevanceScore",
-          "outreachStatus",
-          "replyClassification",
           "overallRelevance",
           "relevanceRationale",
           "runId"
+        ]
+      },
+      "StatusCounts": {
+        "type": "object",
+        "properties": {
+          "buffered": {
+            "type": "number"
+          },
+          "claimed": {
+            "type": "number"
+          },
+          "served": {
+            "type": "number"
+          },
+          "skipped": {
+            "type": "number"
+          },
+          "contacted": {
+            "type": "number"
+          },
+          "sent": {
+            "type": "number"
+          },
+          "delivered": {
+            "type": "number"
+          },
+          "opened": {
+            "type": "number"
+          },
+          "clicked": {
+            "type": "number"
+          },
+          "replied": {
+            "type": "number"
+          },
+          "repliesPositive": {
+            "type": "number"
+          },
+          "repliesNegative": {
+            "type": "number"
+          },
+          "repliesNeutral": {
+            "type": "number"
+          },
+          "bounced": {
+            "type": "number"
+          },
+          "unsubscribed": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "buffered",
+          "claimed",
+          "served",
+          "skipped",
+          "contacted",
+          "sent",
+          "delivered",
+          "opened",
+          "clicked",
+          "replied",
+          "repliesPositive",
+          "repliesNegative",
+          "repliesNeutral",
+          "bounced",
+          "unsubscribed"
         ]
       },
       "StatsResponse": {
@@ -438,7 +473,70 @@
           },
           "byOutreachStatus": {
             "type": "object",
-            "additionalProperties": true
+            "properties": {
+              "buffered": {
+                "type": "number"
+              },
+              "claimed": {
+                "type": "number"
+              },
+              "served": {
+                "type": "number"
+              },
+              "skipped": {
+                "type": "number"
+              },
+              "contacted": {
+                "type": "number"
+              },
+              "sent": {
+                "type": "number"
+              },
+              "delivered": {
+                "type": "number"
+              },
+              "opened": {
+                "type": "number"
+              },
+              "clicked": {
+                "type": "number"
+              },
+              "replied": {
+                "type": "number"
+              },
+              "repliesPositive": {
+                "type": "number"
+              },
+              "repliesNegative": {
+                "type": "number"
+              },
+              "repliesNeutral": {
+                "type": "number"
+              },
+              "bounced": {
+                "type": "number"
+              },
+              "unsubscribed": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "buffered",
+              "claimed",
+              "served",
+              "skipped",
+              "contacted",
+              "sent",
+              "delivered",
+              "opened",
+              "clicked",
+              "replied",
+              "repliesPositive",
+              "repliesNegative",
+              "repliesNeutral",
+              "bounced",
+              "unsubscribed"
+            ]
           }
         },
         "required": [
@@ -717,7 +815,7 @@
       },
       "get": {
         "summary": "List outlets with filters (deduplicated, org-scoped)",
-        "description": "Returns outlets deduplicated by outlet_id with nested campaign data. Always scoped by x-org-id. At least one of brandId or campaignId is required (org-only scoping returns 400). Outreach status is enriched from journalists-service at the query's granularity.",
+        "description": "Returns outlets deduplicated by outlet_id with nested campaign data. Always scoped by x-org-id. At least one of brandId or campaignId is required (org-only scoping returns 400). Status is a structured object from journalists-service with cumulative journalist counts.",
         "parameters": [
           {
             "in": "header",
@@ -811,13 +909,11 @@
               "type": "string",
               "enum": [
                 "open",
-                "ended",
-                "denied",
                 "served",
                 "skipped"
               ]
             },
-            "description": "Filter by internal DB status (not outreach status). Use this to filter outlets by their discovery pipeline state."
+            "description": "Filter by internal DB status. Use this to filter outlets by their discovery pipeline state."
           },
           {
             "in": "query",
@@ -893,37 +989,255 @@
                           },
                           "relevanceScore": {
                             "type": "number",
-                            "description": "High watermark relevance score across all campaigns for this outlet (max of per-campaign scores)."
+                            "description": "Max relevance score across all campaigns for this outlet."
                           },
-                          "outreachStatus": {
-                            "type": "string",
-                            "enum": [
-                              "replied",
-                              "delivered",
-                              "contacted",
-                              "served",
-                              "claimed",
-                              "buffered",
-                              "open",
-                              "skipped",
-                              "denied",
-                              "ended"
-                            ],
-                            "description": "High watermark outreach status from journalists-service at the query's scope (campaign or brand). Falls back to most advanced DB status when no journalist data exists. Ordered by pipeline progression (most advanced first): replied > delivered > contacted > served > claimed > buffered > open > skipped > denied > ended."
-                          },
-                          "replyClassification": {
-                            "type": "string",
+                          "status": {
+                            "type": "object",
                             "nullable": true,
-                            "enum": [
-                              "positive",
-                              "negative",
-                              "neutral"
-                            ],
-                            "description": "Best reply classification when outreachStatus is 'replied'. Null otherwise."
+                            "description": "Structured status from journalists-service. Null when no journalist data exists for this outlet.",
+                            "properties": {
+                              "totalJournalists": {
+                                "type": "number",
+                                "description": "Total journalists for this outlet"
+                              },
+                              "brand": {
+                                "type": "object",
+                                "properties": {
+                                  "buffered": {
+                                    "type": "number"
+                                  },
+                                  "claimed": {
+                                    "type": "number"
+                                  },
+                                  "served": {
+                                    "type": "number"
+                                  },
+                                  "skipped": {
+                                    "type": "number"
+                                  },
+                                  "contacted": {
+                                    "type": "number"
+                                  },
+                                  "sent": {
+                                    "type": "number"
+                                  },
+                                  "delivered": {
+                                    "type": "number"
+                                  },
+                                  "opened": {
+                                    "type": "number"
+                                  },
+                                  "clicked": {
+                                    "type": "number"
+                                  },
+                                  "replied": {
+                                    "type": "number"
+                                  },
+                                  "repliesPositive": {
+                                    "type": "number"
+                                  },
+                                  "repliesNegative": {
+                                    "type": "number"
+                                  },
+                                  "repliesNeutral": {
+                                    "type": "number"
+                                  },
+                                  "bounced": {
+                                    "type": "number"
+                                  },
+                                  "unsubscribed": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "buffered",
+                                  "claimed",
+                                  "served",
+                                  "skipped",
+                                  "contacted",
+                                  "sent",
+                                  "delivered",
+                                  "opened",
+                                  "clicked",
+                                  "replied",
+                                  "repliesPositive",
+                                  "repliesNegative",
+                                  "repliesNeutral",
+                                  "bounced",
+                                  "unsubscribed"
+                                ],
+                                "nullable": true,
+                                "description": "Cumulative counts at brand scope. Null in campaign mode."
+                              },
+                              "byCampaign": {
+                                "type": "object",
+                                "nullable": true,
+                                "additionalProperties": {
+                                  "type": "object",
+                                  "properties": {
+                                    "buffered": {
+                                      "type": "number"
+                                    },
+                                    "claimed": {
+                                      "type": "number"
+                                    },
+                                    "served": {
+                                      "type": "number"
+                                    },
+                                    "skipped": {
+                                      "type": "number"
+                                    },
+                                    "contacted": {
+                                      "type": "number"
+                                    },
+                                    "sent": {
+                                      "type": "number"
+                                    },
+                                    "delivered": {
+                                      "type": "number"
+                                    },
+                                    "opened": {
+                                      "type": "number"
+                                    },
+                                    "clicked": {
+                                      "type": "number"
+                                    },
+                                    "replied": {
+                                      "type": "number"
+                                    },
+                                    "repliesPositive": {
+                                      "type": "number"
+                                    },
+                                    "repliesNegative": {
+                                      "type": "number"
+                                    },
+                                    "repliesNeutral": {
+                                      "type": "number"
+                                    },
+                                    "bounced": {
+                                      "type": "number"
+                                    },
+                                    "unsubscribed": {
+                                      "type": "number"
+                                    }
+                                  },
+                                  "required": [
+                                    "buffered",
+                                    "claimed",
+                                    "served",
+                                    "skipped",
+                                    "contacted",
+                                    "sent",
+                                    "delivered",
+                                    "opened",
+                                    "clicked",
+                                    "replied",
+                                    "repliesPositive",
+                                    "repliesNegative",
+                                    "repliesNeutral",
+                                    "bounced",
+                                    "unsubscribed"
+                                  ]
+                                },
+                                "description": "Per-campaign counts. Present in brand mode, null in campaign mode."
+                              },
+                              "campaign": {
+                                "type": "object",
+                                "properties": {
+                                  "buffered": {
+                                    "type": "number"
+                                  },
+                                  "claimed": {
+                                    "type": "number"
+                                  },
+                                  "served": {
+                                    "type": "number"
+                                  },
+                                  "skipped": {
+                                    "type": "number"
+                                  },
+                                  "contacted": {
+                                    "type": "number"
+                                  },
+                                  "sent": {
+                                    "type": "number"
+                                  },
+                                  "delivered": {
+                                    "type": "number"
+                                  },
+                                  "opened": {
+                                    "type": "number"
+                                  },
+                                  "clicked": {
+                                    "type": "number"
+                                  },
+                                  "replied": {
+                                    "type": "number"
+                                  },
+                                  "repliesPositive": {
+                                    "type": "number"
+                                  },
+                                  "repliesNegative": {
+                                    "type": "number"
+                                  },
+                                  "repliesNeutral": {
+                                    "type": "number"
+                                  },
+                                  "bounced": {
+                                    "type": "number"
+                                  },
+                                  "unsubscribed": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "buffered",
+                                  "claimed",
+                                  "served",
+                                  "skipped",
+                                  "contacted",
+                                  "sent",
+                                  "delivered",
+                                  "opened",
+                                  "clicked",
+                                  "replied",
+                                  "repliesPositive",
+                                  "repliesNegative",
+                                  "repliesNeutral",
+                                  "bounced",
+                                  "unsubscribed"
+                                ],
+                                "nullable": true,
+                                "description": "Cumulative counts at campaign scope. Null in brand mode."
+                              },
+                              "global": {
+                                "type": "object",
+                                "properties": {
+                                  "bounced": {
+                                    "type": "number"
+                                  },
+                                  "unsubscribed": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "bounced",
+                                  "unsubscribed"
+                                ],
+                                "description": "Global email signals (bounced/unsubscribed counts)."
+                              }
+                            },
+                            "required": [
+                              "totalJournalists",
+                              "brand",
+                              "byCampaign",
+                              "campaign",
+                              "global"
+                            ]
                           },
                           "campaigns": {
                             "type": "array",
-                            "description": "Campaign-level data for this outlet. When brand-scoped, each campaign has its own outreachStatus from the byCampaign breakdown. When campaign-scoped, there is one entry.",
+                            "description": "Campaign-level data for this outlet. Status breakdown is in status.byCampaign.",
                             "items": {
                               "type": "object",
                               "properties": {
@@ -950,22 +1264,6 @@
                                 "relevanceScore": {
                                   "type": "number"
                                 },
-                                "outreachStatus": {
-                                  "type": "string",
-                                  "enum": [
-                                    "replied",
-                                    "delivered",
-                                    "contacted",
-                                    "served",
-                                    "claimed",
-                                    "buffered",
-                                    "open",
-                                    "skipped",
-                                    "denied",
-                                    "ended"
-                                  ],
-                                  "description": "Outreach status scoped to this specific campaign. Ordered by pipeline progression (most advanced first): replied > delivered > contacted > served > claimed > buffered > open > skipped > denied > ended."
-                                },
                                 "overallRelevance": {
                                   "type": "string",
                                   "nullable": true
@@ -973,15 +1271,6 @@
                                 "relevanceRationale": {
                                   "type": "string",
                                   "nullable": true
-                                },
-                                "replyClassification": {
-                                  "type": "string",
-                                  "nullable": true,
-                                  "enum": [
-                                    "positive",
-                                    "negative",
-                                    "neutral"
-                                  ]
                                 },
                                 "runId": {
                                   "type": "string",
@@ -997,7 +1286,6 @@
                                 "featureSlug",
                                 "brandIds",
                                 "relevanceScore",
-                                "outreachStatus",
                                 "updatedAt"
                               ]
                             }
@@ -1010,8 +1298,7 @@
                           "outletDomain",
                           "createdAt",
                           "relevanceScore",
-                          "outreachStatus",
-                          "replyClassification",
+                          "status",
                           "campaigns"
                         ]
                       }
@@ -1022,17 +1309,71 @@
                     },
                     "byOutreachStatus": {
                       "type": "object",
-                      "additionalProperties": {
-                        "type": "integer"
+                      "properties": {
+                        "buffered": {
+                          "type": "number"
+                        },
+                        "claimed": {
+                          "type": "number"
+                        },
+                        "served": {
+                          "type": "number"
+                        },
+                        "skipped": {
+                          "type": "number"
+                        },
+                        "contacted": {
+                          "type": "number"
+                        },
+                        "sent": {
+                          "type": "number"
+                        },
+                        "delivered": {
+                          "type": "number"
+                        },
+                        "opened": {
+                          "type": "number"
+                        },
+                        "clicked": {
+                          "type": "number"
+                        },
+                        "replied": {
+                          "type": "number"
+                        },
+                        "repliesPositive": {
+                          "type": "number"
+                        },
+                        "repliesNegative": {
+                          "type": "number"
+                        },
+                        "repliesNeutral": {
+                          "type": "number"
+                        },
+                        "bounced": {
+                          "type": "number"
+                        },
+                        "unsubscribed": {
+                          "type": "number"
+                        }
                       },
-                      "description": "Count of outlets per outreach status across ALL outlets matching filters (not truncated by pagination). Enriched from journalists-service.",
-                      "example": {
-                        "open": 50,
-                        "served": 120,
-                        "contacted": 30,
-                        "delivered": 37,
-                        "replied": 5
-                      }
+                      "required": [
+                        "buffered",
+                        "claimed",
+                        "served",
+                        "skipped",
+                        "contacted",
+                        "sent",
+                        "delivered",
+                        "opened",
+                        "clicked",
+                        "replied",
+                        "repliesPositive",
+                        "repliesNegative",
+                        "repliesNeutral",
+                        "bounced",
+                        "unsubscribed"
+                      ],
+                      "description": "Cumulative journalist status counts across ALL outlets matching filters. Passed through from journalists-service."
                     }
                   },
                   "required": [
@@ -1050,8 +1391,32 @@
                       "outletDomain": "techcrunch.com",
                       "createdAt": "2026-01-01T00:00:00Z",
                       "relevanceScore": 85,
-                      "outreachStatus": "delivered",
-                      "replyClassification": null,
+                      "status": {
+                        "totalJournalists": 3,
+                        "brand": null,
+                        "byCampaign": null,
+                        "campaign": {
+                          "buffered": 3,
+                          "claimed": 2,
+                          "served": 2,
+                          "skipped": 0,
+                          "contacted": 2,
+                          "sent": 2,
+                          "delivered": 2,
+                          "opened": 1,
+                          "clicked": 0,
+                          "replied": 0,
+                          "repliesPositive": 0,
+                          "repliesNegative": 0,
+                          "repliesNeutral": 0,
+                          "bounced": 0,
+                          "unsubscribed": 0
+                        },
+                        "global": {
+                          "bounced": 0,
+                          "unsubscribed": 0
+                        }
+                      },
                       "campaigns": [
                         {
                           "campaignId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
@@ -1062,10 +1427,8 @@
                           "whyRelevant": "Top tech publication with high domain authority",
                           "whyNotRelevant": "Highly competitive",
                           "relevanceScore": 85,
-                          "outreachStatus": "delivered",
                           "overallRelevance": "high",
                           "relevanceRationale": null,
-                          "replyClassification": null,
                           "runId": "cccccccc-dddd-eeee-ffff-111111111111",
                           "updatedAt": "2026-01-15T12:00:00Z"
                         }
@@ -1074,7 +1437,21 @@
                   ],
                   "total": 1,
                   "byOutreachStatus": {
-                    "delivered": 1
+                    "buffered": 3,
+                    "claimed": 2,
+                    "served": 2,
+                    "skipped": 0,
+                    "contacted": 2,
+                    "sent": 2,
+                    "delivered": 2,
+                    "opened": 1,
+                    "clicked": 0,
+                    "replied": 0,
+                    "repliesPositive": 0,
+                    "repliesNegative": 0,
+                    "repliesNeutral": 0,
+                    "bounced": 0,
+                    "unsubscribed": 0
                   }
                 }
               }
@@ -1388,8 +1765,8 @@
                 "$ref": "#/components/schemas/UpdateOutletStatus"
               },
               "example": {
-                "status": "ended",
-                "reason": "No longer relevant"
+                "status": "skipped",
+                "reason": "Cross-campaign duplicate"
               }
             }
           }
@@ -1414,8 +1791,6 @@
                       "type": "string",
                       "enum": [
                         "open",
-                        "ended",
-                        "denied",
                         "served",
                         "skipped"
                       ]
@@ -1663,7 +2038,7 @@
     "/orgs/outlets/stats": {
       "get": {
         "summary": "Aggregated outlet discovery metrics (org-scoped)",
-        "description": "Returns outlet discovery stats: total outlets discovered, average relevance score, search queries used, and a `byOutreachStatus` breakdown. The status breakdown enriches all outlets via journalists-service — each outlet's outreach status is its high watermark from journalists-service, falling back to the most advanced DB status when no journalist data exists. Supports filtering by brand, campaign, workflow, feature, and groupBy for dimensional breakdown.",
+        "description": "Returns outlet discovery stats: total outlets discovered, average relevance score, search queries used, and a `byOutreachStatus` breakdown with cumulative journalist counts from journalists-service. Supports filtering by brand, campaign, workflow, feature, and groupBy for dimensional breakdown.",
         "parameters": [
           {
             "in": "header",
@@ -1817,7 +2192,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Stats (flat when no groupBy, grouped when groupBy is set). Flat response includes `byOutreachStatus` — a map of outreach status → count, enriched from journalists-service with DB status fallback.",
+            "description": "Stats (flat when no groupBy, grouped when groupBy is set). Flat response includes `byOutreachStatus` — cumulative journalist status counts from journalists-service.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1835,12 +2210,21 @@
                   "avgRelevanceScore": 72.5,
                   "searchQueriesUsed": 8,
                   "byOutreachStatus": {
-                    "open": 10,
-                    "served": 15,
-                    "contacted": 8,
-                    "delivered": 5,
-                    "replied": 3,
-                    "denied": 1
+                    "buffered": 200,
+                    "claimed": 150,
+                    "served": 120,
+                    "skipped": 30,
+                    "contacted": 115,
+                    "sent": 110,
+                    "delivered": 105,
+                    "opened": 45,
+                    "clicked": 12,
+                    "replied": 6,
+                    "repliesPositive": 3,
+                    "repliesNegative": 2,
+                    "repliesNeutral": 1,
+                    "bounced": 5,
+                    "unsubscribed": 0
                   }
                 }
               }
@@ -2214,7 +2598,7 @@
     "/internal/outlets": {
       "post": {
         "summary": "Lookup outlets by IDs and/or campaignId",
-        "description": "Internal endpoint — requires only x-api-key, no org context. At least one of `ids` or `campaignId` must be provided. When `campaignId` is provided, returns enriched campaign-outlet data including `outreachStatus` and `replyClassification` from journalists-service. Without `campaignId`, returns basic outlet data only.",
+        "description": "Internal endpoint — requires only x-api-key, no org context. At least one of `ids` or `campaignId` must be provided. When `campaignId` is provided, returns enriched campaign-outlet data including structured `status` from journalists-service. Without `campaignId`, returns basic outlet data only.",
         "requestBody": {
           "required": true,
           "content": {

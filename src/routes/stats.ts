@@ -242,49 +242,27 @@ router.get(
           params
         );
 
-        // --- byOutreachStatus breakdown with enrichment from journalists-service ---
-        // Get all distinct outlet IDs matching filters
+        // --- byOutreachStatus: pass through from journalists-service ---
         const allOutletsResult = await pool.query(
-          `SELECT DISTINCT co.outlet_id, co.status
-           FROM campaign_outlets co
-           WHERE ${where}`,
+          `SELECT DISTINCT co.outlet_id FROM campaign_outlets co WHERE ${where}`,
           params
         );
+        const allOutletIds = allOutletsResult.rows.map((r: any) => r.outlet_id as string);
 
-        const byOutreachStatus: Record<string, number> = {};
-        const allOutletIds = [...new Set(allOutletsResult.rows.map((r: any) => r.outlet_id as string))];
-        // Priority ordering: replied > delivered > contacted > served > claimed > buffered > open > skipped/denied/ended
-        const STATUS_PRIORITY: Record<string, number> = {
-          ended: 0, denied: 0, skipped: 0, open: 1, buffered: 2, claimed: 3, served: 4, contacted: 5, delivered: 6, replied: 7,
-        };
-        const dbStatusMap = new Map<string, string>();
-        for (const r of allOutletsResult.rows) {
-          const existing = dbStatusMap.get(r.outlet_id);
-          if (!existing || (STATUS_PRIORITY[r.status] ?? 0) > (STATUS_PRIORITY[existing] ?? 0)) {
-            dbStatusMap.set(r.outlet_id, r.status);
-          }
-        }
-
-        // Enrich ALL outlets via journalists-service
         const scopeFilters: ScopeFilters = {};
         if (q.campaignId) scopeFilters.campaignId = q.campaignId;
         if (q.brandId) scopeFilters.brandId = q.brandId;
 
-        if (allOutletIds.length > 0) {
-          const enriched = await fetchOutletStatuses(allOutletIds, ctx, scopeFilters);
-          for (const outletId of allOutletIds) {
-            const e = enriched.get(outletId);
-            const outreachStatus = e?.outreachStatus ?? dbStatusMap.get(outletId) ?? "open";
-            byOutreachStatus[outreachStatus] = (byOutreachStatus[outreachStatus] ?? 0) + 1;
-          }
-        }
+        const enrichment = allOutletIds.length > 0
+          ? await fetchOutletStatuses(allOutletIds, ctx, scopeFilters)
+          : null;
 
         const row = result.rows[0];
         res.json({
           outletsDiscovered: row.outlets_discovered ?? 0,
           avgRelevanceScore: Number(row.avg_relevance_score ?? 0),
           searchQueriesUsed: row.search_queries_used ?? 0,
-          byOutreachStatus,
+          byOutreachStatus: enrichment?.byOutreachStatus,
         });
       }
     } catch (err) {
