@@ -32,6 +32,17 @@ const RUN_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc";
 const CAMPAIGN_ID = "22222222-2222-2222-2222-222222222222";
 const BRAND_ID = "55555555-5555-5555-5555-555555555555";
 
+const ZERO_STATUS_COUNTS = {
+  buffered: 0, claimed: 0, served: 0, skipped: 0,
+  contacted: 0, sent: 0, delivered: 0, opened: 0, clicked: 0,
+  replied: 0, repliesPositive: 0, repliesNegative: 0, repliesNeutral: 0,
+  bounced: 0, unsubscribed: 0,
+};
+
+function emptyEnrichment() {
+  return { results: new Map(), total: 0, byOutreachStatus: { ...ZERO_STATUS_COUNTS } };
+}
+
 /** Only x-org-id — for read/stats endpoints under /org */
 function withBaseIdentity(req: request.Test): request.Test {
   return req
@@ -59,7 +70,7 @@ let app: Express;
 beforeEach(() => {
   vi.clearAllMocks();
   mockConnect.mockResolvedValue(undefined);
-  mockFetchOutletStatuses.mockResolvedValue(new Map());
+  mockFetchOutletStatuses.mockResolvedValue(emptyEnrichment());
   app = createApp();
 });
 
@@ -162,17 +173,18 @@ describe("GET /orgs/outlets", () => {
     expect(res.body.error).toContain("brandId or campaignId");
   });
 
-  it("returns deduplicated outlets with outreachStatus (campaign-scoped)", async () => {
+  it("returns deduplicated outlets with structured status (campaign-scoped)", async () => {
+    const OUTLET_ID = "11111111-1111-1111-1111-111111111111";
     // Step 1: ALL distinct outlet IDs
     mockQuery.mockResolvedValueOnce({
-      rows: [{ id: "11111111-1111-1111-1111-111111111111" }],
+      rows: [{ id: OUTLET_ID }],
       rowCount: 1,
     });
     // Step 2: all campaign_outlet rows for page outlet IDs
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
-          id: "11111111-1111-1111-1111-111111111111",
+          id: OUTLET_ID,
           outlet_name: "TechCrunch",
           outlet_url: "https://techcrunch.com",
           outlet_domain: "techcrunch.com",
@@ -192,13 +204,17 @@ describe("GET /orgs/outlets", () => {
       ],
     });
 
-    // Enrichment returns "contacted" for this outlet
-    mockFetchOutletStatuses.mockResolvedValueOnce(
-      new Map([["11111111-1111-1111-1111-111111111111", { outreachStatus: "contacted", replyClassification: null }]])
-    );
-    // Step 3: DB status query for byOutreachStatus computation
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ outlet_id: "11111111-1111-1111-1111-111111111111", status: "served" }],
+    const outletStatus = {
+      totalJournalists: 5,
+      brand: { ...ZERO_STATUS_COUNTS, contacted: 3, served: 5 },
+      byCampaign: { [CAMPAIGN_ID]: { ...ZERO_STATUS_COUNTS, contacted: 3, served: 5 } },
+      campaign: { ...ZERO_STATUS_COUNTS, contacted: 3, served: 5 },
+      global: { bounced: 0, unsubscribed: 0 },
+    };
+    mockFetchOutletStatuses.mockResolvedValueOnce({
+      results: new Map([[OUTLET_ID, outletStatus]]),
+      total: 1,
+      byOutreachStatus: { ...ZERO_STATUS_COUNTS, contacted: 3, served: 5 },
     });
 
     const res = await withIdentity(request(app).get("/orgs/outlets")).query({
@@ -207,36 +223,38 @@ describe("GET /orgs/outlets", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(1);
-    expect(res.body.byOutreachStatus).toEqual({ contacted: 1 });
+    expect(res.body.byOutreachStatus).toEqual({ ...ZERO_STATUS_COUNTS, contacted: 3, served: 5 });
     const outlet = res.body.outlets[0];
     expect(outlet.outletName).toBe("TechCrunch");
     expect(outlet.relevanceScore).toBe(85);
-    expect(outlet.outreachStatus).toBe("contacted");
-    expect(outlet.replyClassification).toBeNull();
+    expect(outlet.status).toEqual(outletStatus);
     expect(outlet.campaigns).toHaveLength(1);
     expect(outlet.campaigns[0].campaignId).toBe(CAMPAIGN_ID);
-    expect(outlet.campaigns[0].outreachStatus).toBe("contacted");
     expect(outlet.campaigns[0].relevanceScore).toBe(85);
     expect(outlet.campaigns[0].brandIds).toEqual([BRAND_ID]);
+    // No outreachStatus or replyClassification on campaigns
+    expect(outlet.campaigns[0]).not.toHaveProperty("outreachStatus");
     // scopeFilters should be passed with campaignId
     expect(mockFetchOutletStatuses).toHaveBeenCalledWith(
-      ["11111111-1111-1111-1111-111111111111"],
+      [OUTLET_ID],
       expect.any(Object),
       { campaignId: CAMPAIGN_ID }
     );
   });
 
-  it("enriches ALL outlets (not just served) with base identity only", async () => {
+  it("returns null status when no journalist data exists for outlet", async () => {
+    const OUTLET_ID = "11111111-1111-1111-1111-111111111111";
+
     // Step 1: ALL distinct outlet IDs
     mockQuery.mockResolvedValueOnce({
-      rows: [{ id: "11111111-1111-1111-1111-111111111111" }],
+      rows: [{ id: OUTLET_ID }],
       rowCount: 1,
     });
     // Step 2: data query
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
-          id: "11111111-1111-1111-1111-111111111111",
+          id: OUTLET_ID,
           outlet_name: "TechCrunch",
           outlet_url: "https://techcrunch.com",
           outlet_domain: "techcrunch.com",
@@ -256,13 +274,7 @@ describe("GET /orgs/outlets", () => {
       ],
     });
 
-    mockFetchOutletStatuses.mockResolvedValueOnce(
-      new Map([["11111111-1111-1111-1111-111111111111", { outreachStatus: "delivered", replyClassification: null }]])
-    );
-    // Step 3: DB status query for byOutreachStatus
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ outlet_id: "11111111-1111-1111-1111-111111111111", status: "open" }],
-    });
+    mockFetchOutletStatuses.mockResolvedValueOnce(emptyEnrichment());
 
     const res = await withBaseIdentity(request(app).get("/orgs/outlets")).query({
       campaignId: CAMPAIGN_ID,
@@ -270,13 +282,12 @@ describe("GET /orgs/outlets", () => {
 
     expect(res.status).toBe(200);
     const outlet = res.body.outlets[0];
-    expect(outlet.outreachStatus).toBe("delivered");
-    expect(outlet.campaigns[0].outreachStatus).toBe("delivered");
-    expect(res.body.byOutreachStatus).toEqual({ delivered: 1 });
+    expect(outlet.status).toBeNull();
+    expect(res.body.byOutreachStatus).toEqual(ZERO_STATUS_COUNTS);
     expect(mockFetchOutletStatuses).toHaveBeenCalledOnce();
   });
 
-  it("outreachStatus uses enriched high watermark (brand-scoped with byCampaign breakdown)", async () => {
+  it("returns structured status for multi-campaign outlet (brand-scoped)", async () => {
     const OUTLET_ID = "11111111-1111-1111-1111-111111111111";
     const CAMPAIGN_ID_2 = "33333333-3333-3333-3333-333333333333";
 
@@ -327,23 +338,20 @@ describe("GET /orgs/outlets", () => {
       ],
     });
 
-    // Enrichment returns brand-level high watermark + per-campaign breakdown
-    mockFetchOutletStatuses.mockResolvedValueOnce(
-      new Map([[OUTLET_ID, {
-        outreachStatus: "delivered",
-        replyClassification: null,
-        byCampaign: {
-          [CAMPAIGN_ID]: { outreachStatus: "contacted", replyClassification: null },
-          [CAMPAIGN_ID_2]: { outreachStatus: "delivered", replyClassification: null },
-        },
-      }]])
-    );
-    // Step 3: DB status query for byOutreachStatus
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        { outlet_id: OUTLET_ID, status: "open" },
-        { outlet_id: OUTLET_ID, status: "served" },
-      ],
+    const outletStatus = {
+      totalJournalists: 8,
+      brand: { ...ZERO_STATUS_COUNTS, delivered: 5, contacted: 8 },
+      byCampaign: {
+        [CAMPAIGN_ID]: { ...ZERO_STATUS_COUNTS, contacted: 3 },
+        [CAMPAIGN_ID_2]: { ...ZERO_STATUS_COUNTS, delivered: 5, contacted: 5 },
+      },
+      campaign: null,
+      global: { bounced: 0, unsubscribed: 0 },
+    };
+    mockFetchOutletStatuses.mockResolvedValueOnce({
+      results: new Map([[OUTLET_ID, outletStatus]]),
+      total: 1,
+      byOutreachStatus: { ...ZERO_STATUS_COUNTS, delivered: 5, contacted: 8 },
     });
 
     const res = await withIdentity(request(app).get("/orgs/outlets")).query({
@@ -354,95 +362,12 @@ describe("GET /orgs/outlets", () => {
     const outlet = res.body.outlets[0];
     // Outlet-level relevanceScore = max(90, 85) = 90
     expect(outlet.relevanceScore).toBe(90);
-    // Outlet-level = enriched high watermark for the brand
-    expect(outlet.outreachStatus).toBe("delivered");
-    // Per-campaign = from byCampaign breakdown
-    expect(outlet.campaigns[0].outreachStatus).toBe("contacted");
-    expect(outlet.campaigns[1].outreachStatus).toBe("delivered");
-    expect(res.body.byOutreachStatus).toEqual({ delivered: 1 });
-  });
-
-  it("falls back to DB status when no journalist data exists", async () => {
-    const OUTLET_ID = "11111111-1111-1111-1111-111111111111";
-    const CAMPAIGN_ID_2 = "33333333-3333-3333-3333-333333333333";
-
-    // Step 1: ALL distinct outlet IDs
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: OUTLET_ID }],
-      rowCount: 1,
-    });
-    // Step 2: data query
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        {
-          id: OUTLET_ID,
-          outlet_name: "TechCrunch",
-          outlet_url: "https://techcrunch.com",
-          outlet_domain: "techcrunch.com",
-          campaign_id: CAMPAIGN_ID,
-          feature_slug: "pr-outreach-v2",
-          brand_ids: [BRAND_ID],
-          why_relevant: "Top tech",
-          why_not_relevant: "Competitive",
-          relevance_score: "90.00",
-          outlet_status: "served",
-          overall_relevance: "high",
-          relevance_rationale: null,
-          run_id: RUN_ID,
-          created_at: "2026-01-01T00:00:00Z",
-          campaign_updated_at: "2026-01-03T00:00:00Z",
-        },
-        {
-          id: OUTLET_ID,
-          outlet_name: "TechCrunch",
-          outlet_url: "https://techcrunch.com",
-          outlet_domain: "techcrunch.com",
-          campaign_id: CAMPAIGN_ID_2,
-          feature_slug: "pr-outreach",
-          brand_ids: [BRAND_ID],
-          why_relevant: "Good publication",
-          why_not_relevant: "None",
-          relevance_score: "85.00",
-          outlet_status: "open",
-          overall_relevance: null,
-          relevance_rationale: null,
-          run_id: null,
-          created_at: "2026-01-01T00:00:00Z",
-          campaign_updated_at: "2026-01-02T00:00:00Z",
-        },
-      ],
-    });
-
-    // No journalist data for this outlet
-    mockFetchOutletStatuses.mockResolvedValueOnce(new Map());
-    // Step 3: DB status query for byOutreachStatus
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        { outlet_id: OUTLET_ID, status: "served" },
-        { outlet_id: OUTLET_ID, status: "open" },
-      ],
-    });
-
-    const res = await withIdentity(request(app).get("/orgs/outlets")).query({
-      brandId: BRAND_ID,
-    });
-
-    expect(res.status).toBe(200);
-    expect(res.body.outlets).toHaveLength(1);
-    expect(res.body.total).toBe(1);
-    const outlet = res.body.outlets[0];
-    expect(outlet.campaigns).toHaveLength(2);
-    expect(outlet.campaigns[0].campaignId).toBe(CAMPAIGN_ID);
-    expect(outlet.campaigns[1].campaignId).toBe(CAMPAIGN_ID_2);
-    // Outlet-level relevanceScore = max(90, 85) = 90
-    expect(outlet.relevanceScore).toBe(90);
-    // Fallback: most advanced DB status = "served"
-    expect(outlet.outreachStatus).toBe("served");
-    // Per-campaign fallback to DB status
-    expect(outlet.campaigns[0].outreachStatus).toBe("served");
-    expect(outlet.campaigns[1].outreachStatus).toBe("open");
-    // byOutreachStatus: fallback to DB = served (most advanced)
-    expect(res.body.byOutreachStatus).toEqual({ served: 1 });
+    // Structured status object from journalists-service
+    expect(outlet.status).toEqual(outletStatus);
+    // Campaigns no longer have outreachStatus
+    expect(outlet.campaigns[0]).not.toHaveProperty("outreachStatus");
+    expect(outlet.campaigns[1]).not.toHaveProperty("outreachStatus");
+    expect(res.body.byOutreachStatus).toEqual({ ...ZERO_STATUS_COUNTS, delivered: 5, contacted: 8 });
   });
 
   it("filters by featureSlugs (comma-separated)", async () => {
@@ -597,7 +522,7 @@ describe("PATCH /orgs/outlets/:id/status", () => {
         {
           outlet_id: "11111111-1111-1111-1111-111111111111",
           campaign_id: CAMPAIGN_ID,
-          status: "ended",
+          status: "skipped",
           relevance_rationale: "No longer relevant",
           updated_at: "2026-01-02T00:00:00Z",
         },
@@ -608,10 +533,10 @@ describe("PATCH /orgs/outlets/:id/status", () => {
       request(app)
         .patch("/orgs/outlets/11111111-1111-1111-1111-111111111111/status")
         .set("x-campaign-id", CAMPAIGN_ID)
-    ).send({ status: "ended", reason: "No longer relevant" });
+    ).send({ status: "skipped", reason: "No longer relevant" });
 
     expect(res.status).toBe(200);
-    expect(res.body.status).toBe("ended");
+    expect(res.body.status).toBe("skipped");
   });
 });
 
@@ -701,9 +626,9 @@ describe("POST /orgs/outlets/search", () => {
 });
 
 // ========================
-// Internal (unified GET /internal/outlets)
+// Internal (POST /internal/outlets)
 // ========================
-describe("GET /internal/outlets", () => {
+describe("POST /internal/outlets", () => {
   it("returns outlets by IDs (no campaignId — no enrichment)", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [
@@ -719,9 +644,9 @@ describe("GET /internal/outlets", () => {
     });
 
     const res = await request(app)
-      .get("/internal/outlets")
+      .post("/internal/outlets")
       .set("x-api-key", API_KEY)
-      .query({ ids: "11111111-1111-1111-1111-111111111111" });
+      .send({ ids: ["11111111-1111-1111-1111-111111111111"] });
 
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(1);
@@ -732,16 +657,26 @@ describe("GET /internal/outlets", () => {
 
   it("returns 400 without ids or campaignId", async () => {
     const res = await request(app)
-      .get("/internal/outlets")
-      .set("x-api-key", API_KEY);
+      .post("/internal/outlets")
+      .set("x-api-key", API_KEY)
+      .send({});
     expect(res.status).toBe(400);
   });
 
-  it("returns campaign outlets by campaignId with outreachStatus enrichment", async () => {
+  it("returns 400 with empty ids array and no campaignId", async () => {
+    const res = await request(app)
+      .post("/internal/outlets")
+      .set("x-api-key", API_KEY)
+      .send({ ids: [] });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns campaign outlets by campaignId with structured status enrichment", async () => {
+    const OUTLET_ID = "11111111-1111-1111-1111-111111111111";
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
-          id: "11111111-1111-1111-1111-111111111111",
+          id: OUTLET_ID,
           outlet_name: "TechCrunch",
           outlet_url: "https://techcrunch.com",
           outlet_domain: "techcrunch.com",
@@ -759,14 +694,23 @@ describe("GET /internal/outlets", () => {
       ],
     });
 
-    mockFetchOutletStatuses.mockResolvedValueOnce(
-      new Map([["11111111-1111-1111-1111-111111111111", { outreachStatus: "contacted", replyClassification: null }]])
-    );
+    const outletStatus = {
+      totalJournalists: 3,
+      brand: { ...ZERO_STATUS_COUNTS, contacted: 2 },
+      byCampaign: null,
+      campaign: { ...ZERO_STATUS_COUNTS, contacted: 2 },
+      global: { bounced: 0, unsubscribed: 0 },
+    };
+    mockFetchOutletStatuses.mockResolvedValueOnce({
+      results: new Map([[OUTLET_ID, outletStatus]]),
+      total: 1,
+      byOutreachStatus: { ...ZERO_STATUS_COUNTS, contacted: 2 },
+    });
 
     const res = await request(app)
-      .get("/internal/outlets")
+      .post("/internal/outlets")
       .set("x-api-key", API_KEY)
-      .query({ campaignId: CAMPAIGN_ID });
+      .send({ campaignId: CAMPAIGN_ID });
 
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(1);
@@ -774,11 +718,13 @@ describe("GET /internal/outlets", () => {
     expect(res.body.outlets[0].brandIds).toEqual([BRAND_ID]);
     expect(res.body.outlets[0].relevanceScore).toBe(85);
     expect(res.body.outlets[0].campaignId).toBe(CAMPAIGN_ID);
-    expect(res.body.outlets[0].outreachStatus).toBe("contacted");
-    expect(res.body.outlets[0].replyClassification).toBeNull();
+    expect(res.body.outlets[0].status).toEqual(outletStatus);
+    // No outreachStatus or replyClassification
+    expect(res.body.outlets[0]).not.toHaveProperty("outreachStatus");
+    expect(res.body.outlets[0]).not.toHaveProperty("replyClassification");
   });
 
-  it("falls back to DB status when no journalist data for internal outlets", async () => {
+  it("returns null status when no journalist data for internal outlets", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
@@ -800,15 +746,15 @@ describe("GET /internal/outlets", () => {
       ],
     });
 
-    mockFetchOutletStatuses.mockResolvedValueOnce(new Map());
+    mockFetchOutletStatuses.mockResolvedValueOnce(emptyEnrichment());
 
     const res = await request(app)
-      .get("/internal/outlets")
+      .post("/internal/outlets")
       .set("x-api-key", API_KEY)
-      .query({ campaignId: CAMPAIGN_ID });
+      .send({ campaignId: CAMPAIGN_ID });
 
     expect(res.status).toBe(200);
-    expect(res.body.outlets[0].outreachStatus).toBe("served");
+    expect(res.body.outlets[0].status).toBeNull();
   });
 
   it("filters by both ids and campaignId", async () => {
@@ -833,12 +779,12 @@ describe("GET /internal/outlets", () => {
       ],
     });
 
-    mockFetchOutletStatuses.mockResolvedValueOnce(new Map());
+    mockFetchOutletStatuses.mockResolvedValueOnce(emptyEnrichment());
 
     const res = await request(app)
-      .get("/internal/outlets")
+      .post("/internal/outlets")
       .set("x-api-key", API_KEY)
-      .query({ ids: "11111111-1111-1111-1111-111111111111", campaignId: CAMPAIGN_ID });
+      .send({ ids: ["11111111-1111-1111-1111-111111111111"], campaignId: CAMPAIGN_ID });
 
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(1);
@@ -863,9 +809,9 @@ describe("GET /internal/outlets", () => {
     });
 
     const res = await request(app)
-      .get("/internal/outlets")
+      .post("/internal/outlets")
       .set("x-api-key", API_KEY)
-      .query({ ids: "11111111-1111-1111-1111-111111111111" });
+      .send({ ids: ["11111111-1111-1111-1111-111111111111"] });
 
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(1);
