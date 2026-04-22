@@ -330,6 +330,9 @@ export async function discoverOutletsInCategory(
     return 0;
   }
 
+  // Sort by domain to ensure consistent lock ordering across concurrent transactions (prevents deadlocks)
+  validOutlets.sort((a, b) => a.domain.localeCompare(b.domain));
+
   // Insert valid outlets
   const client = await pool.connect();
   let inserted = 0;

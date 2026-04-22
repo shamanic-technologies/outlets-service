@@ -334,6 +334,68 @@ describe("discoverOutletsInCategory", () => {
     expect(mockValidateOutletBatch.mock.calls[0][0]).toHaveLength(3);
   });
 
+  it("inserts outlets sorted by domain to prevent deadlocks under concurrency", async () => {
+    setupBrandMocks();
+
+    // Get known domains for category → none
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    // LLM returns outlets in NON-alphabetical domain order (z before a)
+    mockChatComplete.mockResolvedValueOnce({
+      content: "",
+      json: {
+        outlets: [
+          { name: "Zebra News", domain: "zebranews.com", whyRelevant: "Z outlet", relevanceScore: 80 },
+          { name: "Alpha Daily", domain: "alphadaily.com", whyRelevant: "A outlet", relevanceScore: 70 },
+          { name: "Middle Post", domain: "middlepost.com", whyRelevant: "M outlet", relevanceScore: 60 },
+        ],
+      },
+      tokensInput: 200,
+      tokensOutput: 150,
+      model: "flash-lite",
+    });
+
+    // Check existing outlets → none
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    // Google validation: all valid
+    mockValidateOutletBatch.mockResolvedValueOnce([
+      { name: "Zebra News", domain: "zebranews.com", valid: true },
+      { name: "Alpha Daily", domain: "alphadaily.com", valid: true },
+      { name: "Middle Post", domain: "middlepost.com", valid: true },
+    ]);
+
+    // DB inserts (via client) — 3 outlets, each with 3 queries + BEGIN/COMMIT
+    mockClientQuery
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({ rows: [{ id: "outlet-a" }] }) // INSERT outlets (alphadaily.com — sorted first)
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_category_outlets
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_outlets
+      .mockResolvedValueOnce({ rows: [{ id: "outlet-m" }] }) // INSERT outlets (middlepost.com — sorted second)
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_category_outlets
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_outlets
+      .mockResolvedValueOnce({ rows: [{ id: "outlet-z" }] }) // INSERT outlets (zebranews.com — sorted third)
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_category_outlets
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_outlets
+      .mockResolvedValueOnce({}); // COMMIT
+
+    // Update outlets_found counter
+    mockQuery.mockResolvedValueOnce({});
+    // Check if category should be capped
+    mockQuery.mockResolvedValueOnce({ rows: [{ outlets_found: 3 }] });
+
+    await discoverOutletsInCategory(category, ctx);
+
+    // Verify inserts happen in alphabetical domain order (prevents deadlocks)
+    const insertCalls = mockClientQuery.mock.calls.filter(
+      (call) => typeof call[0] === "string" && call[0].includes("INSERT INTO outlets")
+    );
+    expect(insertCalls).toHaveLength(3);
+    expect(insertCalls[0][1][2]).toBe("alphadaily.com");  // domain param is $3
+    expect(insertCalls[1][1][2]).toBe("middlepost.com");
+    expect(insertCalls[2][1][2]).toBe("zebranews.com");
+  });
+
   it("skips Google validation for outlets already in outlets table", async () => {
     setupBrandMocks();
 
@@ -480,13 +542,13 @@ describe("discoverOutletsInCategory", () => {
       { name: "Niche Blog", domain: "nicheblog.io", relevanceScore: 45, valid: true },
     ]);
 
-    // DB inserts
+    // DB inserts (sorted by domain: nicheblog.io < techcrunch.com)
     mockClientQuery
       .mockResolvedValueOnce({}) // BEGIN
-      .mockResolvedValueOnce({ rows: [{ id: "outlet-1" }] }) // INSERT outlets (TechCrunch)
+      .mockResolvedValueOnce({ rows: [{ id: "outlet-2" }] }) // INSERT outlets (nicheblog.io — sorted first)
       .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_category_outlets
       .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_outlets
-      .mockResolvedValueOnce({ rows: [{ id: "outlet-2" }] }) // INSERT outlets (Niche Blog)
+      .mockResolvedValueOnce({ rows: [{ id: "outlet-1" }] }) // INSERT outlets (techcrunch.com — sorted second)
       .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_category_outlets
       .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_outlets
       .mockResolvedValueOnce({}); // COMMIT
@@ -506,10 +568,10 @@ describe("discoverOutletsInCategory", () => {
     );
     expect(campaignOutletInserts).toHaveLength(2);
 
-    // First outlet (TechCrunch) should have relevanceScore 92
-    expect(campaignOutletInserts[0][1][8]).toBe(92);
-    // Second outlet (Niche Blog) should have relevanceScore 45
-    expect(campaignOutletInserts[1][1][8]).toBe(45);
+    // First insert is nicheblog.io (sorted first) with relevanceScore 45
+    expect(campaignOutletInserts[0][1][8]).toBe(45);
+    // Second insert is techcrunch.com (sorted second) with relevanceScore 92
+    expect(campaignOutletInserts[1][1][8]).toBe(92);
   });
 
   it("marks category exhausted when all outlets fail validation", async () => {
