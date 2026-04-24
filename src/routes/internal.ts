@@ -2,7 +2,7 @@ import { Router, Request, Response } from "express";
 import { pool } from "../db/pool";
 import { config } from "../config";
 import { validateBody } from "../middleware/validate";
-import { internalOutletsBodySchema } from "../schemas";
+import { internalOutletsBodySchema, transferBrandBodySchema } from "../schemas";
 import { fetchOutletStatuses } from "../services/outlet-status";
 import { buildServiceHeaders } from "../services/headers";
 
@@ -105,6 +105,40 @@ router.post(
       });
     } catch (err) {
       console.error("[outlets-service] Error getting internal outlets:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// POST /internal/transfer-brand — re-assign solo-brand rows from one org to another
+router.post(
+  "/transfer-brand",
+  validateBody(transferBrandBodySchema),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { brandId, sourceOrgId, targetOrgId } = req.body as {
+        brandId: string;
+        sourceOrgId: string;
+        targetOrgId: string;
+      };
+
+      // Update campaign_outlets where org_id = sourceOrgId AND brand_ids contains exactly one element = brandId
+      const result = await pool.query(
+        `UPDATE campaign_outlets
+         SET org_id = $1, updated_at = CURRENT_TIMESTAMP
+         WHERE org_id = $2
+           AND array_length(brand_ids, 1) = 1
+           AND brand_ids[1] = $3`,
+        [targetOrgId, sourceOrgId, brandId]
+      );
+
+      res.json({
+        updatedTables: [
+          { tableName: "campaign_outlets", count: result.rowCount ?? 0 },
+        ],
+      });
+    } catch (err) {
+      console.error("[outlets-service] Error transferring brand:", err);
       res.status(500).json({ error: "Internal server error" });
     }
   }

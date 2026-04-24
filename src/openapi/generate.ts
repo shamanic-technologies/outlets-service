@@ -18,6 +18,8 @@ import {
   discoverResponseSchema,
   statsCostsResponseSchema,
   statusCountsSchema,
+  transferBrandBodySchema,
+  transferBrandResponseSchema,
 } from "../schemas";
 import { zodToJsonSchema } from "./zod-to-json";
 
@@ -113,6 +115,8 @@ const spec = {
       Discover: zodToJsonSchema(discoverSchema),
       DiscoverResponse: zodToJsonSchema(discoverResponseSchema),
       StatsCostsResponse: zodToJsonSchema(statsCostsResponseSchema),
+      TransferBrandBody: zodToJsonSchema(transferBrandBodySchema),
+      TransferBrandResponse: zodToJsonSchema(transferBrandResponseSchema),
       HealthResponse: zodToJsonSchema(healthResponseSchema),
       ErrorResponse: zodToJsonSchema(errorResponseSchema),
     },
@@ -511,6 +515,33 @@ const spec = {
             },
           },
           "400": { description: "Neither ids nor campaignId provided", content: { "application/json": { schema: ref("ErrorResponse") } } },
+        },
+      },
+    },
+    "/internal/transfer-brand": {
+      post: {
+        summary: "Transfer solo-brand rows between orgs",
+        description: "Re-assigns all solo-brand rows (where brand_ids contains exactly one element matching brandId) from sourceOrgId to targetOrgId. Skips co-branding rows. Idempotent — running twice is a no-op.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: ref("TransferBrandBody"),
+              example: {
+                brandId: "ffffffff-1111-2222-3333-444444444444",
+                sourceOrgId: "org-source-uuid",
+                targetOrgId: "org-target-uuid",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Transfer completed",
+            content: { "application/json": { schema: ref("TransferBrandResponse") } },
+          },
+          "400": { description: "Validation error", content: { "application/json": { schema: ref("ErrorResponse") } } },
+          "500": { description: "Internal error", content: { "application/json": { schema: ref("ErrorResponse") } } },
         },
       },
     },
