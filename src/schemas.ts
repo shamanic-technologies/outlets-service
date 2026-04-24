@@ -107,6 +107,21 @@ export const errorResponseSchema = z.object({
 
 // --- Internal ---
 
+export const transferBrandBodySchema = z.object({
+  brandId: z.string().uuid(),
+  sourceOrgId: z.string().min(1),
+  targetOrgId: z.string().min(1),
+});
+
+export const transferBrandResponseSchema = z.object({
+  updatedTables: z.array(
+    z.object({
+      tableName: z.string(),
+      count: z.number(),
+    })
+  ),
+});
+
 export const internalOutletsBodySchema = z.object({
   ids: z.array(z.string().uuid()).optional(),
   campaignId: z.string().uuid().optional(),
