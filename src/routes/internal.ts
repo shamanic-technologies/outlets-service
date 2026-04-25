@@ -116,21 +116,32 @@ router.post(
   validateBody(transferBrandBodySchema),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { brandId, sourceOrgId, targetOrgId } = req.body as {
-        brandId: string;
+      const { sourceBrandId, sourceOrgId, targetOrgId, targetBrandId } = req.body as {
+        sourceBrandId: string;
         sourceOrgId: string;
         targetOrgId: string;
+        targetBrandId?: string;
       };
 
-      // Update campaign_outlets where org_id = sourceOrgId AND brand_ids contains exactly one element = brandId
-      const result = await pool.query(
-        `UPDATE campaign_outlets
-         SET org_id = $1, updated_at = CURRENT_TIMESTAMP
-         WHERE org_id = $2
-           AND array_length(brand_ids, 1) = 1
-           AND brand_ids[1] = $3`,
-        [targetOrgId, sourceOrgId, brandId]
-      );
+      // Update campaign_outlets where org_id = sourceOrgId AND brand_ids contains exactly one element = sourceBrandId
+      // When targetBrandId is present (conflict), also rewrite the brand reference
+      const result = targetBrandId
+        ? await pool.query(
+            `UPDATE campaign_outlets
+             SET brand_ids = ARRAY[$1::uuid], org_id = $2, updated_at = CURRENT_TIMESTAMP
+             WHERE org_id = $3
+               AND array_length(brand_ids, 1) = 1
+               AND brand_ids[1] = $4`,
+            [targetBrandId, targetOrgId, sourceOrgId, sourceBrandId]
+          )
+        : await pool.query(
+            `UPDATE campaign_outlets
+             SET org_id = $1, updated_at = CURRENT_TIMESTAMP
+             WHERE org_id = $2
+               AND array_length(brand_ids, 1) = 1
+               AND brand_ids[1] = $3`,
+            [targetOrgId, sourceOrgId, sourceBrandId]
+          );
 
       res.json({
         updatedTables: [

@@ -893,13 +893,13 @@ describe("POST /internal/transfer-brand", () => {
   const SOURCE_ORG = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
   const TARGET_ORG = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 
-  it("updates solo-brand campaign_outlets rows", async () => {
+  it("updates solo-brand campaign_outlets rows (no targetBrandId)", async () => {
     mockQuery.mockResolvedValueOnce({ rowCount: 3 });
 
     const res = await request(app)
       .post("/internal/transfer-brand")
       .set("x-api-key", API_KEY)
-      .send({ brandId: BRAND_ID, sourceOrgId: SOURCE_ORG, targetOrgId: TARGET_ORG });
+      .send({ sourceBrandId: BRAND_ID, sourceOrgId: SOURCE_ORG, targetOrgId: TARGET_ORG });
 
     expect(res.status).toBe(200);
     expect(res.body.updatedTables).toEqual([
@@ -910,8 +910,30 @@ describe("POST /internal/transfer-brand", () => {
     expect(sql).toContain("UPDATE campaign_outlets");
     expect(sql).toContain("array_length(brand_ids, 1) = 1");
     expect(sql).toContain("brand_ids[1]");
+    expect(sql).not.toContain("brand_ids = ARRAY");
     const params = mockQuery.mock.calls[0][1];
     expect(params).toEqual([TARGET_ORG, SOURCE_ORG, BRAND_ID]);
+  });
+
+  it("rewrites brand_id when targetBrandId is provided", async () => {
+    const TARGET_BRAND = "cccccccc-cccc-cccc-cccc-cccccccccccc";
+    mockQuery.mockResolvedValueOnce({ rowCount: 2 });
+
+    const res = await request(app)
+      .post("/internal/transfer-brand")
+      .set("x-api-key", API_KEY)
+      .send({ sourceBrandId: BRAND_ID, sourceOrgId: SOURCE_ORG, targetOrgId: TARGET_ORG, targetBrandId: TARGET_BRAND });
+
+    expect(res.status).toBe(200);
+    expect(res.body.updatedTables).toEqual([
+      { tableName: "campaign_outlets", count: 2 },
+    ]);
+
+    const sql = mockQuery.mock.calls[0][0] as string;
+    expect(sql).toContain("brand_ids = ARRAY");
+    expect(sql).toContain("UPDATE campaign_outlets");
+    const params = mockQuery.mock.calls[0][1];
+    expect(params).toEqual([TARGET_BRAND, TARGET_ORG, SOURCE_ORG, BRAND_ID]);
   });
 
   it("returns count 0 when no rows match (idempotent)", async () => {
@@ -920,7 +942,7 @@ describe("POST /internal/transfer-brand", () => {
     const res = await request(app)
       .post("/internal/transfer-brand")
       .set("x-api-key", API_KEY)
-      .send({ brandId: BRAND_ID, sourceOrgId: SOURCE_ORG, targetOrgId: TARGET_ORG });
+      .send({ sourceBrandId: BRAND_ID, sourceOrgId: SOURCE_ORG, targetOrgId: TARGET_ORG });
 
     expect(res.status).toBe(200);
     expect(res.body.updatedTables).toEqual([
@@ -928,7 +950,7 @@ describe("POST /internal/transfer-brand", () => {
     ]);
   });
 
-  it("returns 400 for missing brandId", async () => {
+  it("returns 400 for missing sourceBrandId", async () => {
     const res = await request(app)
       .post("/internal/transfer-brand")
       .set("x-api-key", API_KEY)
@@ -937,11 +959,20 @@ describe("POST /internal/transfer-brand", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 400 for invalid brandId (not UUID)", async () => {
+  it("returns 400 for invalid sourceBrandId (not UUID)", async () => {
     const res = await request(app)
       .post("/internal/transfer-brand")
       .set("x-api-key", API_KEY)
-      .send({ brandId: "not-a-uuid", sourceOrgId: SOURCE_ORG, targetOrgId: TARGET_ORG });
+      .send({ sourceBrandId: "not-a-uuid", sourceOrgId: SOURCE_ORG, targetOrgId: TARGET_ORG });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 for invalid targetBrandId (not UUID)", async () => {
+    const res = await request(app)
+      .post("/internal/transfer-brand")
+      .set("x-api-key", API_KEY)
+      .send({ sourceBrandId: BRAND_ID, sourceOrgId: SOURCE_ORG, targetOrgId: TARGET_ORG, targetBrandId: "not-a-uuid" });
 
     expect(res.status).toBe(400);
   });
@@ -950,7 +981,7 @@ describe("POST /internal/transfer-brand", () => {
     const res = await request(app)
       .post("/internal/transfer-brand")
       .set("x-api-key", API_KEY)
-      .send({ brandId: BRAND_ID, targetOrgId: TARGET_ORG });
+      .send({ sourceBrandId: BRAND_ID, targetOrgId: TARGET_ORG });
 
     expect(res.status).toBe(400);
   });
@@ -958,7 +989,7 @@ describe("POST /internal/transfer-brand", () => {
   it("returns 401 without x-api-key", async () => {
     const res = await request(app)
       .post("/internal/transfer-brand")
-      .send({ brandId: BRAND_ID, sourceOrgId: SOURCE_ORG, targetOrgId: TARGET_ORG });
+      .send({ sourceBrandId: BRAND_ID, sourceOrgId: SOURCE_ORG, targetOrgId: TARGET_ORG });
 
     expect(res.status).toBe(401);
   });
@@ -969,7 +1000,7 @@ describe("POST /internal/transfer-brand", () => {
     const res = await request(app)
       .post("/internal/transfer-brand")
       .set("x-api-key", API_KEY)
-      .send({ brandId: BRAND_ID, sourceOrgId: SOURCE_ORG, targetOrgId: TARGET_ORG });
+      .send({ sourceBrandId: BRAND_ID, sourceOrgId: SOURCE_ORG, targetOrgId: TARGET_ORG });
 
     expect(res.status).toBe(200);
   });
