@@ -700,14 +700,25 @@ describe("GET /orgs/outlets/stats/costs", () => {
 // Base headers only (no workflow context)
 // ========================
 describe("Stats endpoints with base headers only", () => {
-  it("GET /orgs/outlets/stats returns 400 without brandId or campaignId", async () => {
+  it("GET /orgs/outlets/stats returns 200 with only orgId (no brandId or campaignId)", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ outlets_discovered: 15, avg_relevance_score: "72.00", search_queries_used: 30 }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
     const res = await request(app)
       .get("/orgs/outlets/stats")
       .set("x-api-key", API_KEY)
       .set("x-org-id", ORG_ID);
 
-    expect(res.status).toBe(400);
-    expect(res.body.error).toBe("Validation error");
+    expect(res.status).toBe(200);
+    expect(res.body.outletsDiscovered).toBe(15);
+    expect(res.body.avgRelevanceScore).toBe(72);
+    expect(res.body.searchQueriesUsed).toBe(30);
+    // Only org_id filter in the query
+    const sql = mockQuery.mock.calls[0][0] as string;
+    expect(sql).toContain("co.org_id = $1");
+    expect(mockQuery.mock.calls[0][1]).toEqual([ORG_ID]);
   });
 
   it("GET /orgs/outlets/stats/costs works with only x-org-id", async () => {
