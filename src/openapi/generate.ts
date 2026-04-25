@@ -521,16 +521,17 @@ const spec = {
     "/internal/transfer-brand": {
       post: {
         summary: "Transfer solo-brand rows between orgs",
-        description: "Re-assigns all solo-brand rows (where brand_ids contains exactly one element matching brandId) from sourceOrgId to targetOrgId. Skips co-branding rows. Idempotent — running twice is a no-op.",
+        description: "Re-assigns all solo-brand rows (where brand_ids contains exactly one element matching sourceBrandId) from sourceOrgId to targetOrgId. When targetBrandId is provided, also rewrites the brand reference. Skips co-branding rows. Idempotent — running twice is a no-op.",
         requestBody: {
           required: true,
           content: {
             "application/json": {
               schema: ref("TransferBrandBody"),
               example: {
-                brandId: "ffffffff-1111-2222-3333-444444444444",
+                sourceBrandId: "ffffffff-1111-2222-3333-444444444444",
                 sourceOrgId: "org-source-uuid",
                 targetOrgId: "org-target-uuid",
+                targetBrandId: "eeeeeeee-1111-2222-3333-444444444444",
               },
             },
           },

@@ -647,7 +647,7 @@
       "TransferBrandBody": {
         "type": "object",
         "properties": {
-          "brandId": {
+          "sourceBrandId": {
             "type": "string",
             "format": "uuid"
           },
@@ -658,10 +658,14 @@
           "targetOrgId": {
             "type": "string",
             "minLength": 1
+          },
+          "targetBrandId": {
+            "type": "string",
+            "format": "uuid"
           }
         },
         "required": [
-          "brandId",
+          "sourceBrandId",
           "sourceOrgId",
           "targetOrgId"
         ]
@@ -2717,7 +2721,7 @@
     "/internal/transfer-brand": {
       "post": {
         "summary": "Transfer solo-brand rows between orgs",
-        "description": "Re-assigns all solo-brand rows (where brand_ids contains exactly one element matching brandId) from sourceOrgId to targetOrgId. Skips co-branding rows. Idempotent — running twice is a no-op.",
+        "description": "Re-assigns all solo-brand rows (where brand_ids contains exactly one element matching sourceBrandId) from sourceOrgId to targetOrgId. When targetBrandId is provided, also rewrites the brand reference. Skips co-branding rows. Idempotent — running twice is a no-op.",
         "requestBody": {
           "required": true,
           "content": {
@@ -2726,9 +2730,10 @@
                 "$ref": "#/components/schemas/TransferBrandBody"
               },
               "example": {
-                "brandId": "ffffffff-1111-2222-3333-444444444444",
+                "sourceBrandId": "ffffffff-1111-2222-3333-444444444444",
                 "sourceOrgId": "org-source-uuid",
-                "targetOrgId": "org-target-uuid"
+                "targetOrgId": "org-target-uuid",
+                "targetBrandId": "eeeeeeee-1111-2222-3333-444444444444"
               }
             }
           }

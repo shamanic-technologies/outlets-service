@@ -116,25 +116,39 @@ router.post(
   validateBody(transferBrandBodySchema),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { brandId, sourceOrgId, targetOrgId } = req.body as {
-        brandId: string;
+      const { sourceBrandId, sourceOrgId, targetOrgId, targetBrandId } = req.body as {
+        sourceBrandId: string;
         sourceOrgId: string;
         targetOrgId: string;
+        targetBrandId?: string;
       };
 
-      // Update campaign_outlets where org_id = sourceOrgId AND brand_ids contains exactly one element = brandId
-      const result = await pool.query(
+      // Step 1: Move solo-brand rows from sourceOrg to targetOrg
+      const moveResult = await pool.query(
         `UPDATE campaign_outlets
          SET org_id = $1, updated_at = CURRENT_TIMESTAMP
          WHERE org_id = $2
            AND array_length(brand_ids, 1) = 1
            AND brand_ids[1] = $3`,
-        [targetOrgId, sourceOrgId, brandId]
+        [targetOrgId, sourceOrgId, sourceBrandId]
       );
+
+      // Step 2: When targetBrandId is present, rewrite ALL brand references (no org filter)
+      let rewriteCount = 0;
+      if (targetBrandId) {
+        const rewriteResult = await pool.query(
+          `UPDATE campaign_outlets
+           SET brand_ids = array_replace(brand_ids, $1::uuid, $2::uuid), updated_at = CURRENT_TIMESTAMP
+           WHERE $1::uuid = ANY(brand_ids)`,
+          [sourceBrandId, targetBrandId]
+        );
+        rewriteCount = rewriteResult.rowCount ?? 0;
+      }
 
       res.json({
         updatedTables: [
-          { tableName: "campaign_outlets", count: result.rowCount ?? 0 },
+          { tableName: "campaign_outlets", count: moveResult.rowCount ?? 0 },
+          ...(targetBrandId ? [{ tableName: "campaign_outlets_brand_rewrite", count: rewriteCount }] : []),
         ],
       });
     } catch (err) {
