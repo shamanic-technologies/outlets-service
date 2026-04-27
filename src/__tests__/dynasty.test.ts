@@ -4,16 +4,12 @@ vi.mock("../config", () => ({
   config: {
     workflowServiceUrl: "http://workflow-service",
     workflowServiceApiKey: "wf-key",
-    featuresServiceUrl: "http://features-service",
-    featuresServiceApiKey: "feat-key",
   },
 }));
 
 import {
   resolveWorkflowDynastySlugs,
-  resolveFeatureDynastySlugs,
   getWorkflowDynastyMap,
-  getFeatureDynastyMap,
 } from "../services/dynasty";
 import type { OrgContext } from "../middleware/org-context";
 
@@ -66,35 +62,6 @@ describe("resolveWorkflowDynastySlugs", () => {
   });
 });
 
-describe("resolveFeatureDynastySlugs", () => {
-  it("returns versioned slugs from features-service", async () => {
-    fetchSpy.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ slugs: ["feat-alpha", "feat-alpha-v2"] }),
-    });
-
-    const result = await resolveFeatureDynastySlugs("feat-alpha", "feat-key", CTX);
-    expect(result).toEqual(["feat-alpha", "feat-alpha-v2"]);
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "http://features-service/features/dynasty/slugs?dynastySlug=feat-alpha",
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          "x-api-key": "feat-key",
-          "x-org-id": "org-1",
-          "x-user-id": "user-1",
-          "x-run-id": "run-1",
-        }),
-      })
-    );
-  });
-
-  it("returns empty array on HTTP error", async () => {
-    fetchSpy.mockResolvedValueOnce({ ok: false, status: 404 });
-    const result = await resolveFeatureDynastySlugs("missing", "feat-key", CTX);
-    expect(result).toEqual([]);
-  });
-});
-
 describe("getWorkflowDynastyMap", () => {
   it("builds reverse map from workflow-service dynasties", async () => {
     fetchSpy.mockResolvedValueOnce({
@@ -121,20 +88,3 @@ describe("getWorkflowDynastyMap", () => {
   });
 });
 
-describe("getFeatureDynastyMap", () => {
-  it("builds reverse map from features-service dynasties", async () => {
-    fetchSpy.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        dynasties: [
-          { dynastySlug: "feat-alpha", slugs: ["feat-alpha", "feat-alpha-v2"] },
-        ],
-      }),
-    });
-
-    const map = await getFeatureDynastyMap("feat-key", CTX);
-    expect(map.get("feat-alpha")).toBe("feat-alpha");
-    expect(map.get("feat-alpha-v2")).toBe("feat-alpha");
-    expect(map.size).toBe(2);
-  });
-});

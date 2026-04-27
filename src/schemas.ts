@@ -40,7 +40,6 @@ export const listOutletsQuerySchema = z.object({
   status: outletStatusEnum.optional(),
   runId: z.string().optional(),
   featureSlugs: z.string().optional(),
-  featureDynastySlug: z.string().optional(),
   limit: z.coerce.number().int().positive().optional(),
   offset: z.coerce.number().int().min(0).optional().default(0),
 });
@@ -138,7 +137,6 @@ const statsGroupByEnum = z.enum([
   "brandId",
   "campaignId",
   "workflowDynastySlug",
-  "featureDynastySlug",
 ]);
 
 export const statsQuerySchema = z.object({
@@ -149,7 +147,6 @@ export const statsQuerySchema = z.object({
   featureSlug: z.string().optional(),
   featureSlugs: z.string().optional(),
   workflowDynastySlug: z.string().optional(),
-  featureDynastySlug: z.string().optional(),
   groupBy: statsGroupByEnum.optional(),
 });
 

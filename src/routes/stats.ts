@@ -6,9 +6,7 @@ import { statsQuerySchema, statsCostsQuerySchema } from "../schemas";
 import { batchRunCosts } from "../services/runs";
 import {
   resolveWorkflowDynastySlugs,
-  resolveFeatureDynastySlugs,
   getWorkflowDynastyMap,
-  getFeatureDynastyMap,
 } from "../services/dynasty";
 import { fetchOutletStatuses, type ScopeFilters } from "../services/outlet-status";
 
@@ -81,22 +79,8 @@ router.get(
         params.push(q.workflowSlug);
       }
 
-      // --- Feature filter: dynasty > plural slugs > exact slug ---
-      if (q.featureDynastySlug) {
-        const slugs = await resolveFeatureDynastySlugs(
-          q.featureDynastySlug,
-          config.featuresServiceApiKey,
-          ctx
-        );
-        if (slugs.length === 0) {
-          res.json(q.groupBy ? { groups: [] } : EMPTY_STATS);
-          return;
-        }
-        const placeholders = slugs.map((_, i) => `$${idx + i}`).join(", ");
-        conditions.push(`co.feature_slug IN (${placeholders})`);
-        params.push(...slugs);
-        idx += slugs.length;
-      } else if (q.featureSlugs) {
+      // --- Feature filter: plural slugs > exact slug ---
+      if (q.featureSlugs) {
         const slugs = q.featureSlugs.split(",").map((s) => s.trim()).filter(Boolean);
         if (slugs.length === 0) {
           res.json(q.groupBy ? { groups: [] } : EMPTY_STATS);
@@ -115,31 +99,23 @@ router.get(
       const groupBy = q.groupBy as string | undefined;
 
       // --- Dynasty groupBy (requires post-query aggregation) ---
-      if (groupBy === "workflowDynastySlug" || groupBy === "featureDynastySlug") {
-        const dbCol =
-          groupBy === "workflowDynastySlug"
-            ? "co.workflow_slug"
-            : "co.feature_slug";
-
+      if (groupBy === "workflowDynastySlug") {
         // Query grouped by the raw DB column
         const result = await pool.query(
           `SELECT
-            ${dbCol} AS group_key,
+            co.workflow_slug AS group_key,
             COUNT(DISTINCT co.outlet_id)::int AS outlets_discovered,
             ROUND(AVG(co.relevance_score), 2) AS avg_relevance_score,
             SUM(co.search_queries_used)::int AS search_queries_used
            FROM campaign_outlets co
-           WHERE ${where} AND ${dbCol} IS NOT NULL
-           GROUP BY ${dbCol}
+           WHERE ${where} AND co.workflow_slug IS NOT NULL
+           GROUP BY co.workflow_slug
            ORDER BY outlets_discovered DESC`,
           params
         );
 
         // Build reverse map: slug → dynastySlug
-        const dynastyMap =
-          groupBy === "workflowDynastySlug"
-            ? await getWorkflowDynastyMap(config.workflowServiceApiKey, ctx)
-            : await getFeatureDynastyMap(config.featuresServiceApiKey, ctx);
+        const dynastyMap = await getWorkflowDynastyMap(config.workflowServiceApiKey, ctx);
 
         // Re-aggregate rows by dynasty slug
         const aggregated = new Map<
