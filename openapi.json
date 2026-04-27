@@ -985,14 +985,6 @@
           },
           {
             "in": "query",
-            "name": "featureDynastySlug",
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by feature dynasty slug (resolved via features-service)"
-          },
-          {
-            "in": "query",
             "name": "limit",
             "schema": {
               "type": "integer"
@@ -2219,14 +2211,6 @@
           },
           {
             "in": "query",
-            "name": "featureDynastySlug",
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by feature dynasty slug"
-          },
-          {
-            "in": "query",
             "name": "groupBy",
             "schema": {
               "type": "string",
@@ -2235,8 +2219,7 @@
                 "featureSlug",
                 "brandId",
                 "campaignId",
-                "workflowDynastySlug",
-                "featureDynastySlug"
+                "workflowDynastySlug"
               ]
             },
             "description": "Group results by dimension"
