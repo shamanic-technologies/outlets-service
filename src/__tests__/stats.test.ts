@@ -22,9 +22,7 @@ vi.mock("../services/runs", () => ({
 // Mock dynasty service
 vi.mock("../services/dynasty", () => ({
   resolveWorkflowDynastySlugs: vi.fn(),
-  resolveFeatureDynastySlugs: vi.fn(),
   getWorkflowDynastyMap: vi.fn(),
-  getFeatureDynastyMap: vi.fn(),
 }));
 
 // Mock outlet-status service
@@ -35,15 +33,11 @@ vi.mock("../services/outlet-status", () => ({
 
 import {
   resolveWorkflowDynastySlugs,
-  resolveFeatureDynastySlugs,
   getWorkflowDynastyMap,
-  getFeatureDynastyMap,
 } from "../services/dynasty";
 
 const mockedResolveWorkflow = vi.mocked(resolveWorkflowDynastySlugs);
-const mockedResolveFeature = vi.mocked(resolveFeatureDynastySlugs);
 const mockedGetWorkflowMap = vi.mocked(getWorkflowDynastyMap);
-const mockedGetFeatureMap = vi.mocked(getFeatureDynastyMap);
 
 const API_KEY = "test-key";
 const ORG_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
@@ -236,24 +230,6 @@ describe("GET /orgs/outlets/stats?featureSlugs=...", () => {
     expect(mockQuery.mock.calls[0][1]).toEqual([ORG_ID, CAMPAIGN_ID, "feat-alpha", "feat-beta"]);
   });
 
-  it("is overridden by featureDynastySlug", async () => {
-    mockedResolveFeature.mockResolvedValueOnce(["feat-alpha", "feat-alpha-v2"]);
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ outlets_discovered: 7, avg_relevance_score: "65.00", search_queries_used: 14 }],
-    });
-    mockQuery.mockResolvedValueOnce({ rows: [] });
-
-    const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
-      campaignId: CAMPAIGN_ID,
-      featureDynastySlug: "feat-alpha",
-      featureSlugs: "ignored-1,ignored-2",
-    });
-
-    expect(res.status).toBe(200);
-    const params = mockQuery.mock.calls[0][1] as unknown[];
-    expect(params).toContain("feat-alpha");
-    expect(params).not.toContain("ignored-1");
-  });
 });
 
 // ========================
@@ -309,42 +285,6 @@ describe("GET /orgs/outlets/stats?workflowDynastySlug=...", () => {
     const sql = mockQuery.mock.calls[0][0] as string;
     expect(sql).toContain("IN");
     expect(sql).not.toMatch(/co\.workflow_slug = \$\d+ AND.*co\.workflow_slug IN/);
-  });
-});
-
-// ========================
-// Filter: featureDynastySlug
-// ========================
-describe("GET /orgs/outlets/stats?featureDynastySlug=...", () => {
-  it("resolves dynasty and filters with IN clause", async () => {
-    mockedResolveFeature.mockResolvedValueOnce(["feat-alpha", "feat-alpha-v2"]);
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ outlets_discovered: 7, avg_relevance_score: "65.00", search_queries_used: 14 }],
-    });
-    mockQuery.mockResolvedValueOnce({ rows: [] });
-
-    const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
-      campaignId: CAMPAIGN_ID,
-      featureDynastySlug: "feat-alpha",
-    });
-
-    expect(res.status).toBe(200);
-    expect(res.body.outletsDiscovered).toBe(7);
-    const sql = mockQuery.mock.calls[0][0] as string;
-    expect(sql).toContain("co.feature_slug IN ($3, $4)");
-  });
-
-  it("returns zero stats when dynasty resolves to empty list", async () => {
-    mockedResolveFeature.mockResolvedValueOnce([]);
-
-    const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
-      campaignId: CAMPAIGN_ID,
-      featureDynastySlug: "empty-dynasty",
-    });
-
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ outletsDiscovered: 0, avgRelevanceScore: 0, searchQueriesUsed: 0 });
-    expect(mockQuery).not.toHaveBeenCalled();
   });
 });
 
@@ -456,58 +396,6 @@ describe("GET /orgs/outlets/stats?groupBy=workflowDynastySlug", () => {
     expect(res.status).toBe(200);
     expect(res.body.groups).toHaveLength(1);
     expect(res.body.groups[0].key).toBe("orphan-slug"); // fallback to raw slug
-  });
-});
-
-// ========================
-// GroupBy: featureDynastySlug
-// ========================
-describe("GET /orgs/outlets/stats?groupBy=featureDynastySlug", () => {
-  it("groups by feature dynasty, re-aggregating versioned slugs", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        { group_key: "feat-alpha", outlets_discovered: 4, avg_relevance_score: "90.00", search_queries_used: 8 },
-        { group_key: "feat-alpha-v2", outlets_discovered: 6, avg_relevance_score: "85.00", search_queries_used: 12 },
-      ],
-    });
-
-    mockedGetFeatureMap.mockResolvedValueOnce(
-      new Map([
-        ["feat-alpha", "feat-alpha"],
-        ["feat-alpha-v2", "feat-alpha"],
-      ])
-    );
-
-    const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
-      campaignId: CAMPAIGN_ID,
-      groupBy: "featureDynastySlug",
-    });
-
-    expect(res.status).toBe(200);
-    expect(res.body.groups).toHaveLength(1);
-    // weighted avg = (90*4 + 85*6)/(4+6) = (360+510)/10 = 87
-    expect(res.body.groups[0].key).toBe("feat-alpha");
-    expect(res.body.groups[0].outletsDiscovered).toBe(10);
-    expect(res.body.groups[0].avgRelevanceScore).toBe(87);
-    expect(res.body.groups[0].searchQueriesUsed).toBe(20);
-  });
-
-  it("falls back to raw slug for orphan slugs", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        { group_key: "orphan-feat", outlets_discovered: 2, avg_relevance_score: "60.00", search_queries_used: 4 },
-      ],
-    });
-
-    mockedGetFeatureMap.mockResolvedValueOnce(new Map());
-
-    const res = await withIdentity(request(app).get("/orgs/outlets/stats")).query({
-      campaignId: CAMPAIGN_ID,
-      groupBy: "featureDynastySlug",
-    });
-
-    expect(res.status).toBe(200);
-    expect(res.body.groups[0].key).toBe("orphan-feat");
   });
 });
 

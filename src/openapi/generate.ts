@@ -178,7 +178,6 @@ const spec = {
           { in: "query", name: "status", schema: { type: "string", enum: ["open", "served", "skipped"] }, description: "Filter by internal DB status. Use this to filter outlets by their discovery pipeline state." },
           { in: "query", name: "runId", schema: { type: "string" }, description: "Filter by run ID" },
           { in: "query", name: "featureSlugs", schema: { type: "string" }, description: "Filter by feature slugs (comma-separated)" },
-          { in: "query", name: "featureDynastySlug", schema: { type: "string" }, description: "Filter by feature dynasty slug (resolved via features-service)" },
           { in: "query", name: "limit", schema: { type: "integer" }, description: "Max distinct outlets per page. Omit to return all outlets." },
           { in: "query", name: "offset", schema: { type: "integer", default: 0 }, description: "Pagination offset (only used when limit is provided)" },
         ],
@@ -400,8 +399,7 @@ const spec = {
           { in: "query", name: "featureSlug", schema: { type: "string" }, description: "Filter by exact feature slug" },
           { in: "query", name: "featureSlugs", schema: { type: "string" }, description: "Filter by multiple feature slugs (comma-separated)" },
           { in: "query", name: "workflowDynastySlug", schema: { type: "string" }, description: "Filter by workflow dynasty slug" },
-          { in: "query", name: "featureDynastySlug", schema: { type: "string" }, description: "Filter by feature dynasty slug" },
-          { in: "query", name: "groupBy", schema: { type: "string", enum: ["workflowSlug", "featureSlug", "brandId", "campaignId", "workflowDynastySlug", "featureDynastySlug"] }, description: "Group results by dimension" },
+          { in: "query", name: "groupBy", schema: { type: "string", enum: ["workflowSlug", "featureSlug", "brandId", "campaignId", "workflowDynastySlug"] }, description: "Group results by dimension" },
         ],
         responses: {
           "200": {

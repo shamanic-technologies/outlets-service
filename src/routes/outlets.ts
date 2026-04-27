@@ -1,6 +1,5 @@
 import { Router, Request, Response } from "express";
 import { pool } from "../db/pool";
-import { config } from "../config";
 import { validateBody, validateQuery } from "../middleware/validate";
 import {
   createOutletSchema,
@@ -10,7 +9,6 @@ import {
   bulkCreateOutletsSchema,
   searchOutletsSchema,
 } from "../schemas";
-import { resolveFeatureDynastySlugs } from "../services/dynasty";
 import { fetchOutletStatuses, type ScopeFilters } from "../services/outlet-status";
 
 const router = Router();
@@ -130,22 +128,8 @@ router.get(
         params.push(q.runId);
       }
 
-      // Feature filter: dynasty > plural slugs
-      if (q.featureDynastySlug) {
-        const slugs = await resolveFeatureDynastySlugs(
-          q.featureDynastySlug,
-          config.featuresServiceApiKey,
-          ctx
-        );
-        if (slugs.length === 0) {
-          res.json({ outlets: [], total: 0, byOutreachStatus: {} });
-          return;
-        }
-        const placeholders = slugs.map((_, i) => `$${paramIdx + i}`).join(", ");
-        conditions.push(`co.feature_slug IN (${placeholders})`);
-        params.push(...slugs);
-        paramIdx += slugs.length;
-      } else if (q.featureSlugs) {
+      // Feature filter: plural slugs
+      if (q.featureSlugs) {
         const slugs = q.featureSlugs.split(",").map((s: string) => s.trim()).filter(Boolean);
         if (slugs.length === 0) {
           res.json({ outlets: [], total: 0, byOutreachStatus: {} });
@@ -203,17 +187,7 @@ router.get(
         dataConditions.push(`co.run_id = $${dataIdx++}`);
         dataParams.push(q.runId);
       }
-      if (q.featureDynastySlug) {
-        const slugs = await resolveFeatureDynastySlugs(
-          q.featureDynastySlug,
-          config.featuresServiceApiKey,
-          ctx
-        );
-        const placeholders = slugs.map((_, i) => `$${dataIdx + i}`).join(", ");
-        dataConditions.push(`co.feature_slug IN (${placeholders})`);
-        dataParams.push(...slugs);
-        dataIdx += slugs.length;
-      } else if (q.featureSlugs) {
+      if (q.featureSlugs) {
         const slugs = q.featureSlugs.split(",").map((s: string) => s.trim()).filter(Boolean);
         const placeholders = slugs.map((_: string, i: number) => `$${dataIdx + i}`).join(", ");
         dataConditions.push(`co.feature_slug IN (${placeholders})`);
