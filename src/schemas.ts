@@ -16,6 +16,8 @@ export const createOutletSchema = z.object({
   overallRelevance: z.string().optional(),
   relevanceRationale: z.string().optional(),
   status: outletStatusEnum.optional().default("open"),
+  statusReason: z.string().optional(),
+  statusDetail: z.string().optional(),
 });
 
 export const updateOutletSchema = z.object({
@@ -31,7 +33,8 @@ export const updateOutletSchema = z.object({
 
 export const updateOutletStatusSchema = z.object({
   status: outletStatusEnum,
-  reason: z.string().optional(),
+  statusReason: z.string().optional(),
+  statusDetail: z.string().optional(),
 });
 
 export const listOutletsQuerySchema = z.object({

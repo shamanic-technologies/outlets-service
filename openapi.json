@@ -57,6 +57,12 @@
               "skipped"
             ],
             "default": "open"
+          },
+          "statusReason": {
+            "type": "string"
+          },
+          "statusDetail": {
+            "type": "string"
           }
         },
         "required": [
@@ -113,7 +119,10 @@
               "skipped"
             ]
           },
-          "reason": {
+          "statusReason": {
+            "type": "string"
+          },
+          "statusDetail": {
             "type": "string"
           }
         },
@@ -166,6 +175,12 @@
                     "skipped"
                   ],
                   "default": "open"
+                },
+                "statusReason": {
+                  "type": "string"
+                },
+                "statusDetail": {
+                  "type": "string"
                 }
               },
               "required": [
@@ -1308,6 +1323,16 @@
                                 "relevanceScore": {
                                   "type": "number"
                                 },
+                                "statusReason": {
+                                  "type": "string",
+                                  "nullable": true,
+                                  "description": "Short reason for the outlet's status in this campaign"
+                                },
+                                "statusDetail": {
+                                  "type": "string",
+                                  "nullable": true,
+                                  "description": "Detailed debug info for the status"
+                                },
                                 "overallRelevance": {
                                   "type": "string",
                                   "nullable": true
@@ -1810,7 +1835,8 @@
               },
               "example": {
                 "status": "skipped",
-                "reason": "Cross-campaign duplicate"
+                "statusReason": "blocked",
+                "statusDetail": "Already contacted for this brand in another campaign"
               }
             }
           }
@@ -1839,9 +1865,15 @@
                         "skipped"
                       ]
                     },
-                    "reason": {
+                    "statusReason": {
                       "type": "string",
-                      "nullable": true
+                      "nullable": true,
+                      "description": "Short reason for the status (e.g. 'blocked', 'low_relevance', 'buffer_claimed')"
+                    },
+                    "statusDetail": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Detailed debug info about why this status was set"
                     },
                     "updatedAt": {
                       "type": "string",
