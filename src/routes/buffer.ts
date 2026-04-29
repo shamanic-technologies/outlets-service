@@ -32,7 +32,9 @@ interface ClaimedOutlet {
 async function claimNext(campaignId: string): Promise<ClaimedOutlet | null> {
   const result = await pool.query(
     `UPDATE campaign_outlets co
-     SET status = 'served', updated_at = CURRENT_TIMESTAMP
+     SET status = 'served', status_reason = 'buffer_claimed',
+         status_detail = 'Claimed by buffer/next for campaign ' || $1,
+         updated_at = CURRENT_TIMESTAMP
      FROM (
        SELECT co2.campaign_id, co2.outlet_id
        FROM campaign_outlets co2
@@ -97,13 +99,13 @@ async function isBlocked(
 }
 
 /**
- * Mark an outlet as skipped (e.g. cross-campaign duplicate).
+ * Mark an outlet as skipped with reason tracking.
  */
-async function markSkipped(campaignId: string, outletId: string): Promise<void> {
+async function markSkipped(campaignId: string, outletId: string, statusReason: string, statusDetail: string): Promise<void> {
   await pool.query(
-    `UPDATE campaign_outlets SET status = 'skipped', updated_at = CURRENT_TIMESTAMP
+    `UPDATE campaign_outlets SET status = 'skipped', status_reason = $3, status_detail = $4, updated_at = CURRENT_TIMESTAMP
      WHERE campaign_id = $1 AND outlet_id = $2`,
-    [campaignId, outletId]
+    [campaignId, outletId, statusReason, statusDetail]
   );
 }
 
@@ -164,7 +166,7 @@ router.post(
           // Skip low-relevance ("distant") outlets — score < 30 means no meaningful connection
           if (claimed.relevanceScore < MIN_RELEVANCE_SCORE) {
             console.log(`[outlets-service] buffer/next: skipping low-relevance outlet ${claimed.outletName} (${claimed.outletId}, score=${claimed.relevanceScore}) for campaign ${ctx.campaignId}`);
-            await markSkipped(claimed.campaignId, claimed.outletId);
+            await markSkipped(claimed.campaignId, claimed.outletId, "low_relevance", `Relevance score ${claimed.relevanceScore} below minimum threshold ${MIN_RELEVANCE_SCORE}`);
             continue;
           }
 
@@ -172,7 +174,7 @@ router.post(
           const blocked = await isBlocked(claimed.outletId, ctx.orgId, ctx.brandIds, ctx);
           if (blocked) {
             console.log(`[outlets-service] buffer/next: skipping blocked outlet ${claimed.outletName} (${claimed.outletId}) for campaign ${ctx.campaignId}`);
-            await markSkipped(claimed.campaignId, claimed.outletId);
+            await markSkipped(claimed.campaignId, claimed.outletId, "blocked", `Outlet ${claimed.outletName} (${claimed.outletDomain}) is blocked — already contacted or in cooldown for org ${ctx.orgId}`);
             continue; // try next outlet
           }
 

@@ -213,6 +213,8 @@ const spec = {
                                 whyRelevant: { type: "string" },
                                 whyNotRelevant: { type: "string" },
                                 relevanceScore: { type: "number" },
+                                statusReason: { type: "string", nullable: true, description: "Short reason for the outlet's status in this campaign" },
+                                statusDetail: { type: "string", nullable: true, description: "Detailed debug info for the status" },
                                 overallRelevance: { type: "string", nullable: true },
                                 relevanceRationale: { type: "string", nullable: true },
                                 runId: { type: "string", nullable: true },
@@ -309,7 +311,7 @@ const spec = {
           content: {
             "application/json": {
               schema: ref("UpdateOutletStatus"),
-              example: { status: "skipped", reason: "Cross-campaign duplicate" },
+              example: { status: "skipped", statusReason: "blocked", statusDetail: "Already contacted for this brand in another campaign" },
             },
           },
         },
@@ -324,7 +326,8 @@ const spec = {
                     outletId: { type: "string", format: "uuid" },
                     campaignId: { type: "string", format: "uuid" },
                     status: { type: "string", enum: ["open", "served", "skipped"] },
-                    reason: { type: "string", nullable: true },
+                    statusReason: { type: "string", nullable: true, description: "Short reason for the status (e.g. 'blocked', 'low_relevance', 'buffer_claimed')" },
+                    statusDetail: { type: "string", nullable: true, description: "Detailed debug info about why this status was set" },
                     updatedAt: { type: "string", format: "date-time" },
                   },
                   required: ["outletId", "campaignId", "status", "updatedAt"],
