@@ -3,8 +3,8 @@ import type { OrgContext } from "../middleware/org-context";
 import { buildServiceHeaders } from "./headers";
 
 interface DynastyEntry {
-  dynastySlug: string;
-  slugs: string[];
+  workflowDynastySlug: string;
+  workflowSlugs: string[];
 }
 
 /**
@@ -16,7 +16,7 @@ export async function resolveWorkflowDynastySlugs(
   apiKey: string,
   ctx: OrgContext
 ): Promise<string[]> {
-  const url = `${config.workflowServiceUrl}/workflows/dynasty/slugs?dynastySlug=${encodeURIComponent(dynastySlug)}`;
+  const url = `${config.workflowServiceUrl}/workflows/dynasty/slugs?workflowDynastySlug=${encodeURIComponent(dynastySlug)}`;
   let res: Response;
   try {
     res = await fetch(url, {
@@ -35,8 +35,8 @@ export async function resolveWorkflowDynastySlugs(
     console.error(`[outlets-service] Failed to resolve workflow dynasty slug: ${res.status}`);
     return [];
   }
-  const data = (await res.json()) as { slugs: string[] };
-  return data.slugs ?? [];
+  const data = (await res.json()) as { workflowSlugs: string[] };
+  return data.workflowSlugs ?? [];
 }
 
 
@@ -76,8 +76,8 @@ function buildSlugToDynastyMap(
 ): Map<string, string> {
   const map = new Map<string, string>();
   for (const d of dynasties) {
-    for (const slug of d.slugs) {
-      map.set(slug, d.dynastySlug);
+    for (const slug of d.workflowSlugs) {
+      map.set(slug, d.workflowDynastySlug);
     }
   }
   return map;
