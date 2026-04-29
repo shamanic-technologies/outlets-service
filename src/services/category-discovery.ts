@@ -366,8 +366,8 @@ export async function discoverOutletsInCategory(
 
       // Insert into campaign buffer (may conflict if outlet already in campaign from another category)
       await client.query(
-        `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_ids, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, overall_relevance, run_id, category_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'open', $10, $11, $12)
+        `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_ids, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, status_reason, status_detail, overall_relevance, run_id, category_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'open', 'discovered', $10, $11, $12, $13)
          ON CONFLICT (campaign_id, outlet_id) DO NOTHING`,
         [
           ctx.campaignId,
@@ -379,6 +379,7 @@ export async function discoverOutletsInCategory(
           o.whyRelevant,
           `Category: ${category.categoryName} / ${category.categoryGeo}`,
           relevanceScore,
+          `Discovered via category "${category.categoryName}" (${category.categoryGeo}), score=${relevanceScore}`,
           "high",
           ctx.runId,
           category.id,
@@ -478,8 +479,8 @@ export async function reuseCycle(ctx: OrgContext): Promise<number> {
   // Step 2: Insert blocked outlets as 'skipped' (no LLM needed)
   for (const o of blocked) {
     const result = await pool.query(
-      `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_ids, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, overall_relevance, run_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'skipped', $10, $11)
+      `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_ids, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, status_reason, status_detail, overall_relevance, run_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'skipped', 'blocked', $10, $11, $12)
        ON CONFLICT (campaign_id, outlet_id) DO NOTHING`,
       [
         ctx.campaignId,
@@ -491,6 +492,7 @@ export async function reuseCycle(ctx: OrgContext): Promise<number> {
         "Reused from previous campaign",
         "Blocked — journalist contacted in cooldown period",
         0,
+        `Reuse cycle: outlet ${o.outletId} (${o.outletDomain}) blocked — journalist already contacted or in cooldown`,
         "low",
         ctx.runId,
       ]
@@ -545,8 +547,8 @@ export async function reuseCycle(ctx: OrgContext): Promise<number> {
     console.warn(`[outlets-service] reuseCycle: LLM scoring failed, inserting ${available.length} outlets with default score 50`);
     for (const o of available) {
       const result = await pool.query(
-        `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_ids, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, overall_relevance, run_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'open', $10, $11)
+        `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_ids, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, status_reason, status_detail, overall_relevance, run_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'open', 'reused', $10, $11, $12)
          ON CONFLICT (campaign_id, outlet_id) DO NOTHING`,
         [
           ctx.campaignId,
@@ -558,6 +560,7 @@ export async function reuseCycle(ctx: OrgContext): Promise<number> {
           "Reused from previous campaign (scoring failed)",
           "",
           50,
+          `Reuse cycle: LLM scoring failed, assigned default score 50 for outlet ${o.outletId} (${o.outletDomain})`,
           "medium",
           ctx.runId,
         ]
@@ -577,8 +580,8 @@ export async function reuseCycle(ctx: OrgContext): Promise<number> {
     const whyRelevant = score?.whyRelevant ?? "Reused from previous campaign";
 
     const result = await pool.query(
-      `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_ids, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, overall_relevance, run_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'open', $10, $11)
+      `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_ids, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, status_reason, status_detail, overall_relevance, run_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'open', 'reused', $10, $11, $12)
        ON CONFLICT (campaign_id, outlet_id) DO NOTHING`,
       [
         ctx.campaignId,
@@ -590,6 +593,7 @@ export async function reuseCycle(ctx: OrgContext): Promise<number> {
         whyRelevant,
         "Reused from previous campaign",
         relevanceScore,
+        `Reuse cycle: outlet ${o.outletId} (${o.outletDomain}) scored ${relevanceScore} by LLM`,
         relevanceScore >= 60 ? "high" : relevanceScore >= 30 ? "medium" : "low",
         ctx.runId,
       ]

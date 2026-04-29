@@ -523,7 +523,8 @@ describe("PATCH /orgs/outlets/:id/status", () => {
           outlet_id: "11111111-1111-1111-1111-111111111111",
           campaign_id: CAMPAIGN_ID,
           status: "skipped",
-          relevance_rationale: "No longer relevant",
+          status_reason: "manual_skip",
+          status_detail: "No longer relevant",
           updated_at: "2026-01-02T00:00:00Z",
         },
       ],
@@ -533,7 +534,7 @@ describe("PATCH /orgs/outlets/:id/status", () => {
       request(app)
         .patch("/orgs/outlets/11111111-1111-1111-1111-111111111111/status")
         .set("x-campaign-id", CAMPAIGN_ID)
-    ).send({ status: "skipped", reason: "No longer relevant" });
+    ).send({ status: "skipped", statusReason: "manual_skip", statusDetail: "No longer relevant" });
 
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("skipped");

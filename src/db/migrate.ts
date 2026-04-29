@@ -243,6 +243,12 @@ export async function runMigration(): Promise<void> {
     ON CONFLICT DO NOTHING;
   `);
 
+  // Step 15: Add status_reason and status_detail columns to campaign_outlets
+  await pool.query(`
+    ALTER TABLE campaign_outlets ADD COLUMN IF NOT EXISTS status_reason TEXT;
+    ALTER TABLE campaign_outlets ADD COLUMN IF NOT EXISTS status_detail TEXT;
+  `);
+
   console.log("[outlets-service] Migration complete.");
 }
 
