@@ -5,6 +5,7 @@ import { pool } from "../db/pool";
 import { isOutletBlocked } from "../services/journalists";
 import { reuseCycle, discoverCycle } from "../services/category-discovery";
 import { bufferNextSchema } from "../schemas";
+import { traceEvent } from "../lib/trace-event";
 
 const MIN_RELEVANCE_SCORE = 30;
 const IDEMPOTENCY_TTL_DAYS = 60;
@@ -121,6 +122,15 @@ router.post(
 
     console.log(`[outlets-service] buffer/next: received request for campaign ${ctx.campaignId} (count=${count})`);
 
+    if (ctx.runId) {
+      traceEvent(ctx.runId, {
+        service: "outlets-service",
+        event: "buffer-next-start",
+        detail: `count=${count}, campaignId=${ctx.campaignId}`,
+        data: { count, campaignId: ctx.campaignId },
+      }, req.headers).catch(() => {});
+    }
+
     try {
       // Check idempotency cache
       if (idempotencyKey) {
@@ -193,12 +203,29 @@ router.post(
 
       console.log(`[outlets-service] buffer/next: returning ${collected.length}/${count} outlets for campaign ${ctx.campaignId}`);
 
+      if (ctx.runId) {
+        traceEvent(ctx.runId, {
+          service: "outlets-service",
+          event: "buffer-next-served",
+          detail: `served=${collected.length}/${count}, campaignId=${ctx.campaignId}`,
+          data: { served: collected.length, requested: count, campaignId: ctx.campaignId },
+        }, req.headers).catch(() => {});
+      }
+
       const response = { outlets: collected };
       if (idempotencyKey) {
         await saveIdempotencyCache(idempotencyKey, response);
       }
       res.json(response);
     } catch (err) {
+      if (ctx.runId) {
+        traceEvent(ctx.runId, {
+          service: "outlets-service",
+          event: "buffer-next-error",
+          detail: err instanceof Error ? err.message : "Unknown error",
+          level: "error",
+        }, req.headers).catch(() => {});
+      }
       console.error("[outlets-service] Error in buffer/next:", err);
       const message = err instanceof Error ? err.message : "Internal server error";
       const status = message.includes("failed (") ? 502 : 500;
