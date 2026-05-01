@@ -8,7 +8,7 @@ import {
   resolveWorkflowDynastySlugs,
   getWorkflowDynastyMap,
 } from "../services/dynasty";
-import { fetchOutletStatuses, type ScopeFilters } from "../services/outlet-status";
+import { fetchOutletStatuses, countOutletStatuses, mergeStatusCounts, type ScopeFilters } from "../services/outlet-status";
 
 const router = Router();
 
@@ -233,12 +233,19 @@ router.get(
           ? await fetchOutletStatuses(allOutletIds, ctx, scopeFilters)
           : null;
 
+        // Count outlet statuses from DB for hybrid byOutreachStatus
+        let hybridByOutreachStatus: ReturnType<typeof mergeStatusCounts> | undefined;
+        if (enrichment) {
+          const outletCounts = await countOutletStatuses(pool.query.bind(pool), conditions, params);
+          hybridByOutreachStatus = mergeStatusCounts(outletCounts, enrichment.byOutreachStatus);
+        }
+
         const row = result.rows[0];
         res.json({
           outletsDiscovered: row.outlets_discovered ?? 0,
           avgRelevanceScore: Number(row.avg_relevance_score ?? 0),
           searchQueriesUsed: row.search_queries_used ?? 0,
-          byOutreachStatus: enrichment?.byOutreachStatus,
+          byOutreachStatus: hybridByOutreachStatus,
         });
       }
     } catch (err) {

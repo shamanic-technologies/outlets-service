@@ -68,10 +68,9 @@ export const outletResponseSchema = z.object({
   updatedAt: z.string(),
 });
 
-/** Status counts schema — cumulative journalist counts from journalists-service. */
+/** Status counts schema — hybrid: open/served/skipped from outlets-service, email fields from journalists-service. */
 export const statusCountsSchema = z.object({
-  buffered: z.number(),
-  claimed: z.number(),
+  open: z.number(),
   served: z.number(),
   skipped: z.number(),
   contacted: z.number(),

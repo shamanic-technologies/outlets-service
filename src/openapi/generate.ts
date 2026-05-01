@@ -38,12 +38,11 @@ const orgHeaders = [
   { in: "header", name: "x-workflow-slug", required: false, schema: { type: "string" }, description: "Workflow slug (optional)" },
 ];
 
-/** Status counts object — reused in outlet status and byOutreachStatus. */
+/** Status counts object — hybrid: open/served/skipped from outlets-service, email fields from journalists-service. */
 const statusCountsObject = {
   type: "object",
   properties: {
-    buffered: { type: "number" },
-    claimed: { type: "number" },
+    open: { type: "number" },
     served: { type: "number" },
     skipped: { type: "number" },
     contacted: { type: "number" },
@@ -58,16 +57,18 @@ const statusCountsObject = {
     bounced: { type: "number" },
     unsubscribed: { type: "number" },
   },
-  required: ["buffered", "claimed", "served", "skipped", "contacted", "sent", "delivered", "opened", "clicked", "replied", "repliesPositive", "repliesNegative", "repliesNeutral", "bounced", "unsubscribed"],
+  required: ["open", "served", "skipped", "contacted", "sent", "delivered", "opened", "clicked", "replied", "repliesPositive", "repliesNegative", "repliesNeutral", "bounced", "unsubscribed"],
 };
 
-/** Per-outlet status object from journalists-service. */
+/** Per-outlet status object — hybrid: journalist-service data + outlets-service DB fields. */
 const outletStatusObject = {
   type: "object",
-  nullable: true,
-  description: "Structured status from journalists-service. Null when no journalist data exists for this outlet.",
+  description: "Hybrid status object. Always includes outletStatus/statusReason/statusDetail from outlets-service DB. When journalist data exists, also includes totalJournalists, brand, byCampaign, campaign, and global from journalists-service.",
   properties: {
-    totalJournalists: { type: "number", description: "Total journalists for this outlet" },
+    outletStatus: { type: "string", enum: ["open", "served", "skipped"], description: "DB status from outlets-service (first/most recent campaign)" },
+    statusReason: { type: "string", nullable: true, description: "Short reason for the outlet's status" },
+    statusDetail: { type: "string", nullable: true, description: "Detailed debug info for the status" },
+    totalJournalists: { type: "number", description: "Total journalists for this outlet (from journalists-service)" },
     brand: { ...statusCountsObject, nullable: true, description: "Cumulative counts at brand scope. Null in campaign mode." },
     byCampaign: {
       type: "object",
@@ -86,7 +87,7 @@ const outletStatusObject = {
       description: "Global email signals (bounced/unsubscribed counts).",
     },
   },
-  required: ["totalJournalists", "brand", "byCampaign", "campaign", "global"],
+  required: ["outletStatus"],
 };
 
 const spec = {
@@ -245,10 +246,13 @@ const spec = {
                       createdAt: "2026-01-01T00:00:00Z",
                       relevanceScore: 85,
                       status: {
+                        outletStatus: "served",
+                        statusReason: "buffer_claimed",
+                        statusDetail: null,
                         totalJournalists: 3,
                         brand: null,
                         byCampaign: null,
-                        campaign: { buffered: 3, claimed: 2, served: 2, skipped: 0, contacted: 2, sent: 2, delivered: 2, opened: 1, clicked: 0, replied: 0, repliesPositive: 0, repliesNegative: 0, repliesNeutral: 0, bounced: 0, unsubscribed: 0 },
+                        campaign: { open: 0, served: 2, skipped: 0, contacted: 2, sent: 2, delivered: 2, opened: 1, clicked: 0, replied: 0, repliesPositive: 0, repliesNegative: 0, repliesNeutral: 0, bounced: 0, unsubscribed: 0 },
                         global: { bounced: 0, unsubscribed: 0 },
                       },
                       campaigns: [
@@ -268,7 +272,7 @@ const spec = {
                     },
                   ],
                   total: 1,
-                  byOutreachStatus: { buffered: 3, claimed: 2, served: 2, skipped: 0, contacted: 2, sent: 2, delivered: 2, opened: 1, clicked: 0, replied: 0, repliesPositive: 0, repliesNegative: 0, repliesNeutral: 0, bounced: 0, unsubscribed: 0 },
+                  byOutreachStatus: { open: 1, served: 2, skipped: 0, contacted: 2, sent: 2, delivered: 2, opened: 1, clicked: 0, replied: 0, repliesPositive: 0, repliesNegative: 0, repliesNeutral: 0, bounced: 0, unsubscribed: 0 },
                 },
               },
             },
@@ -415,7 +419,7 @@ const spec = {
                   avgRelevanceScore: 72.5,
                   searchQueriesUsed: 8,
                   byOutreachStatus: {
-                    buffered: 200, claimed: 150, served: 120, skipped: 30,
+                    open: 50, served: 120, skipped: 30,
                     contacted: 115, sent: 110, delivered: 105, opened: 45, clicked: 12,
                     replied: 6, repliesPositive: 3, repliesNegative: 2, repliesNeutral: 1,
                     bounced: 5, unsubscribed: 0,
