@@ -122,7 +122,7 @@ describe("generateCategoryBatch", () => {
       },
       tokensInput: 200,
       tokensOutput: 150,
-      model: "flash-lite",
+      model: "flash",
     });
 
     // 3 INSERTs
@@ -166,7 +166,7 @@ describe("generateCategoryBatch", () => {
       },
       tokensInput: 200,
       tokensOutput: 150,
-      model: "flash-lite",
+      model: "flash",
     });
 
     // Only 1 INSERT (the non-duplicate)
@@ -191,7 +191,7 @@ describe("generateCategoryBatch", () => {
         json: { invalid: true },
         tokensInput: 50,
         tokensOutput: 20,
-        model: "flash-lite",
+        model: "flash",
       });
     }
 
@@ -213,7 +213,7 @@ describe("generateCategoryBatch", () => {
       json: { invalid: true },
       tokensInput: 50,
       tokensOutput: 20,
-      model: "flash-lite",
+      model: "flash",
     });
     // Second attempt → valid
     mockChatComplete.mockResolvedValueOnce({
@@ -225,7 +225,7 @@ describe("generateCategoryBatch", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
 
     // INSERT
@@ -297,7 +297,7 @@ describe("discoverOutletsInCategory", () => {
       },
       tokensInput: 200,
       tokensOutput: 150,
-      model: "flash-lite",
+      model: "flash",
     });
 
     // Check which domains already exist in outlets table → none
@@ -352,7 +352,7 @@ describe("discoverOutletsInCategory", () => {
       },
       tokensInput: 200,
       tokensOutput: 150,
-      model: "flash-lite",
+      model: "flash",
     });
 
     // Check existing outlets → none
@@ -414,7 +414,7 @@ describe("discoverOutletsInCategory", () => {
       },
       tokensInput: 200,
       tokensOutput: 150,
-      model: "flash-lite",
+      model: "flash",
     });
 
     // Check existing outlets → TechCrunch and The Verge already exist
@@ -461,7 +461,7 @@ describe("discoverOutletsInCategory", () => {
     expect(mockValidateOutletBatch.mock.calls[0][0][0].domain).toBe("newoutlet.com");
   });
 
-  it("counts via campaign_category_outlets even when campaign_outlets conflicts", async () => {
+  it("returns 0 when campaign_outlets conflicts even if campaign_category_outlets succeeds", async () => {
     setupBrandMocks();
 
     // Get known domains for category → none
@@ -478,7 +478,7 @@ describe("discoverOutletsInCategory", () => {
       },
       tokensInput: 200,
       tokensOutput: 150,
-      model: "flash-lite",
+      model: "flash",
     });
 
     // Both already exist in outlets table (skip Google)
@@ -500,17 +500,64 @@ describe("discoverOutletsInCategory", () => {
       .mockResolvedValueOnce({ rowCount: 0 }) // INSERT campaign_outlets → CONFLICT (already in campaign)
       .mockResolvedValueOnce({}); // COMMIT
 
-    // Update outlets_found counter
-    mockQuery.mockResolvedValueOnce({});
-    // Check cap
+    // Check cap (no outlets_found update since inserted=0)
     mockQuery.mockResolvedValueOnce({ rows: [{ outlets_found: 2 }] });
 
     const result = await discoverOutletsInCategory(category, ctx);
 
-    // KEY ASSERTION: returns 2, not 0 — the infinite loop bug is fixed
-    expect(result).toBe(2);
-    // No Google validation needed
+    // Returns 0 — nothing was added to the campaign buffer
+    expect(result).toBe(0);
     expect(mockValidateOutletBatch).not.toHaveBeenCalled();
+  });
+
+  it("counts only campaign_outlets inserts, not campaign_category_outlets", async () => {
+    setupBrandMocks();
+
+    // Get known domains for category → none
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    // LLM returns 2 outlets
+    mockChatComplete.mockResolvedValueOnce({
+      content: "",
+      json: {
+        outlets: [
+          { name: "TechCrunch", domain: "techcrunch.com", whyRelevant: "Tech pub", relevanceScore: 85 },
+          { name: "The Verge", domain: "theverge.com", whyRelevant: "Tech culture", relevanceScore: 62 },
+        ],
+      },
+      tokensInput: 200,
+      tokensOutput: 150,
+      model: "flash",
+    });
+
+    // Both already exist in outlets table (skip Google)
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { outlet_domain: "techcrunch.com" },
+        { outlet_domain: "theverge.com" },
+      ],
+    });
+
+    // DB inserts: both campaign_category_outlets succeed, only 1 campaign_outlets succeeds
+    mockClientQuery
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({ rows: [{ id: "outlet-1" }] }) // INSERT outlets (upsert)
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_category_outlets → SUCCESS
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_outlets → SUCCESS
+      .mockResolvedValueOnce({ rows: [{ id: "outlet-2" }] }) // INSERT outlets (upsert)
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT campaign_category_outlets → SUCCESS
+      .mockResolvedValueOnce({ rowCount: 0 }) // INSERT campaign_outlets → CONFLICT
+      .mockResolvedValueOnce({}); // COMMIT
+
+    // Update outlets_found counter (1 inserted)
+    mockQuery.mockResolvedValueOnce({});
+    // Check cap
+    mockQuery.mockResolvedValueOnce({ rows: [{ outlets_found: 3 }] });
+
+    const result = await discoverOutletsInCategory(category, ctx);
+
+    // Returns 1 — only the outlet that was actually added to the buffer
+    expect(result).toBe(1);
   });
 
   it("stores per-outlet relevanceScore from LLM instead of flat category-rank score", async () => {
@@ -530,7 +577,7 @@ describe("discoverOutletsInCategory", () => {
       },
       tokensInput: 200,
       tokensOutput: 150,
-      model: "flash-lite",
+      model: "flash",
     });
 
     // Neither exists in outlets table
@@ -591,7 +638,7 @@ describe("discoverOutletsInCategory", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
 
     // Neither exists in outlets table
@@ -639,7 +686,7 @@ describe("discoverOutletsInCategory", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
 
     // Mark exhausted
@@ -672,7 +719,7 @@ describe("discoverOutletsInCategory", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
 
     // None exist in outlets table
@@ -741,7 +788,7 @@ describe("discoverCycle", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
     // INSERT category
     mockQuery.mockResolvedValueOnce({ rowCount: 1 });
@@ -775,7 +822,7 @@ describe("discoverCycle", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
     // Check existing outlets → none
     mockQuery.mockResolvedValueOnce({ rows: [] });
@@ -831,7 +878,7 @@ describe("discoverCycle", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
     mockQuery.mockResolvedValueOnce({ rowCount: 1 }); // INSERT
 
@@ -861,7 +908,7 @@ describe("discoverCycle", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
     // Check existing outlets → none
     mockQuery.mockResolvedValueOnce({ rows: [] });
@@ -920,7 +967,7 @@ describe("discoverCycle", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
     // markCategoryStatus → exhausted
     mockQuery.mockResolvedValueOnce({});
@@ -952,7 +999,7 @@ describe("discoverCycle", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
     // Check existing outlets → none
     mockQuery.mockResolvedValueOnce({ rows: [] });
@@ -1009,7 +1056,7 @@ describe("discoverCycle", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
     mockQuery.mockResolvedValueOnce({}); // markCategoryStatus exhausted
 
@@ -1037,7 +1084,7 @@ describe("discoverCycle", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
     mockQuery.mockResolvedValueOnce({ rowCount: 1 }); // INSERT category
 
@@ -1068,7 +1115,7 @@ describe("discoverCycle", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
     // Check existing outlets → none
     mockQuery.mockResolvedValueOnce({ rows: [] });
@@ -1128,7 +1175,7 @@ describe("discoverCycle", () => {
         json: { invalid: true },
         tokensInput: 50,
         tokensOutput: 20,
-        model: "flash-lite",
+        model: "flash",
       });
     }
 
@@ -1215,7 +1262,7 @@ describe("reuseCycle", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
 
     // INSERT open for each scored outlet
@@ -1251,7 +1298,7 @@ describe("reuseCycle", () => {
         json: { invalid: true },
         tokensInput: 50,
         tokensOutput: 20,
-        model: "flash-lite",
+        model: "flash",
       });
     }
 
