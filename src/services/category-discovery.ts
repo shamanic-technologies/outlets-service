@@ -361,12 +361,10 @@ export async function discoverOutletsInCategory(
          ON CONFLICT DO NOTHING`,
         [ctx.campaignId, category.id, outletId]
       );
-      if (ccoResult.rowCount && ccoResult.rowCount > 0) inserted++;
-
       const relevanceScore = o.relevanceScore;
 
       // Insert into campaign buffer (may conflict if outlet already in campaign from another category)
-      await client.query(
+      const bufferResult = await client.query(
         `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_ids, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, status_reason, status_detail, overall_relevance, run_id, category_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'open', 'discovered', $10, $11, $12, $13)
          ON CONFLICT (campaign_id, outlet_id) DO NOTHING`,
@@ -386,6 +384,7 @@ export async function discoverOutletsInCategory(
           category.id,
         ]
       );
+      if (bufferResult.rowCount && bufferResult.rowCount > 0) inserted++;
     }
 
     await client.query("COMMIT");
