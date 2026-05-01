@@ -141,12 +141,11 @@ export async function generateCategoryBatch(ctx: OrgContext): Promise<number> {
     const response = await chatComplete(
       {
         provider: "google",
-        model: "flash-lite",
+        model: "flash",
         message: buildCategoryGenerationMessage(brandContext, alreadyUsed, featureInput),
         systemPrompt: GENERATE_CATEGORIES_SYSTEM_PROMPT,
         responseFormat: "json",
         temperature: 0.7,
-        maxTokens: 2000,
       },
       ctx
     );
@@ -247,7 +246,7 @@ export async function discoverOutletsInCategory(
     const response = await chatComplete(
       {
         provider: "google",
-        model: "flash-lite",
+        model: "flash",
         message: buildOutletGenerationMessage(
           brandContext,
           category.categoryName,
@@ -258,7 +257,7 @@ export async function discoverOutletsInCategory(
         systemPrompt: GENERATE_OUTLETS_SYSTEM_PROMPT,
         responseFormat: "json",
         temperature: 0.7,
-        maxTokens: 2000,
+
       },
       ctx
     );
@@ -518,12 +517,12 @@ export async function reuseCycle(ctx: OrgContext): Promise<number> {
     const response = await chatComplete(
       {
         provider: "google",
-        model: "flash-lite",
+        model: "flash",
         message: buildReuseScoringMessage(brandContext, available, featureInput ?? undefined),
         systemPrompt: SCORE_OUTLETS_SYSTEM_PROMPT,
         responseFormat: "json",
         temperature: 0.3,
-        maxTokens: 2000,
+
       },
       ctx
     );
