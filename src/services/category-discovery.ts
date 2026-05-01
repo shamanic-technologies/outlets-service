@@ -317,6 +317,7 @@ export async function discoverOutletsInCategory(
     console.log(`[outlets-service] Validating ${needsValidation.length} new outlet candidates via Google for category "${category.categoryName} / ${category.categoryGeo}" (${alreadyValidated.length} already known)`);
     const validated = await validateOutletBatch(needsValidation, ctx);
     const googleValid = validated.filter((o) => o.valid);
+    console.log(`[outlets-service] Google validation: ${googleValid.length}/${needsValidation.length} validated for "${category.categoryName} / ${category.categoryGeo}"`);
     validOutlets = [...alreadyValidated, ...googleValid];
   } else {
     console.log(`[outlets-service] All ${alreadyValidated.length} outlet candidates already known for category "${category.categoryName} / ${category.categoryGeo}", skipping Google validation`);
