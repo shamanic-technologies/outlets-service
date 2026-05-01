@@ -410,10 +410,7 @@
       "StatusCounts": {
         "type": "object",
         "properties": {
-          "buffered": {
-            "type": "number"
-          },
-          "claimed": {
+          "open": {
             "type": "number"
           },
           "served": {
@@ -457,8 +454,7 @@
           }
         },
         "required": [
-          "buffered",
-          "claimed",
+          "open",
           "served",
           "skipped",
           "contacted",
@@ -489,10 +485,7 @@
           "byOutreachStatus": {
             "type": "object",
             "properties": {
-              "buffered": {
-                "type": "number"
-              },
-              "claimed": {
+              "open": {
                 "type": "number"
               },
               "served": {
@@ -536,8 +529,7 @@
               }
             },
             "required": [
-              "buffered",
-              "claimed",
+              "open",
               "served",
               "skipped",
               "contacted",
@@ -1052,20 +1044,35 @@
                           },
                           "status": {
                             "type": "object",
-                            "nullable": true,
-                            "description": "Structured status from journalists-service. Null when no journalist data exists for this outlet.",
+                            "description": "Hybrid status object. Always includes outletStatus/statusReason/statusDetail from outlets-service DB. When journalist data exists, also includes totalJournalists, brand, byCampaign, campaign, and global from journalists-service.",
                             "properties": {
+                              "outletStatus": {
+                                "type": "string",
+                                "enum": [
+                                  "open",
+                                  "served",
+                                  "skipped"
+                                ],
+                                "description": "DB status from outlets-service (first/most recent campaign)"
+                              },
+                              "statusReason": {
+                                "type": "string",
+                                "nullable": true,
+                                "description": "Short reason for the outlet's status"
+                              },
+                              "statusDetail": {
+                                "type": "string",
+                                "nullable": true,
+                                "description": "Detailed debug info for the status"
+                              },
                               "totalJournalists": {
                                 "type": "number",
-                                "description": "Total journalists for this outlet"
+                                "description": "Total journalists for this outlet (from journalists-service)"
                               },
                               "brand": {
                                 "type": "object",
                                 "properties": {
-                                  "buffered": {
-                                    "type": "number"
-                                  },
-                                  "claimed": {
+                                  "open": {
                                     "type": "number"
                                   },
                                   "served": {
@@ -1109,8 +1116,7 @@
                                   }
                                 },
                                 "required": [
-                                  "buffered",
-                                  "claimed",
+                                  "open",
                                   "served",
                                   "skipped",
                                   "contacted",
@@ -1134,10 +1140,7 @@
                                 "additionalProperties": {
                                   "type": "object",
                                   "properties": {
-                                    "buffered": {
-                                      "type": "number"
-                                    },
-                                    "claimed": {
+                                    "open": {
                                       "type": "number"
                                     },
                                     "served": {
@@ -1181,8 +1184,7 @@
                                     }
                                   },
                                   "required": [
-                                    "buffered",
-                                    "claimed",
+                                    "open",
                                     "served",
                                     "skipped",
                                     "contacted",
@@ -1203,10 +1205,7 @@
                               "campaign": {
                                 "type": "object",
                                 "properties": {
-                                  "buffered": {
-                                    "type": "number"
-                                  },
-                                  "claimed": {
+                                  "open": {
                                     "type": "number"
                                   },
                                   "served": {
@@ -1250,8 +1249,7 @@
                                   }
                                 },
                                 "required": [
-                                  "buffered",
-                                  "claimed",
+                                  "open",
                                   "served",
                                   "skipped",
                                   "contacted",
@@ -1287,11 +1285,7 @@
                               }
                             },
                             "required": [
-                              "totalJournalists",
-                              "brand",
-                              "byCampaign",
-                              "campaign",
-                              "global"
+                              "outletStatus"
                             ]
                           },
                           "campaigns": {
@@ -1379,10 +1373,7 @@
                     "byOutreachStatus": {
                       "type": "object",
                       "properties": {
-                        "buffered": {
-                          "type": "number"
-                        },
-                        "claimed": {
+                        "open": {
                           "type": "number"
                         },
                         "served": {
@@ -1426,8 +1417,7 @@
                         }
                       },
                       "required": [
-                        "buffered",
-                        "claimed",
+                        "open",
                         "served",
                         "skipped",
                         "contacted",
@@ -1461,12 +1451,14 @@
                       "createdAt": "2026-01-01T00:00:00Z",
                       "relevanceScore": 85,
                       "status": {
+                        "outletStatus": "served",
+                        "statusReason": "buffer_claimed",
+                        "statusDetail": null,
                         "totalJournalists": 3,
                         "brand": null,
                         "byCampaign": null,
                         "campaign": {
-                          "buffered": 3,
-                          "claimed": 2,
+                          "open": 0,
                           "served": 2,
                           "skipped": 0,
                           "contacted": 2,
@@ -1506,8 +1498,7 @@
                   ],
                   "total": 1,
                   "byOutreachStatus": {
-                    "buffered": 3,
-                    "claimed": 2,
+                    "open": 1,
                     "served": 2,
                     "skipped": 0,
                     "contacted": 2,
@@ -2277,8 +2268,7 @@
                   "avgRelevanceScore": 72.5,
                   "searchQueriesUsed": 8,
                   "byOutreachStatus": {
-                    "buffered": 200,
-                    "claimed": 150,
+                    "open": 50,
                     "served": 120,
                     "skipped": 30,
                     "contacted": 115,

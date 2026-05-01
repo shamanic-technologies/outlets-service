@@ -9,7 +9,7 @@ import {
   bulkCreateOutletsSchema,
   searchOutletsSchema,
 } from "../schemas";
-import { fetchOutletStatuses, type ScopeFilters } from "../services/outlet-status";
+import { fetchOutletStatuses, countOutletStatuses, mergeStatusCounts, type ScopeFilters } from "../services/outlet-status";
 
 const router = Router();
 
@@ -275,9 +275,16 @@ router.get(
 
       const enrichment = await fetchOutletStatuses(allOutletIds, ctx, scopeFilters);
 
+      // Count outlet statuses from DB for hybrid byOutreachStatus
+      const outletCounts = await countOutletStatuses(pool.query.bind(pool), conditions, params);
+      const hybridByOutreachStatus = mergeStatusCounts(outletCounts, enrichment.byOutreachStatus);
+
       // Build final response (page only)
       const outlets = Array.from(outletsMap.values()).map((outlet) => {
-        const outletStatus = enrichment.results.get(outlet.id) ?? null;
+        const journalistStatus = enrichment.results.get(outlet.id) ?? null;
+
+        // Pick the first campaign's DB status (most recently updated, since rows are ordered by updated_at DESC)
+        const firstCampaign = outlet.campaigns[0];
 
         const campaignsOut = outlet.campaigns.map((c) => ({
           campaignId: c.campaignId,
@@ -297,6 +304,20 @@ router.get(
         // Outlet-level relevanceScore = max across campaigns
         const outletRelevanceScore = Math.max(...outlet.campaigns.map((c) => c.relevanceScore));
 
+        // Merge journalist-service status with outlets-service DB fields
+        const status = journalistStatus
+          ? {
+              ...journalistStatus,
+              outletStatus: firstCampaign.dbStatus,
+              statusReason: firstCampaign.statusReason,
+              statusDetail: firstCampaign.statusDetail,
+            }
+          : {
+              outletStatus: firstCampaign.dbStatus,
+              statusReason: firstCampaign.statusReason,
+              statusDetail: firstCampaign.statusDetail,
+            };
+
         return {
           id: outlet.id,
           outletName: outlet.outletName,
@@ -304,12 +325,12 @@ router.get(
           outletDomain: outlet.outletDomain,
           createdAt: outlet.createdAt,
           relevanceScore: outletRelevanceScore,
-          status: outletStatus,
+          status,
           campaigns: campaignsOut,
         };
       });
 
-      res.json({ outlets, total, byOutreachStatus: enrichment.byOutreachStatus });
+      res.json({ outlets, total, byOutreachStatus: hybridByOutreachStatus });
     } catch (err) {
       console.error("[outlets-service] Error listing outlets:", err);
       res.status(500).json({ error: "Internal server error" });

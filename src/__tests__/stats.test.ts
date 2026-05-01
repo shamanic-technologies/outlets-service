@@ -27,9 +27,13 @@ vi.mock("../services/dynasty", () => ({
 
 // Mock outlet-status service
 const mockFetchOutletStatuses = vi.fn();
-vi.mock("../services/outlet-status", () => ({
-  fetchOutletStatuses: (...args: unknown[]) => mockFetchOutletStatuses(...args),
-}));
+vi.mock("../services/outlet-status", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/outlet-status")>();
+  return {
+    ...actual,
+    fetchOutletStatuses: (...args: unknown[]) => mockFetchOutletStatuses(...args),
+  };
+});
 
 import {
   resolveWorkflowDynastySlugs,
@@ -47,7 +51,7 @@ const CAMPAIGN_ID = "dddddddd-dddd-dddd-dddd-dddddddddddd";
 const BRAND_ID = "55555555-5555-5555-5555-555555555555";
 
 const ZERO_STATUS_COUNTS = {
-  buffered: 0, claimed: 0, served: 0, skipped: 0,
+  open: 0, served: 0, skipped: 0,
   contacted: 0, sent: 0, delivered: 0, opened: 0, clicked: 0,
   replied: 0, repliesPositive: 0, repliesNegative: 0, repliesNeutral: 0,
   bounced: 0, unsubscribed: 0,
@@ -630,7 +634,7 @@ const OUTLET_B = "aaaa0002-0002-0002-0002-000000000002";
 const OUTLET_C = "aaaa0003-0003-0003-0003-000000000003";
 
 describe("GET /orgs/outlets/stats byOutreachStatus enrichment", () => {
-  it("returns byOutreachStatus passed through from journalists-service", async () => {
+  it("returns hybrid byOutreachStatus (DB counts + journalist email counts)", async () => {
     // Aggregate query
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 3, avg_relevance_score: "70.00", search_queries_used: 10 }],
@@ -642,12 +646,16 @@ describe("GET /orgs/outlets/stats byOutreachStatus enrichment", () => {
     // Journalists-service returns enriched statuses with aggregate byOutreachStatus
     mockFetchOutletStatuses.mockResolvedValueOnce({
       results: new Map([
-        [OUTLET_A, { totalJournalists: 1, brand: null, byCampaign: null, campaign: { ...ZERO_STATUS_COUNTS, buffered: 1 }, global: { bounced: 0, unsubscribed: 0 } }],
+        [OUTLET_A, { totalJournalists: 1, brand: null, byCampaign: null, campaign: { ...ZERO_STATUS_COUNTS, contacted: 0 }, global: { bounced: 0, unsubscribed: 0 } }],
         [OUTLET_B, { totalJournalists: 2, brand: null, byCampaign: null, campaign: { ...ZERO_STATUS_COUNTS, contacted: 2 }, global: { bounced: 0, unsubscribed: 0 } }],
         [OUTLET_C, { totalJournalists: 1, brand: null, byCampaign: null, campaign: { ...ZERO_STATUS_COUNTS, replied: 1, repliesPositive: 1 }, global: { bounced: 0, unsubscribed: 0 } }],
       ]),
       total: 3,
-      byOutreachStatus: { ...ZERO_STATUS_COUNTS, buffered: 1, contacted: 2, replied: 1, repliesPositive: 1 },
+      byOutreachStatus: { ...ZERO_STATUS_COUNTS, contacted: 2, replied: 1, repliesPositive: 1 },
+    });
+    // countOutletStatuses query
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ open_count: 1, served_count: 2, skipped_count: 0 }],
     });
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats"))
@@ -655,10 +663,12 @@ describe("GET /orgs/outlets/stats byOutreachStatus enrichment", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.outletsDiscovered).toBe(3);
-    // byOutreachStatus is passed through from journalists-service
+    // byOutreachStatus is hybrid: open/served/skipped from DB, email fields from journalists-service
     expect(res.body.byOutreachStatus).toEqual({
-      ...ZERO_STATUS_COUNTS, buffered: 1, contacted: 2, replied: 1, repliesPositive: 1,
+      ...ZERO_STATUS_COUNTS, open: 1, served: 2, contacted: 2, replied: 1, repliesPositive: 1,
     });
+    expect(res.body.byOutreachStatus).not.toHaveProperty("buffered");
+    expect(res.body.byOutreachStatus).not.toHaveProperty("claimed");
   });
 
   it("returns undefined byOutreachStatus when no outlets match", async () => {
@@ -676,7 +686,7 @@ describe("GET /orgs/outlets/stats byOutreachStatus enrichment", () => {
     expect(mockFetchOutletStatuses).not.toHaveBeenCalled();
   });
 
-  it("passes through byOutreachStatus for all outlets", async () => {
+  it("passes through email counts from journalists-service with DB counts for all outlets", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ outlets_discovered: 2, avg_relevance_score: "60.00", search_queries_used: 4 }],
     });
@@ -691,13 +701,16 @@ describe("GET /orgs/outlets/stats byOutreachStatus enrichment", () => {
       total: 2,
       byOutreachStatus: { ...ZERO_STATUS_COUNTS, delivered: 1 },
     });
+    // countOutletStatuses query
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ open_count: 1, served_count: 1, skipped_count: 0 }],
+    });
 
     const res = await withIdentity(request(app).get("/orgs/outlets/stats"))
       .query({ campaignId: CAMPAIGN_ID });
 
     expect(res.status).toBe(200);
-    expect(res.body.byOutreachStatus).toEqual({ ...ZERO_STATUS_COUNTS, delivered: 1 });
-    // Enrichment is called for ALL outlets
+    expect(res.body.byOutreachStatus).toEqual({ ...ZERO_STATUS_COUNTS, open: 1, served: 1, delivered: 1 });
     expect(mockFetchOutletStatuses).toHaveBeenCalledOnce();
   });
 });
