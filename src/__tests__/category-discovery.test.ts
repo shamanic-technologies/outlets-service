@@ -122,7 +122,7 @@ describe("generateCategoryBatch", () => {
       },
       tokensInput: 200,
       tokensOutput: 150,
-      model: "flash-lite",
+      model: "flash",
     });
 
     // 3 INSERTs
@@ -166,7 +166,7 @@ describe("generateCategoryBatch", () => {
       },
       tokensInput: 200,
       tokensOutput: 150,
-      model: "flash-lite",
+      model: "flash",
     });
 
     // Only 1 INSERT (the non-duplicate)
@@ -191,7 +191,7 @@ describe("generateCategoryBatch", () => {
         json: { invalid: true },
         tokensInput: 50,
         tokensOutput: 20,
-        model: "flash-lite",
+        model: "flash",
       });
     }
 
@@ -213,7 +213,7 @@ describe("generateCategoryBatch", () => {
       json: { invalid: true },
       tokensInput: 50,
       tokensOutput: 20,
-      model: "flash-lite",
+      model: "flash",
     });
     // Second attempt → valid
     mockChatComplete.mockResolvedValueOnce({
@@ -225,7 +225,7 @@ describe("generateCategoryBatch", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
 
     // INSERT
@@ -297,7 +297,7 @@ describe("discoverOutletsInCategory", () => {
       },
       tokensInput: 200,
       tokensOutput: 150,
-      model: "flash-lite",
+      model: "flash",
     });
 
     // Check which domains already exist in outlets table → none
@@ -352,7 +352,7 @@ describe("discoverOutletsInCategory", () => {
       },
       tokensInput: 200,
       tokensOutput: 150,
-      model: "flash-lite",
+      model: "flash",
     });
 
     // Check existing outlets → none
@@ -414,7 +414,7 @@ describe("discoverOutletsInCategory", () => {
       },
       tokensInput: 200,
       tokensOutput: 150,
-      model: "flash-lite",
+      model: "flash",
     });
 
     // Check existing outlets → TechCrunch and The Verge already exist
@@ -478,7 +478,7 @@ describe("discoverOutletsInCategory", () => {
       },
       tokensInput: 200,
       tokensOutput: 150,
-      model: "flash-lite",
+      model: "flash",
     });
 
     // Both already exist in outlets table (skip Google)
@@ -527,7 +527,7 @@ describe("discoverOutletsInCategory", () => {
       },
       tokensInput: 200,
       tokensOutput: 150,
-      model: "flash-lite",
+      model: "flash",
     });
 
     // Both already exist in outlets table (skip Google)
@@ -577,7 +577,7 @@ describe("discoverOutletsInCategory", () => {
       },
       tokensInput: 200,
       tokensOutput: 150,
-      model: "flash-lite",
+      model: "flash",
     });
 
     // Neither exists in outlets table
@@ -638,7 +638,7 @@ describe("discoverOutletsInCategory", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
 
     // Neither exists in outlets table
@@ -686,7 +686,7 @@ describe("discoverOutletsInCategory", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
 
     // Mark exhausted
@@ -719,7 +719,7 @@ describe("discoverOutletsInCategory", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
 
     // None exist in outlets table
@@ -788,7 +788,7 @@ describe("discoverCycle", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
     // INSERT category
     mockQuery.mockResolvedValueOnce({ rowCount: 1 });
@@ -822,7 +822,7 @@ describe("discoverCycle", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
     // Check existing outlets → none
     mockQuery.mockResolvedValueOnce({ rows: [] });
@@ -878,7 +878,7 @@ describe("discoverCycle", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
     mockQuery.mockResolvedValueOnce({ rowCount: 1 }); // INSERT
 
@@ -908,7 +908,7 @@ describe("discoverCycle", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
     // Check existing outlets → none
     mockQuery.mockResolvedValueOnce({ rows: [] });
@@ -967,7 +967,7 @@ describe("discoverCycle", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
     // markCategoryStatus → exhausted
     mockQuery.mockResolvedValueOnce({});
@@ -999,7 +999,7 @@ describe("discoverCycle", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
     // Check existing outlets → none
     mockQuery.mockResolvedValueOnce({ rows: [] });
@@ -1056,7 +1056,7 @@ describe("discoverCycle", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
     mockQuery.mockResolvedValueOnce({}); // markCategoryStatus exhausted
 
@@ -1084,7 +1084,7 @@ describe("discoverCycle", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
     mockQuery.mockResolvedValueOnce({ rowCount: 1 }); // INSERT category
 
@@ -1115,7 +1115,7 @@ describe("discoverCycle", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
     // Check existing outlets → none
     mockQuery.mockResolvedValueOnce({ rows: [] });
@@ -1175,7 +1175,7 @@ describe("discoverCycle", () => {
         json: { invalid: true },
         tokensInput: 50,
         tokensOutput: 20,
-        model: "flash-lite",
+        model: "flash",
       });
     }
 
@@ -1262,7 +1262,7 @@ describe("reuseCycle", () => {
       },
       tokensInput: 100,
       tokensOutput: 80,
-      model: "flash-lite",
+      model: "flash",
     });
 
     // INSERT open for each scored outlet
@@ -1298,7 +1298,7 @@ describe("reuseCycle", () => {
         json: { invalid: true },
         tokensInput: 50,
         tokensOutput: 20,
-        model: "flash-lite",
+        model: "flash",
       });
     }
 
