@@ -67,15 +67,16 @@ const reuseScoringSchema = z.object({
 // JSON Schemas passed to chat-service /complete `responseSchema`. Forwarded to
 // Gemini `generationConfig.responseSchema`, which enforces shape at decoding
 // time and eliminates structural drift in long list outputs.
+// Gemini's schema dialect is an OpenAPI 3.0 subset and rejects
+// `additionalProperties` with HTTP 400 — do not add it. (Anthropic's strict
+// mode requires it; if we ever swap provider, schemas need a conditional.)
 const categoryGenerationJsonSchema: Record<string, unknown> = {
   type: "object",
-  additionalProperties: false,
   properties: {
     categories: {
       type: "array",
       items: {
         type: "object",
-        additionalProperties: false,
         properties: {
           name: { type: "string" },
           geo: { type: "string" },
@@ -91,13 +92,11 @@ const categoryGenerationJsonSchema: Record<string, unknown> = {
 
 const outletGenerationJsonSchema: Record<string, unknown> = {
   type: "object",
-  additionalProperties: false,
   properties: {
     outlets: {
       type: "array",
       items: {
         type: "object",
-        additionalProperties: false,
         properties: {
           name: { type: "string" },
           domain: { type: "string" },
@@ -113,13 +112,11 @@ const outletGenerationJsonSchema: Record<string, unknown> = {
 
 const reuseScoringJsonSchema: Record<string, unknown> = {
   type: "object",
-  additionalProperties: false,
   properties: {
     outlets: {
       type: "array",
       items: {
         type: "object",
-        additionalProperties: false,
         properties: {
           outletId: { type: "string" },
           relevanceScore: { type: "integer", minimum: 1, maximum: 100 },
