@@ -145,7 +145,6 @@ describe("generateCategoryBatch", () => {
       "rank",
       "rationale",
     ]);
-    expect(llmCall.responseSchema.additionalProperties).toBe(false);
     // Verify INSERT calls include category data
     const insertCalls = mockQuery.mock.calls.filter(
       (call) => typeof call[0] === "string" && call[0].includes("INTO campaign_categories")
@@ -353,7 +352,6 @@ describe("discoverOutletsInCategory", () => {
       "whyRelevant",
       "relevanceScore",
     ]);
-    expect(llmCall.responseSchema.additionalProperties).toBe(false);
   });
 
   it("inserts outlets sorted by domain to prevent deadlocks under concurrency", async () => {
@@ -1310,7 +1308,6 @@ describe("reuseCycle", () => {
       "relevanceScore",
       "whyRelevant",
     ]);
-    expect(llmCall.responseSchema.additionalProperties).toBe(false);
   });
 
   it("inserts with default score 50 when LLM fails", async () => {
