@@ -135,6 +135,17 @@ describe("generateCategoryBatch", () => {
 
     expect(result).toBe(3);
     expect(mockChatComplete).toHaveBeenCalledTimes(1);
+    // Verify responseSchema was passed to enforce JSON shape server-side
+    const llmCall = mockChatComplete.mock.calls[0][0];
+    expect(llmCall.responseSchema).toBeDefined();
+    expect(llmCall.responseSchema.required).toEqual(["categories"]);
+    expect(llmCall.responseSchema.properties.categories.items.required).toEqual([
+      "name",
+      "geo",
+      "rank",
+      "rationale",
+    ]);
+    expect(llmCall.responseSchema.additionalProperties).toBe(false);
     // Verify INSERT calls include category data
     const insertCalls = mockQuery.mock.calls.filter(
       (call) => typeof call[0] === "string" && call[0].includes("INTO campaign_categories")
@@ -332,6 +343,17 @@ describe("discoverOutletsInCategory", () => {
     expect(mockValidateOutletBatch).toHaveBeenCalledTimes(1);
     // Verify validation was called with all 3 candidates (none were pre-known)
     expect(mockValidateOutletBatch.mock.calls[0][0]).toHaveLength(3);
+    // Verify responseSchema was passed to enforce JSON shape server-side
+    const llmCall = mockChatComplete.mock.calls[0][0];
+    expect(llmCall.responseSchema).toBeDefined();
+    expect(llmCall.responseSchema.required).toEqual(["outlets"]);
+    expect(llmCall.responseSchema.properties.outlets.items.required).toEqual([
+      "name",
+      "domain",
+      "whyRelevant",
+      "relevanceScore",
+    ]);
+    expect(llmCall.responseSchema.additionalProperties).toBe(false);
   });
 
   it("inserts outlets sorted by domain to prevent deadlocks under concurrency", async () => {
@@ -1280,6 +1302,15 @@ describe("reuseCycle", () => {
     expect(llmCall.message).toContain("Good Outlet");
     expect(llmCall.message).toContain("Great Outlet");
     expect(llmCall.message).not.toContain("Blocked One");
+    // Verify responseSchema was passed to enforce JSON shape server-side
+    expect(llmCall.responseSchema).toBeDefined();
+    expect(llmCall.responseSchema.required).toEqual(["outlets"]);
+    expect(llmCall.responseSchema.properties.outlets.items.required).toEqual([
+      "outletId",
+      "relevanceScore",
+      "whyRelevant",
+    ]);
+    expect(llmCall.responseSchema.additionalProperties).toBe(false);
   });
 
   it("inserts with default score 50 when LLM fails", async () => {

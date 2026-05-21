@@ -21,9 +21,13 @@ vi.mock("../db/pool", () => ({
 
 // Mock outlet-status service (used by GET /orgs/outlets for outreach status enrichment)
 const mockFetchOutletStatuses = vi.fn();
-vi.mock("../services/outlet-status", () => ({
-  fetchOutletStatuses: (...args: unknown[]) => mockFetchOutletStatuses(...args),
-}));
+vi.mock("../services/outlet-status", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/outlet-status")>();
+  return {
+    ...actual,
+    fetchOutletStatuses: (...args: unknown[]) => mockFetchOutletStatuses(...args),
+  };
+});
 
 const API_KEY = "test-key";
 const ORG_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
@@ -33,7 +37,7 @@ const CAMPAIGN_ID = "22222222-2222-2222-2222-222222222222";
 const BRAND_ID = "55555555-5555-5555-5555-555555555555";
 
 const ZERO_STATUS_COUNTS = {
-  buffered: 0, claimed: 0, served: 0, skipped: 0,
+  open: 0, served: 0, skipped: 0,
   contacted: 0, sent: 0, delivered: 0, opened: 0, clicked: 0,
   replied: 0, repliesPositive: 0, repliesNegative: 0, repliesNeutral: 0,
   bounced: 0, unsubscribed: 0,
@@ -195,6 +199,8 @@ describe("GET /orgs/outlets", () => {
           why_not_relevant: "Competitive",
           relevance_score: "85.00",
           outlet_status: "served",
+          status_reason: "buffer_claimed",
+          status_detail: null,
           overall_relevance: null,
           relevance_rationale: null,
           run_id: RUN_ID,
@@ -204,7 +210,7 @@ describe("GET /orgs/outlets", () => {
       ],
     });
 
-    const outletStatus = {
+    const journalistStatus = {
       totalJournalists: 5,
       brand: { ...ZERO_STATUS_COUNTS, contacted: 3, served: 5 },
       byCampaign: { [CAMPAIGN_ID]: { ...ZERO_STATUS_COUNTS, contacted: 3, served: 5 } },
@@ -212,9 +218,14 @@ describe("GET /orgs/outlets", () => {
       global: { bounced: 0, unsubscribed: 0 },
     };
     mockFetchOutletStatuses.mockResolvedValueOnce({
-      results: new Map([[OUTLET_ID, outletStatus]]),
+      results: new Map([[OUTLET_ID, journalistStatus]]),
       total: 1,
       byOutreachStatus: { ...ZERO_STATUS_COUNTS, contacted: 3, served: 5 },
+    });
+
+    // Step 3: countOutletStatuses query
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ open_count: 0, served_count: 1, skipped_count: 0 }],
     });
 
     const res = await withIdentity(request(app).get("/orgs/outlets")).query({
@@ -223,18 +234,23 @@ describe("GET /orgs/outlets", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.outlets).toHaveLength(1);
-    expect(res.body.byOutreachStatus).toEqual({ ...ZERO_STATUS_COUNTS, contacted: 3, served: 5 });
+    // byOutreachStatus is hybrid: open/served/skipped from DB, email fields from journalists-service
+    expect(res.body.byOutreachStatus).toEqual({ ...ZERO_STATUS_COUNTS, contacted: 3, served: 1, skipped: 0 });
+    expect(res.body.byOutreachStatus).not.toHaveProperty("buffered");
+    expect(res.body.byOutreachStatus).not.toHaveProperty("claimed");
     const outlet = res.body.outlets[0];
     expect(outlet.outletName).toBe("TechCrunch");
     expect(outlet.relevanceScore).toBe(85);
-    expect(outlet.status).toEqual(outletStatus);
+    // Status now includes DB fields
+    expect(outlet.status.outletStatus).toBe("served");
+    expect(outlet.status.statusReason).toBe("buffer_claimed");
+    expect(outlet.status.statusDetail).toBeNull();
+    expect(outlet.status.totalJournalists).toBe(5);
     expect(outlet.campaigns).toHaveLength(1);
     expect(outlet.campaigns[0].campaignId).toBe(CAMPAIGN_ID);
     expect(outlet.campaigns[0].relevanceScore).toBe(85);
     expect(outlet.campaigns[0].brandIds).toEqual([BRAND_ID]);
-    // No outreachStatus or replyClassification on campaigns
     expect(outlet.campaigns[0]).not.toHaveProperty("outreachStatus");
-    // scopeFilters should be passed with campaignId
     expect(mockFetchOutletStatuses).toHaveBeenCalledWith(
       [OUTLET_ID],
       expect.any(Object),
@@ -242,7 +258,7 @@ describe("GET /orgs/outlets", () => {
     );
   });
 
-  it("returns null status when no journalist data exists for outlet", async () => {
+  it("returns DB-only status when no journalist data exists for outlet", async () => {
     const OUTLET_ID = "11111111-1111-1111-1111-111111111111";
 
     // Step 1: ALL distinct outlet IDs
@@ -265,6 +281,8 @@ describe("GET /orgs/outlets", () => {
           why_not_relevant: "Competitive",
           relevance_score: "85.00",
           outlet_status: "open",
+          status_reason: "discovered",
+          status_detail: null,
           overall_relevance: null,
           relevance_rationale: null,
           run_id: RUN_ID,
@@ -276,14 +294,23 @@ describe("GET /orgs/outlets", () => {
 
     mockFetchOutletStatuses.mockResolvedValueOnce(emptyEnrichment());
 
+    // Step 3: countOutletStatuses query
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ open_count: 1, served_count: 0, skipped_count: 0 }],
+    });
+
     const res = await withBaseIdentity(request(app).get("/orgs/outlets")).query({
       campaignId: CAMPAIGN_ID,
     });
 
     expect(res.status).toBe(200);
     const outlet = res.body.outlets[0];
-    expect(outlet.status).toBeNull();
-    expect(res.body.byOutreachStatus).toEqual(ZERO_STATUS_COUNTS);
+    // Status now always has DB fields even without journalist data
+    expect(outlet.status.outletStatus).toBe("open");
+    expect(outlet.status.statusReason).toBe("discovered");
+    expect(outlet.status).not.toHaveProperty("totalJournalists");
+    // byOutreachStatus is hybrid
+    expect(res.body.byOutreachStatus).toEqual({ ...ZERO_STATUS_COUNTS, open: 1 });
     expect(mockFetchOutletStatuses).toHaveBeenCalledOnce();
   });
 
@@ -311,6 +338,8 @@ describe("GET /orgs/outlets", () => {
           why_not_relevant: "Competitive",
           relevance_score: "90.00",
           outlet_status: "open",
+          status_reason: "discovered",
+          status_detail: null,
           overall_relevance: "high",
           relevance_rationale: null,
           run_id: RUN_ID,
@@ -329,6 +358,8 @@ describe("GET /orgs/outlets", () => {
           why_not_relevant: "None",
           relevance_score: "85.00",
           outlet_status: "served",
+          status_reason: "buffer_claimed",
+          status_detail: null,
           overall_relevance: null,
           relevance_rationale: null,
           run_id: null,
@@ -338,7 +369,7 @@ describe("GET /orgs/outlets", () => {
       ],
     });
 
-    const outletStatus = {
+    const journalistStatus = {
       totalJournalists: 8,
       brand: { ...ZERO_STATUS_COUNTS, delivered: 5, contacted: 8 },
       byCampaign: {
@@ -349,9 +380,14 @@ describe("GET /orgs/outlets", () => {
       global: { bounced: 0, unsubscribed: 0 },
     };
     mockFetchOutletStatuses.mockResolvedValueOnce({
-      results: new Map([[OUTLET_ID, outletStatus]]),
+      results: new Map([[OUTLET_ID, journalistStatus]]),
       total: 1,
       byOutreachStatus: { ...ZERO_STATUS_COUNTS, delivered: 5, contacted: 8 },
+    });
+
+    // Step 3: countOutletStatuses query
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ open_count: 1, served_count: 1, skipped_count: 0 }],
     });
 
     const res = await withIdentity(request(app).get("/orgs/outlets")).query({
@@ -360,14 +396,14 @@ describe("GET /orgs/outlets", () => {
 
     expect(res.status).toBe(200);
     const outlet = res.body.outlets[0];
-    // Outlet-level relevanceScore = max(90, 85) = 90
     expect(outlet.relevanceScore).toBe(90);
-    // Structured status object from journalists-service
-    expect(outlet.status).toEqual(outletStatus);
-    // Campaigns no longer have outreachStatus
+    // Status includes DB fields + journalist data
+    expect(outlet.status.outletStatus).toBe("open");
+    expect(outlet.status.totalJournalists).toBe(8);
     expect(outlet.campaigns[0]).not.toHaveProperty("outreachStatus");
     expect(outlet.campaigns[1]).not.toHaveProperty("outreachStatus");
-    expect(res.body.byOutreachStatus).toEqual({ ...ZERO_STATUS_COUNTS, delivered: 5, contacted: 8 });
+    // byOutreachStatus is hybrid: open/served/skipped from DB
+    expect(res.body.byOutreachStatus).toEqual({ ...ZERO_STATUS_COUNTS, open: 1, served: 1, delivered: 5, contacted: 8 });
   });
 
   it("filters by featureSlugs (comma-separated)", async () => {
@@ -418,6 +454,8 @@ describe("GET /orgs/outlets", () => {
           why_not_relevant: "Competitive",
           relevance_score: "85.00",
           outlet_status: "served",
+          status_reason: null,
+          status_detail: null,
           overall_relevance: null,
           relevance_rationale: null,
           run_id: RUN_ID,

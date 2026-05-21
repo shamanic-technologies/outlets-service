@@ -2,10 +2,9 @@ import { config } from "../config";
 import type { OrgContext } from "../middleware/org-context";
 import { buildServiceHeaders } from "./headers";
 
-/** Cumulative status counts — same shape as journalists-service StatusCounts. */
+/** Hybrid status counts — open/served/skipped from outlets-service, email fields from journalists-service. */
 export interface StatusCounts {
-  buffered: number;
-  claimed: number;
+  open: number;
   served: number;
   skipped: number;
   contacted: number;
@@ -48,12 +47,59 @@ export interface ScopeFilters {
   brandId?: string;
 }
 
-const ZERO_STATUS_COUNTS: StatusCounts = {
-  buffered: 0, claimed: 0, served: 0, skipped: 0,
+export const ZERO_STATUS_COUNTS: StatusCounts = {
+  open: 0, served: 0, skipped: 0,
   contacted: 0, sent: 0, delivered: 0, opened: 0, clicked: 0,
   replied: 0, repliesPositive: 0, repliesNegative: 0, repliesNeutral: 0,
   bounced: 0, unsubscribed: 0,
 };
+
+/** Count outlet statuses from campaign_outlets matching the given conditions. */
+export async function countOutletStatuses(
+  queryFn: (sql: string, params: unknown[]) => Promise<{ rows: any[] }>,
+  conditions: string[],
+  params: unknown[]
+): Promise<{ open: number; served: number; skipped: number }> {
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const result = await queryFn(
+    `SELECT
+      COUNT(*) FILTER (WHERE co.status = 'open')::int AS open_count,
+      COUNT(*) FILTER (WHERE co.status = 'served')::int AS served_count,
+      COUNT(*) FILTER (WHERE co.status = 'skipped')::int AS skipped_count
+     FROM campaign_outlets co
+     ${where}`,
+    params
+  );
+  const row = result.rows[0];
+  return {
+    open: row?.open_count ?? 0,
+    served: row?.served_count ?? 0,
+    skipped: row?.skipped_count ?? 0,
+  };
+}
+
+/** Merge outlet-service counts (open/served/skipped) with journalist-service email counts. */
+export function mergeStatusCounts(
+  outletCounts: { open: number; served: number; skipped: number },
+  journalistCounts: Pick<StatusCounts, "contacted" | "sent" | "delivered" | "opened" | "clicked" | "replied" | "repliesPositive" | "repliesNegative" | "repliesNeutral" | "bounced" | "unsubscribed">
+): StatusCounts {
+  return {
+    open: outletCounts.open,
+    served: outletCounts.served,
+    skipped: outletCounts.skipped,
+    contacted: journalistCounts.contacted,
+    sent: journalistCounts.sent,
+    delivered: journalistCounts.delivered,
+    opened: journalistCounts.opened,
+    clicked: journalistCounts.clicked,
+    replied: journalistCounts.replied,
+    repliesPositive: journalistCounts.repliesPositive,
+    repliesNegative: journalistCounts.repliesNegative,
+    repliesNeutral: journalistCounts.repliesNeutral,
+    bounced: journalistCounts.bounced,
+    unsubscribed: journalistCounts.unsubscribed,
+  };
+}
 
 /**
  * Fetch outreach statuses from journalists-service.

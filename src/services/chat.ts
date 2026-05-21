@@ -10,6 +10,7 @@ export interface CompleteRequest {
   message: string;
   systemPrompt: string;
   responseFormat?: "json";
+  responseSchema?: Record<string, unknown>;
   temperature?: number;
   maxTokens?: number;
   thinkingBudget?: number;
