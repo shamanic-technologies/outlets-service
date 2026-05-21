@@ -64,6 +64,74 @@ const reuseScoringSchema = z.object({
   ),
 });
 
+// JSON Schemas passed to chat-service /complete `responseSchema`. Forwarded to
+// Gemini `generationConfig.responseSchema`, which enforces shape at decoding
+// time and eliminates structural drift in long list outputs.
+const categoryGenerationJsonSchema: Record<string, unknown> = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    categories: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          name: { type: "string" },
+          geo: { type: "string" },
+          rank: { type: "integer" },
+          rationale: { type: "string" },
+        },
+        required: ["name", "geo", "rank", "rationale"],
+      },
+    },
+  },
+  required: ["categories"],
+};
+
+const outletGenerationJsonSchema: Record<string, unknown> = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    outlets: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          name: { type: "string" },
+          domain: { type: "string" },
+          whyRelevant: { type: "string" },
+          relevanceScore: { type: "integer", minimum: 1, maximum: 100 },
+        },
+        required: ["name", "domain", "whyRelevant", "relevanceScore"],
+      },
+    },
+  },
+  required: ["outlets"],
+};
+
+const reuseScoringJsonSchema: Record<string, unknown> = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    outlets: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          outletId: { type: "string" },
+          relevanceScore: { type: "integer", minimum: 1, maximum: 100 },
+          whyRelevant: { type: "string" },
+        },
+        required: ["outletId", "relevanceScore", "whyRelevant"],
+      },
+    },
+  },
+  required: ["outlets"],
+};
+
 export interface CampaignCategory {
   id: string;
   campaignId: string;
@@ -145,6 +213,7 @@ export async function generateCategoryBatch(ctx: OrgContext): Promise<number> {
         message: buildCategoryGenerationMessage(brandContext, alreadyUsed, featureInput),
         systemPrompt: GENERATE_CATEGORIES_SYSTEM_PROMPT,
         responseFormat: "json",
+        responseSchema: categoryGenerationJsonSchema,
         temperature: 0.7,
       },
       ctx
@@ -256,6 +325,7 @@ export async function discoverOutletsInCategory(
         ),
         systemPrompt: GENERATE_OUTLETS_SYSTEM_PROMPT,
         responseFormat: "json",
+        responseSchema: outletGenerationJsonSchema,
         temperature: 0.7,
 
       },
@@ -521,6 +591,7 @@ export async function reuseCycle(ctx: OrgContext): Promise<number> {
         message: buildReuseScoringMessage(brandContext, available, featureInput ?? undefined),
         systemPrompt: SCORE_OUTLETS_SYSTEM_PROMPT,
         responseFormat: "json",
+        responseSchema: reuseScoringJsonSchema,
         temperature: 0.3,
 
       },
