@@ -249,6 +249,48 @@ export async function runMigration(): Promise<void> {
     ALTER TABLE campaign_outlets ADD COLUMN IF NOT EXISTS status_detail TEXT;
   `);
 
+  // Step 16: Rename campaign_categories.relevance_rank → relevance_score.
+  // Idempotent: skip if already renamed. Data is preserved by RENAME COLUMN.
+  // Existing campaigns mid-flight keep their ordering value; new campaigns
+  // populated by generateAllCategories will write the LLM-emitted 0-100 score.
+  await pool.query(`
+    DO $$ BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'campaign_categories' AND column_name = 'relevance_rank'
+      ) AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'campaign_categories' AND column_name = 'relevance_score'
+      ) THEN
+        ALTER TABLE campaign_categories RENAME COLUMN relevance_rank TO relevance_score;
+      END IF;
+    END $$;
+  `);
+
+  // The pre-rename index name still references "relevance_rank"; recreate
+  // matching the new column name. Postgres auto-rewires indexes on renamed
+  // columns transparently, so this is purely cosmetic — the index is functional
+  // either way. The CREATE IF NOT EXISTS keeps old deployments happy.
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_campaign_categories_active_score
+      ON campaign_categories(campaign_id, relevance_score DESC NULLS LAST)
+      WHERE status = 'active';
+  `);
+
+  // Step 17: Track Google-rejected domains per (campaign, category) so the
+  // next LLM call sees them as "known" and stops re-proposing them.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS campaign_category_rejected_domains (
+      campaign_id UUID NOT NULL,
+      category_id UUID NOT NULL REFERENCES campaign_categories(id) ON DELETE CASCADE,
+      domain TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (campaign_id, category_id, domain)
+    );
+    CREATE INDEX IF NOT EXISTS idx_ccrd_category ON campaign_category_rejected_domains(category_id);
+    CREATE INDEX IF NOT EXISTS idx_ccrd_campaign ON campaign_category_rejected_domains(campaign_id);
+  `);
+
   console.log("[outlets-service] Migration complete.");
 }
 
