@@ -1,30 +1,34 @@
-// --- Category generation ---
+// --- Category generation (upfront, 1× per campaign) ---
 
 export const GENERATE_CATEGORIES_SYSTEM_PROMPT = `You are a PR research assistant specializing in press outlet discovery.
 
-Given a brand brief, generate outlet categories. Each category is a pair: (outlet type, geography).
+Given a brand brief, generate EXACTLY 100 outlet categories that together exhaustively cover the brand's PR opportunity space. Each category is a pair: (outlet type, geography).
 
-Outlet types are broad publication categories like: "Tech News", "Business News", "SaaS Blogs", "Industry Trade Publications", "Startup Media", "Lifestyle Magazines", "Real Estate Publications", "Finance & Investment News", "Marketing Blogs", etc.
-
-Geography is a region or country like: "US", "UK", "Europe", "Australia", "Global", "DACH", "Nordics", "Southeast Asia", etc.
+You have complete freedom on how to slice the space:
+- Outlet types: trade publications, mainstream news, niche blogs, newsletters, podcasts, video shows, academic journals, industry association publications, regional press, vertical media — whatever fits the brand.
+- Geographies: any country in the world (US, UK, France, Singapore, Brazil, UAE, India, etc.), any region (Europe, GCC, APAC, LATAM, Nordics, DACH), or "Global". Choose what's relevant.
+- Topics: any sub-vertical of the brand's industry, any adjacent industry, any audience-specific angle.
 
 Rules:
-- Generate exactly 10 categories
-- Rank them by relevance to the brand (rank 1 = most relevant)
-- Include a brief rationale for each
-- Mix broad and niche categories
-- Mix geographies relevant to the brand's target markets
-- Categories should be as mutually exclusive as possible — minimize overlap so each category discovers a distinct set of outlets. Avoid categories that would return the same publications (e.g. "Tech News / US" and "Startup Media / US" overlap heavily).
-- Do NOT repeat categories that were already generated (see "already used" list)
+- Generate EXACTLY 100 categories — no more, no less.
+- Each category must be a (name, geo) pair semantically distinct from every other one. No duplicates, no near-duplicates that would return the same outlets (e.g. "Tech News / US" and "Startup Media / US" overlap heavily — pick one or differentiate them sharply).
+- Strive for MECE coverage: collectively exhaustive of the brand's PR space, mutually exclusive between categories.
+- Score each category with a "score" (integer 0-100) indicating its relevance to this specific brand. Use the full range:
+  - 80-100: core, high-priority targets where the brand will definitely fit editorially
+  - 50-79: strong adjacent targets
+  - 20-49: long-tail or tangential
+  - 0-19: very speculative; include only if you've run out of stronger ideas
+- Provide a brief "rationale" for each category (1-2 sentences max).
+- Include enough variety in geographies and outlet types to maximize total reachable journalist pool.
 
 Respond with JSON matching this schema:
 {
   "categories": [
     {
-      "name": "Tech News",
+      "name": "Tax Policy Journals",
       "geo": "US",
-      "rank": 1,
-      "rationale": "Brand is a US tech company, tech news outlets are the primary target"
+      "score": 87,
+      "rationale": "Brand publishes tax research; US is primary market for institutional tax media"
     }
   ]
 }`;
@@ -85,17 +89,10 @@ function appendFeatureInput(msg: string, featureInput?: Record<string, unknown>)
 
 export function buildCategoryGenerationMessage(
   brand: BrandPromptContext,
-  alreadyUsed: Array<{ name: string; geo: string }>,
   featureInput?: Record<string, unknown>
 ): string {
   const parts = buildBrandParts(brand);
-
-  let msg = `Generate outlet categories for this brand:\n\n${parts.join("\n")}`;
-
-  if (alreadyUsed.length > 0) {
-    msg += `\n\n## Already Used Categories (do NOT repeat these)\n${alreadyUsed.map((c) => `- ${c.name} / ${c.geo}`).join("\n")}`;
-  }
-
+  const msg = `Generate 100 outlet categories for this brand:\n\n${parts.join("\n")}`;
   return appendFeatureInput(msg, featureInput);
 }
 

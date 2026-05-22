@@ -7,7 +7,11 @@ import { reuseCycle, discoverCycle } from "../services/category-discovery";
 import { bufferNextSchema } from "../schemas";
 import { traceEvent } from "../lib/trace-event";
 
-const MIN_RELEVANCE_SCORE = 30;
+// MIN_ACCEPTANCE_SCORE: outlets below this score are skipped at claim time
+// ("low_relevance") and never reach the journalists pipeline. Lower than
+// RELEVANCE_THRESHOLD on purpose — we accept slightly-tangential outlets into
+// the pipeline, but label their overall_relevance as "low" downstream.
+const MIN_ACCEPTANCE_SCORE = 20;
 const IDEMPOTENCY_TTL_DAYS = 60;
 const MAX_TRANSIENT_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
@@ -173,10 +177,12 @@ router.post(
             continue; // retry claim from freshly filled buffer
           }
 
-          // Skip low-relevance ("distant") outlets — score < 30 means no meaningful connection
-          if (claimed.relevanceScore < MIN_RELEVANCE_SCORE) {
-            console.log(`[outlets-service] buffer/next: skipping low-relevance outlet ${claimed.outletName} (${claimed.outletId}, score=${claimed.relevanceScore}) for campaign ${ctx.campaignId}`);
-            await markSkipped(claimed.campaignId, claimed.outletId, "low_relevance", `Relevance score ${claimed.relevanceScore} below minimum threshold ${MIN_RELEVANCE_SCORE}`);
+          // Skip outlets below the acceptance gate — score < 20 means no
+          // meaningful connection. Outlets at 20-29 still proceed but get
+          // labeled "low" overall_relevance downstream.
+          if (claimed.relevanceScore < MIN_ACCEPTANCE_SCORE) {
+            console.log(`[outlets-service] buffer/next: skipping low-acceptance outlet ${claimed.outletName} (${claimed.outletId}, score=${claimed.relevanceScore}) for campaign ${ctx.campaignId}`);
+            await markSkipped(claimed.campaignId, claimed.outletId, "low_relevance", `Relevance score ${claimed.relevanceScore} below acceptance threshold ${MIN_ACCEPTANCE_SCORE}`);
             continue;
           }
 

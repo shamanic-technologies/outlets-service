@@ -16,12 +16,22 @@ import {
 import { isOutletBlocked } from "./journalists";
 import type { OrgContext } from "../middleware/org-context";
 
-const CATEGORY_BATCH_SIZE = 10;
 const OUTLET_BATCH_SIZE = 10;
 const CATEGORY_CAP = 100;
-const MAX_CATEGORIES_PER_CAMPAIGN = 100;
+const TARGET_CATEGORIES_PER_CAMPAIGN = 100;
 const MAX_LLM_RETRIES = 3;
 const LLM_RETRY_DELAY_MS = 2000;
+
+// Threshold used to label overall_relevance ("high"/"medium"/"low"). Distinct
+// from buffer.ts MIN_ACCEPTANCE_SCORE: an outlet at score 25 still gets
+// processed (above acceptance gate=20) but is flagged "low" relevance.
+const RELEVANCE_THRESHOLD = 30;
+
+function relevanceBand(score: number): "high" | "medium" | "low" {
+  if (score >= 60) return "high";
+  if (score >= RELEVANCE_THRESHOLD) return "medium";
+  return "low";
+}
 
 const BRAND_FIELDS = [
   { key: "brand_name", description: "The brand's display name" },
@@ -37,7 +47,7 @@ const categoryGenerationSchema = z.object({
     z.object({
       name: z.string(),
       geo: z.string(),
-      rank: z.number(),
+      score: z.number().int().min(0).max(100),
       rationale: z.string(),
     })
   ),
@@ -80,10 +90,10 @@ const categoryGenerationJsonSchema: Record<string, unknown> = {
         properties: {
           name: { type: "string" },
           geo: { type: "string" },
-          rank: { type: "integer" },
+          score: { type: "integer", minimum: 0, maximum: 100 },
           rationale: { type: "string" },
         },
-        required: ["name", "geo", "rank", "rationale"],
+        required: ["name", "geo", "score", "rationale"],
       },
     },
   },
@@ -134,10 +144,9 @@ export interface CampaignCategory {
   campaignId: string;
   categoryName: string;
   categoryGeo: string;
-  relevanceRank: number;
+  relevanceScore: number;
   status: "active" | "exhausted" | "capped";
   outletsFound: number;
-  batchNumber: number;
 }
 
 async function buildBrandContext(ctx: OrgContext): Promise<{
@@ -165,40 +174,14 @@ async function buildBrandContext(ctx: OrgContext): Promise<{
 }
 
 /**
- * Get all categories for a campaign (for passing to LLM as "already used").
- */
-async function getAllCategories(campaignId: string): Promise<Array<{ name: string; geo: string }>> {
-  const result = await pool.query(
-    `SELECT category_name, category_geo FROM campaign_categories WHERE campaign_id = $1`,
-    [campaignId]
-  );
-  return result.rows.map((r: { category_name: string; category_geo: string }) => ({
-    name: r.category_name,
-    geo: r.category_geo,
-  }));
-}
-
-/**
- * Generate a batch of 10 categories via LLM and insert them.
+ * Generate all categories upfront for a campaign — 1× LLM call producing 100
+ * categories, each scored 0-100. Run once per campaign at first discoverCycle.
+ * Uses Gemini Pro for higher-quality MECE coverage.
+ *
  * Returns the number of categories inserted.
  */
-export async function generateCategoryBatch(ctx: OrgContext): Promise<number> {
+export async function generateAllCategories(ctx: OrgContext): Promise<number> {
   const { brandContext, featureInput } = await buildBrandContext(ctx);
-  const alreadyUsed = await getAllCategories(ctx.campaignId!);
-
-  // Determine batch number
-  const batchResult = await pool.query(
-    `SELECT COALESCE(MAX(batch_number), 0) AS max_batch FROM campaign_categories WHERE campaign_id = $1`,
-    [ctx.campaignId]
-  );
-  const nextBatch = Number(batchResult.rows[0].max_batch) + 1;
-
-  // Determine base rank (continue ranking from where we left off)
-  const rankResult = await pool.query(
-    `SELECT COALESCE(MAX(relevance_rank), 0) AS max_rank FROM campaign_categories WHERE campaign_id = $1`,
-    [ctx.campaignId]
-  );
-  const baseRank = Number(rankResult.rows[0].max_rank);
 
   let parsedCategories: z.infer<typeof categoryGenerationSchema>["categories"] | null = null;
 
@@ -206,8 +189,8 @@ export async function generateCategoryBatch(ctx: OrgContext): Promise<number> {
     const response = await chatComplete(
       {
         provider: "google",
-        model: "flash",
-        message: buildCategoryGenerationMessage(brandContext, alreadyUsed, featureInput),
+        model: "pro",
+        message: buildCategoryGenerationMessage(brandContext, featureInput),
         systemPrompt: GENERATE_CATEGORIES_SYSTEM_PROMPT,
         responseFormat: "json",
         responseSchema: categoryGenerationJsonSchema,
@@ -232,39 +215,41 @@ export async function generateCategoryBatch(ctx: OrgContext): Promise<number> {
 
   if (!parsedCategories) return 0;
 
-  // Dedup against already used
-  const usedSet = new Set(alreadyUsed.map((c) => `${c.name}|||${c.geo}`));
-  const newCategories = parsedCategories
-    .filter((c) => !usedSet.has(`${c.name}|||${c.geo}`))
-    .slice(0, CATEGORY_BATCH_SIZE);
+  // Dedup within batch by (name, geo)
+  const seenKeys = new Set<string>();
+  const uniqueCategories = parsedCategories.filter((c) => {
+    const key = `${c.name}|||${c.geo}`;
+    if (seenKeys.has(key)) return false;
+    seenKeys.add(key);
+    return true;
+  }).slice(0, TARGET_CATEGORIES_PER_CAMPAIGN);
 
-  if (newCategories.length === 0) return 0;
+  if (uniqueCategories.length === 0) return 0;
 
   let inserted = 0;
-  for (let i = 0; i < newCategories.length; i++) {
-    const c = newCategories[i];
+  for (const c of uniqueCategories) {
     const result = await pool.query(
-      `INSERT INTO campaign_categories (campaign_id, category_name, category_geo, relevance_rank, batch_number)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO campaign_categories (campaign_id, category_name, category_geo, relevance_score)
+       VALUES ($1, $2, $3, $4)
        ON CONFLICT (campaign_id, category_name, category_geo) DO NOTHING`,
-      [ctx.campaignId, c.name, c.geo, baseRank + i + 1, nextBatch]
+      [ctx.campaignId, c.name, c.geo, c.score]
     );
     if (result.rowCount && result.rowCount > 0) inserted++;
   }
 
-  console.log(`[outlets-service] Generated ${inserted} categories (batch ${nextBatch}) for campaign ${ctx.campaignId}`);
+  console.log(`[outlets-service] Generated ${inserted} categories upfront for campaign ${ctx.campaignId}`);
   return inserted;
 }
 
 /**
- * Get the active category with the lowest relevance rank.
+ * Get the highest-scoring active category, ties broken by category name.
  */
 export async function getActiveCategory(campaignId: string): Promise<CampaignCategory | null> {
   const result = await pool.query(
-    `SELECT id, campaign_id, category_name, category_geo, relevance_rank, status, outlets_found, batch_number
+    `SELECT id, campaign_id, category_name, category_geo, relevance_score, status, outlets_found
      FROM campaign_categories
      WHERE campaign_id = $1 AND status = 'active'
-     ORDER BY relevance_rank ASC
+     ORDER BY relevance_score DESC NULLS LAST, category_name ASC
      LIMIT 1`,
     [campaignId]
   );
@@ -277,10 +262,9 @@ export async function getActiveCategory(campaignId: string): Promise<CampaignCat
     campaignId: r.campaign_id,
     categoryName: r.category_name,
     categoryGeo: r.category_geo,
-    relevanceRank: Number(r.relevance_rank),
+    relevanceScore: r.relevance_score == null ? 0 : Number(r.relevance_score),
     status: r.status,
     outletsFound: Number(r.outlets_found),
-    batchNumber: Number(r.batch_number),
   };
 }
 
@@ -289,6 +273,10 @@ export async function getActiveCategory(campaignId: string): Promise<CampaignCat
  * Asks LLM for 10 outlets, validates each via Google, inserts valid ones.
  * Returns number of new outlets inserted.
  * Marks category exhausted if 0 new validated outlets, or capped if >= CATEGORY_CAP.
+ *
+ * Tracks Google-rejected domains in `campaign_category_rejected_domains` so
+ * the LLM's "known domains" prompt list grows across iterations, preventing
+ * the model from re-proposing the same dead-end domains.
  */
 export async function discoverOutletsInCategory(
   category: CampaignCategory,
@@ -296,11 +284,19 @@ export async function discoverOutletsInCategory(
 ): Promise<number> {
   const { brandContext, featureInput } = await buildBrandContext(ctx);
 
-  // Get already-known domains for this category (from the per-category tracking table)
+  // Known domains for this category = validated outlets (cco) ∪ Google-rejected
+  // domains. Union prevents LLM from re-proposing domains it already burned.
   const knownResult = await pool.query(
-    `SELECT o.outlet_domain FROM campaign_category_outlets cco
-     JOIN outlets o ON o.id = cco.outlet_id
-     WHERE cco.category_id = $1`,
+    `SELECT outlet_domain FROM (
+       SELECT o.outlet_domain
+       FROM campaign_category_outlets cco
+       JOIN outlets o ON o.id = cco.outlet_id
+       WHERE cco.category_id = $1
+       UNION
+       SELECT domain AS outlet_domain
+       FROM campaign_category_rejected_domains
+       WHERE category_id = $1
+     ) all_known`,
     [category.id]
   );
   const knownDomains: string[] = knownResult.rows.map((r: { outlet_domain: string }) => r.outlet_domain);
@@ -379,15 +375,29 @@ export async function discoverOutletsInCategory(
 
   // Only validate truly new domains via Google
   let validOutlets: typeof candidates;
+  let googleRejected: typeof candidates = [];
   if (needsValidation.length > 0) {
     console.log(`[outlets-service] Validating ${needsValidation.length} new outlet candidates via Google for category "${category.categoryName} / ${category.categoryGeo}" (${alreadyValidated.length} already known)`);
     const validated = await validateOutletBatch(needsValidation, ctx);
-    const googleValid = validated.filter((o) => o.valid);
+    const validDomains = new Set(validated.filter((o) => o.valid).map((o) => o.domain));
+    const googleValid = needsValidation.filter((o) => validDomains.has(o.domain));
+    googleRejected = needsValidation.filter((o) => !validDomains.has(o.domain));
     console.log(`[outlets-service] Google validation: ${googleValid.length}/${needsValidation.length} validated for "${category.categoryName} / ${category.categoryGeo}"`);
     validOutlets = [...alreadyValidated, ...googleValid];
   } else {
     console.log(`[outlets-service] All ${alreadyValidated.length} outlet candidates already known for category "${category.categoryName} / ${category.categoryGeo}", skipping Google validation`);
     validOutlets = alreadyValidated;
+  }
+
+  // Track Google-rejected domains so the next LLM call sees them as "known" and
+  // doesn't propose them again. Fire-and-forget per row, ON CONFLICT skips dups.
+  for (const r of googleRejected) {
+    await pool.query(
+      `INSERT INTO campaign_category_rejected_domains (campaign_id, category_id, domain)
+       VALUES ($1, $2, $3)
+       ON CONFLICT DO NOTHING`,
+      [ctx.campaignId, category.id, r.domain]
+    );
   }
 
   if (validOutlets.length === 0) {
@@ -421,7 +431,7 @@ export async function discoverOutletsInCategory(
       const outletId = outletResult.rows[0].id;
 
       // Track in per-category table (always succeeds for new category+outlet pair)
-      const ccoResult = await client.query(
+      await client.query(
         `INSERT INTO campaign_category_outlets (campaign_id, category_id, outlet_id)
          VALUES ($1, $2, $3)
          ON CONFLICT DO NOTHING`,
@@ -445,7 +455,7 @@ export async function discoverOutletsInCategory(
           `Category: ${category.categoryName} / ${category.categoryGeo}`,
           relevanceScore,
           `Discovered via category "${category.categoryName}" (${category.categoryGeo}), score=${relevanceScore}`,
-          "high",
+          relevanceBand(relevanceScore),
           ctx.runId,
           category.id,
         ]
@@ -661,7 +671,7 @@ export async function reuseCycle(ctx: OrgContext): Promise<number> {
         "Reused from previous campaign",
         relevanceScore,
         `Reuse cycle: outlet ${o.outletId} (${o.outletDomain}) scored ${relevanceScore} by LLM`,
-        relevanceScore >= 60 ? "high" : relevanceScore >= 30 ? "medium" : "low",
+        relevanceBand(relevanceScore),
         ctx.runId,
       ]
     );
@@ -674,49 +684,36 @@ export async function reuseCycle(ctx: OrgContext): Promise<number> {
 
 /**
  * Main discovery cycle entry point.
- * Loops across categories until it finds outlets. When a category is exhausted,
- * moves to the next active category. When all categories are exhausted, generates
- * a new batch. Only returns 0 when the campaign reaches the category cap (100)
- * and no new categories can be generated — never because a single category was exhausted.
+ *
+ * 1. If the campaign has no categories yet, generate all 100 upfront via 1 LLM
+ *    call (Gemini Pro). Single shot, no incremental batches.
+ * 2. Loop active categories by score DESC. Each call to discoverOutletsInCategory
+ *    either yields outlets (return immediately) or exhausts the category and we
+ *    try the next one.
+ * 3. When no active category remains, the campaign's discovery is over —
+ *    return 0. Never regenerate categories.
  */
 export async function discoverCycle(ctx: OrgContext): Promise<number> {
-  // Ensure at least one batch of categories exists
+  // Ensure the upfront category batch has been generated
   const existing = await pool.query(
     `SELECT COUNT(*) AS cnt FROM campaign_categories WHERE campaign_id = $1`,
     [ctx.campaignId]
   );
   if (Number(existing.rows[0].cnt) === 0) {
-    const generated = await generateCategoryBatch(ctx);
+    const generated = await generateAllCategories(ctx);
     if (generated === 0) {
       console.error("[outlets-service] discoverCycle: failed to generate initial categories");
       return 0;
     }
   }
 
-  // Loop until we find outlets — only exits on category cap or generation failure
+  // Loop until we find outlets or run out of active categories
   while (true) {
-    let activeCategory = await getActiveCategory(ctx.campaignId!);
+    const activeCategory = await getActiveCategory(ctx.campaignId!);
 
-    // If no active category, all are exhausted/capped — generate a new batch
     if (!activeCategory) {
-      const countResult = await pool.query(
-        `SELECT COUNT(*) AS cnt FROM campaign_categories WHERE campaign_id = $1`,
-        [ctx.campaignId]
-      );
-      const totalCategories = Number(countResult.rows[0].cnt);
-      if (totalCategories >= MAX_CATEGORIES_PER_CAMPAIGN) {
-        console.log(`[outlets-service] discoverCycle: campaign ${ctx.campaignId} reached category cap (${totalCategories}/${MAX_CATEGORIES_PER_CAMPAIGN})`);
-        return 0;
-      }
-
-      console.log(`[outlets-service] discoverCycle: all categories exhausted for campaign ${ctx.campaignId}, generating new batch (${totalCategories}/${MAX_CATEGORIES_PER_CAMPAIGN})`);
-      const generated = await generateCategoryBatch(ctx);
-      if (generated === 0) {
-        console.log(`[outlets-service] discoverCycle: could not generate new categories for campaign ${ctx.campaignId}`);
-        return 0;
-      }
-      activeCategory = await getActiveCategory(ctx.campaignId!);
-      if (!activeCategory) return 0;
+      console.log(`[outlets-service] discoverCycle: all categories exhausted for campaign ${ctx.campaignId}`);
+      return 0;
     }
 
     const found = await discoverOutletsInCategory(activeCategory, ctx);
