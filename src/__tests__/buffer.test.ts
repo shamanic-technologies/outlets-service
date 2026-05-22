@@ -149,7 +149,7 @@ describe("POST /orgs/buffer/next", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
-  it("skips low-relevance outlets (score < 30) and tries the next one", async () => {
+  it("skips low-acceptance outlets (score < 20) and tries the next one", async () => {
     const OUTLET_ID_2 = "22222222-2222-2222-2222-222222222222";
 
     // claimNext iteration 1 → found outlet with low relevance score
