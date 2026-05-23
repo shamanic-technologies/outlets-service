@@ -193,7 +193,17 @@ export async function runMigration(): Promise<void> {
     ALTER TABLE campaign_outlets DROP COLUMN IF EXISTS brand_id;
   `);
 
-  // Step 11: Create campaign_categories table for category-based discovery
+  // Step 11: Create campaign_categories table. We create the table with
+  // legacy column name `relevance_rank` for backward compat with any DB still
+  // on the pre-rename schema; Step 16 renames it to `relevance_score` (and
+  // Step 18 re-adds `relevance_rank` as a synced mirror).
+  //
+  // The index on `relevance_rank` / `relevance_score` is intentionally NOT
+  // created here: on a post-rename DB the column `relevance_rank` no longer
+  // exists, and Postgres validates column references inside
+  // `CREATE INDEX IF NOT EXISTS` *before* the name-exists short-circuit
+  // fires, producing `column "relevance_rank" does not exist` and aborting
+  // the migration. Step 16 creates the correct index on `relevance_score`.
   await pool.query(`
     CREATE TABLE IF NOT EXISTS campaign_categories (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -209,7 +219,6 @@ export async function runMigration(): Promise<void> {
       UNIQUE (campaign_id, category_name, category_geo)
     );
     CREATE INDEX IF NOT EXISTS idx_campaign_categories_campaign ON campaign_categories(campaign_id);
-    CREATE INDEX IF NOT EXISTS idx_campaign_categories_active ON campaign_categories(campaign_id, relevance_rank) WHERE status = 'active';
     CREATE INDEX IF NOT EXISTS idx_campaign_categories_batch ON campaign_categories(campaign_id, batch_number);
   `);
 
