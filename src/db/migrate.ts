@@ -291,6 +291,54 @@ export async function runMigration(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_ccrd_campaign ON campaign_category_rejected_domains(campaign_id);
   `);
 
+  // Step 18: Re-add `relevance_rank` as a synced mirror of `relevance_score`
+  // to make column renames safe under Railway rolling deploys.
+  //
+  // Rolling deploy hazard: when v0.25.0 boots, the new container runs the
+  // RENAME migration (Step 16) BEFORE the old v0.24.0 container is killed,
+  // and the old container keeps serving traffic with `SELECT relevance_rank`
+  // queries that now 500 with `column "relevance_rank" does not exist`.
+  //
+  // Mitigation = additive migration: bring the old column back, keep both
+  // in sync via trigger. Old code reading `relevance_rank` still works
+  // during the rollover window; new code reading `relevance_score` also
+  // works. Once all replicas are on v0.25.0+, dropping `relevance_rank`
+  // is safe — but defer that to a future migration with its own
+  // rolling-deploy plan.
+  await pool.query(`
+    ALTER TABLE campaign_categories ADD COLUMN IF NOT EXISTS relevance_rank INT;
+    UPDATE campaign_categories SET relevance_rank = relevance_score WHERE relevance_rank IS NULL;
+  `);
+
+  // Trigger to keep relevance_rank ↔ relevance_score in sync on every write.
+  // Replaceable so re-runs are idempotent.
+  await pool.query(`
+    CREATE OR REPLACE FUNCTION sync_campaign_categories_relevance_cols()
+    RETURNS trigger AS $$
+    BEGIN
+      IF NEW.relevance_score IS DISTINCT FROM OLD.relevance_score THEN
+        NEW.relevance_rank := NEW.relevance_score;
+      ELSIF NEW.relevance_rank IS DISTINCT FROM OLD.relevance_rank THEN
+        NEW.relevance_score := NEW.relevance_rank;
+      ELSIF TG_OP = 'INSERT' THEN
+        IF NEW.relevance_score IS NULL AND NEW.relevance_rank IS NOT NULL THEN
+          NEW.relevance_score := NEW.relevance_rank;
+        ELSIF NEW.relevance_rank IS NULL AND NEW.relevance_score IS NOT NULL THEN
+          NEW.relevance_rank := NEW.relevance_score;
+        END IF;
+      END IF;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+  `);
+
+  await pool.query(`
+    DROP TRIGGER IF EXISTS trg_sync_campaign_categories_relevance ON campaign_categories;
+    CREATE TRIGGER trg_sync_campaign_categories_relevance
+      BEFORE INSERT OR UPDATE ON campaign_categories
+      FOR EACH ROW EXECUTE FUNCTION sync_campaign_categories_relevance_cols();
+  `);
+
   console.log("[outlets-service] Migration complete.");
 }
 
