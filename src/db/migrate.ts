@@ -478,6 +478,27 @@ export async function runMigration(): Promise<void> {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_pricing_sources_domain ON pricing_sources(domain);
   `);
 
+  // Step 26: Pay-per-publish price requests — tracks that we emailed an outlet's
+  // editorial team asking for its rate card and are awaiting the reply. Keyed on
+  // outlet_id (GLOBAL — one outreach per outlet; the resulting price is global,
+  // shared across every org). `org_id` records the org that triggered the
+  // request, for audit only — it does NOT scope the key. The lifecycle status
+  // ("ongoing" vs "received") is NOT stored: it is derived at read time by
+  // comparing outlet_pricing.updated_at against requested_at, so it stays
+  // correct whether the reply is ingested via the bronze endpoint or pasted
+  // straight into the DB.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS outlet_price_requests (
+      outlet_id UUID PRIMARY KEY REFERENCES outlets(id) ON DELETE CASCADE,
+      org_id TEXT NOT NULL,
+      editorial_email TEXT NOT NULL,
+      message_id TEXT,
+      requested_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_outlet_price_requests_org ON outlet_price_requests(org_id);
+  `);
+
   console.log("[outlets-service] Migration complete.");
 }
 

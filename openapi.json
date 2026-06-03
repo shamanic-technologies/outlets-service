@@ -857,6 +857,90 @@
           "results"
         ]
       },
+      "PriceRequestBatch": {
+        "type": "object",
+        "properties": {
+          "outletIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "required": [
+          "outletIds"
+        ]
+      },
+      "PriceRequestResult": {
+        "type": "object",
+        "properties": {
+          "outletId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ongoing",
+              "error"
+            ]
+          },
+          "editorialEmail": {
+            "type": "string"
+          },
+          "messageId": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "outletId",
+          "status"
+        ]
+      },
+      "PriceRequestBatchResponse": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "outletId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "ongoing",
+                    "error"
+                  ]
+                },
+                "editorialEmail": {
+                  "type": "string"
+                },
+                "messageId": {
+                  "type": "string"
+                },
+                "error": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "outletId",
+                "status"
+              ]
+            }
+          }
+        },
+        "required": [
+          "results"
+        ]
+      },
       "CreatePriceSource": {
         "type": "object",
         "properties": {
@@ -1798,6 +1882,68 @@
                               "outletStatus"
                             ]
                           },
+                          "pricing": {
+                            "type": "object",
+                            "nullable": true,
+                            "description": "Public sell pricing for the outlet (retail cost + multiplier never exposed). null until a silver pricing row exists.",
+                            "properties": {
+                              "outletId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "sellPriceCents": {
+                                "type": "integer",
+                                "nullable": true
+                              },
+                              "currency": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "articleType": {
+                                "type": "string",
+                                "enum": [
+                                  "organic",
+                                  "sponsored"
+                                ],
+                                "nullable": true
+                              },
+                              "allowsDofollowBacklink": {
+                                "type": "boolean",
+                                "nullable": true
+                              },
+                              "onlineDurationMonths": {
+                                "type": "integer",
+                                "nullable": true
+                              },
+                              "isPermanent": {
+                                "type": "boolean",
+                                "nullable": true
+                              },
+                              "conditionsNote": {
+                                "type": "string",
+                                "nullable": true
+                              }
+                            },
+                            "required": [
+                              "outletId",
+                              "sellPriceCents",
+                              "currency",
+                              "articleType",
+                              "allowsDofollowBacklink",
+                              "onlineDurationMonths",
+                              "isPermanent",
+                              "conditionsNote"
+                            ]
+                          },
+                          "priceRequestStatus": {
+                            "type": "string",
+                            "enum": [
+                              "ongoing",
+                              "received"
+                            ],
+                            "nullable": true,
+                            "description": "Pay-per-publish request lifecycle: 'ongoing' = rate-card email sent, awaiting reply; 'received' = a price landed after the request; null = never requested."
+                          },
                           "campaigns": {
                             "type": "array",
                             "description": "Campaign-level data for this outlet. Status breakdown is in status.byCampaign.",
@@ -1873,6 +2019,8 @@
                           "createdAt",
                           "relevanceScore",
                           "status",
+                          "pricing",
+                          "priceRequestStatus",
                           "campaigns"
                         ]
                       }
@@ -1962,6 +2110,17 @@
                       "domainRating": 93,
                       "createdAt": "2026-01-01T00:00:00Z",
                       "relevanceScore": 85,
+                      "pricing": {
+                        "outletId": "11111111-2222-3333-4444-555555555555",
+                        "sellPriceCents": 100000,
+                        "currency": "USD",
+                        "articleType": "sponsored",
+                        "allowsDofollowBacklink": true,
+                        "onlineDurationMonths": null,
+                        "isPermanent": true,
+                        "conditionsNote": "1 dofollow link, up to 3 images"
+                      },
+                      "priceRequestStatus": "received",
                       "status": {
                         "outletStatus": "served",
                         "statusReason": "buffer_claimed",
@@ -3419,6 +3578,138 @@
           },
           "502": {
             "description": "Upstream service error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orgs/outlets/price-requests": {
+      "post": {
+        "summary": "Request pay-per-publish rate cards for outlets (org-scoped)",
+        "description": "For each owned outlet: resolves its editorial email (reusing editorial-email discovery), emails the pay-per-publish rate-card request via email-gateway (broadcast channel → Instantly warmed inboxes), and records the request as awaiting a reply. The reply is ingested later as a bronze pricing note; the outlet's priceRequestStatus then derives to 'received'. Per-outlet failures (no editorial email, unowned outlet, send error) are returned inline without aborting the batch. Max 50 outlets per request.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (optional)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (optional)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug (optional)"
+          },
+          {
+            "in": "header",
+            "name": "x-campaign-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Campaign ID (optional)"
+          },
+          {
+            "in": "header",
+            "name": "x-brand-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Brand ID(s) — comma-separated UUIDs (optional)"
+          },
+          {
+            "in": "header",
+            "name": "x-workflow-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workflow slug (optional)"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PriceRequestBatch"
+              },
+              "example": {
+                "outletIds": [
+                  "11111111-2222-3333-4444-555555555555"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Per-outlet results. status='ongoing' when the request email was sent; status='error' with an error message otherwise.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceRequestBatchResponse"
+                },
+                "example": {
+                  "results": [
+                    {
+                      "outletId": "11111111-2222-3333-4444-555555555555",
+                      "status": "ongoing",
+                      "editorialEmail": "editorial@citywealthmag.com",
+                      "messageId": "instantly-lead-abc123"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Upstream service error (runs-service / email-gateway)",
             "content": {
               "application/json": {
                 "schema": {

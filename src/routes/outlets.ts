@@ -12,6 +12,7 @@ import {
 import { fetchOutletStatuses, countOutletStatuses, mergeStatusCounts, type ScopeFilters } from "../services/outlet-status";
 import { getPublicPricingForOrg } from "../services/pricing";
 import { getDrStatus } from "../services/ahref";
+import { derivePriceRequestStatus } from "../services/price-requests";
 
 const router = Router();
 
@@ -213,9 +214,15 @@ router.get(
                 co.relevance_score, co.status AS outlet_status,
                 co.status_reason, co.status_detail,
                 co.overall_relevance, co.relevance_rationale, co.run_id,
-                o.created_at, co.updated_at AS campaign_updated_at
+                o.created_at, co.updated_at AS campaign_updated_at,
+                p.sell_price_cents, p.currency, p.article_type, p.allows_dofollow_backlink,
+                p.online_duration_months, p.is_permanent, p.conditions_note,
+                p.updated_at AS pricing_updated_at,
+                req.requested_at AS price_requested_at
          FROM outlets o
          JOIN campaign_outlets co ON o.id = co.outlet_id
+         LEFT JOIN outlet_pricing p ON p.outlet_id = o.id
+         LEFT JOIN outlet_price_requests req ON req.outlet_id = o.id
          ${dataWhere}
          ORDER BY co.updated_at DESC`,
         dataParams
@@ -228,6 +235,17 @@ router.get(
         outletUrl: string;
         outletDomain: string;
         createdAt: string;
+        // Pricing (silver) + price-request lifecycle — 1:1 on outlet, captured once.
+        pricingPresent: boolean;
+        sellPriceCents: number | null;
+        currency: string | null;
+        articleType: "organic" | "sponsored" | null;
+        allowsDofollowBacklink: boolean | null;
+        onlineDurationMonths: number | null;
+        isPermanent: boolean | null;
+        conditionsNote: string | null;
+        pricingUpdatedAt: string | null;
+        priceRequestedAt: string | null;
         campaigns: Array<{
           campaignId: string;
           featureSlug: string;
@@ -254,6 +272,16 @@ router.get(
             outletUrl: r.outlet_url,
             outletDomain: r.outlet_domain,
             createdAt: r.created_at,
+            pricingPresent: r.pricing_updated_at != null,
+            sellPriceCents: r.sell_price_cents ?? null,
+            currency: r.currency ?? null,
+            articleType: r.article_type ?? null,
+            allowsDofollowBacklink: r.allows_dofollow_backlink ?? null,
+            onlineDurationMonths: r.online_duration_months ?? null,
+            isPermanent: r.is_permanent ?? null,
+            conditionsNote: r.conditions_note ?? null,
+            pricingUpdatedAt: r.pricing_updated_at ?? null,
+            priceRequestedAt: r.price_requested_at ?? null,
             campaigns: [],
           };
           outletsMap.set(r.id, outlet);
@@ -325,6 +353,22 @@ router.get(
               statusDetail: firstCampaign.statusDetail,
             };
 
+        // Public sell pricing (retail + multiplier never exposed). null until a
+        // silver row exists. The org already owns the outlet here (data query
+        // joins campaign_outlets on org_id), so no extra tenant gate is needed.
+        const pricing = outlet.pricingPresent
+          ? {
+              outletId: outlet.id,
+              sellPriceCents: outlet.sellPriceCents,
+              currency: outlet.currency,
+              articleType: outlet.articleType,
+              allowsDofollowBacklink: outlet.allowsDofollowBacklink,
+              onlineDurationMonths: outlet.onlineDurationMonths,
+              isPermanent: outlet.isPermanent,
+              conditionsNote: outlet.conditionsNote,
+            }
+          : null;
+
         return {
           id: outlet.id,
           outletName: outlet.outletName,
@@ -333,6 +377,8 @@ router.get(
           createdAt: outlet.createdAt,
           relevanceScore: outletRelevanceScore,
           status,
+          pricing,
+          priceRequestStatus: derivePriceRequestStatus(outlet.priceRequestedAt, outlet.pricingUpdatedAt),
           campaigns: campaignsOut,
         };
       });
