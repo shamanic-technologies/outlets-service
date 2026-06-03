@@ -19,6 +19,12 @@ const mockInsertPriceSource = vi.fn();
 const mockExtract = vi.fn();
 const mockGetInternal = vi.fn();
 const mockGetPublic = vi.fn();
+const mockEnsureOutlet = vi.fn();
+const mockEnsureSource = vi.fn();
+const mockSourceExists = vi.fn();
+const mockLinkSourceOutlets = vi.fn();
+const mockInsertBrokerPriceSource = vi.fn();
+const mockExtractForSource = vi.fn();
 vi.mock("../services/pricing", () => ({
   outletExists: (...a: unknown[]) => mockOutletExists(...a),
   hasPriceSources: (...a: unknown[]) => mockHasPriceSources(...a),
@@ -26,6 +32,12 @@ vi.mock("../services/pricing", () => ({
   extractAndUpsertPricing: (...a: unknown[]) => mockExtract(...a),
   getInternalPricing: (...a: unknown[]) => mockGetInternal(...a),
   getPublicPricingForOrg: (...a: unknown[]) => mockGetPublic(...a),
+  ensureOutlet: (...a: unknown[]) => mockEnsureOutlet(...a),
+  ensureSource: (...a: unknown[]) => mockEnsureSource(...a),
+  sourceExists: (...a: unknown[]) => mockSourceExists(...a),
+  linkSourceOutlets: (...a: unknown[]) => mockLinkSourceOutlets(...a),
+  insertBrokerPriceSource: (...a: unknown[]) => mockInsertBrokerPriceSource(...a),
+  extractForSource: (...a: unknown[]) => mockExtractForSource(...a),
 }));
 
 const API_KEY = "test-key";
@@ -209,5 +221,112 @@ describe("GET /orgs/outlets/:id/pricing", () => {
       .get(`/orgs/outlets/${OUTLET_ID}/pricing`)
       .set("x-api-key", API_KEY);
     expect(res.status).toBe(400);
+  });
+});
+
+const SOURCE_ID = "33333333-3333-3333-3333-333333333333";
+
+describe("POST /internal/outlets/ensure", () => {
+  it("returns 201 when created", async () => {
+    mockEnsureOutlet.mockResolvedValueOnce({ id: OUTLET_ID, outletName: "TechBullion", outletDomain: "techbullion.com", created: true });
+    const res = await request(app)
+      .post("/internal/outlets/ensure")
+      .set("x-api-key", API_KEY)
+      .send({ outletName: "TechBullion", outletUrl: "https://techbullion.com", outletDomain: "techbullion.com" });
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBe(OUTLET_ID);
+  });
+
+  it("returns 200 when it already existed", async () => {
+    mockEnsureOutlet.mockResolvedValueOnce({ id: OUTLET_ID, outletName: "TechBullion", outletDomain: "techbullion.com", created: false });
+    const res = await request(app)
+      .post("/internal/outlets/ensure")
+      .set("x-api-key", API_KEY)
+      .send({ outletName: "TechBullion", outletUrl: "https://techbullion.com", outletDomain: "techbullion.com" });
+    expect(res.status).toBe(200);
+  });
+
+  it("returns 400 on invalid url", async () => {
+    const res = await request(app)
+      .post("/internal/outlets/ensure")
+      .set("x-api-key", API_KEY)
+      .send({ outletName: "X", outletUrl: "not-a-url", outletDomain: "x.com" });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("POST /internal/pricing-sources", () => {
+  it("creates a broker source (201)", async () => {
+    mockEnsureSource.mockResolvedValueOnce({ id: SOURCE_ID, name: "Matrix Global Brands", domain: "matrixglobalbrands.com", kind: "broker" });
+    const res = await request(app)
+      .post("/internal/pricing-sources")
+      .set("x-api-key", API_KEY)
+      .send({ name: "Matrix Global Brands", domain: "matrixglobalbrands.com" });
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBe(SOURCE_ID);
+    expect(res.body.kind).toBe("broker");
+  });
+});
+
+describe("POST /internal/pricing-sources/:id/outlets", () => {
+  it("links outlets (200)", async () => {
+    mockSourceExists.mockResolvedValueOnce(true);
+    mockLinkSourceOutlets.mockResolvedValueOnce(2);
+    const res = await request(app)
+      .post(`/internal/pricing-sources/${SOURCE_ID}/outlets`)
+      .set("x-api-key", API_KEY)
+      .send({ outletIds: [OUTLET_ID, "44444444-4444-4444-4444-444444444444"] });
+    expect(res.status).toBe(200);
+    expect(res.body.linked).toBe(2);
+    expect(res.body.requested).toBe(2);
+  });
+
+  it("returns 404 when source missing", async () => {
+    mockSourceExists.mockResolvedValueOnce(false);
+    const res = await request(app)
+      .post(`/internal/pricing-sources/${SOURCE_ID}/outlets`)
+      .set("x-api-key", API_KEY)
+      .send({ outletIds: [OUTLET_ID] });
+    expect(res.status).toBe(404);
+    expect(mockLinkSourceOutlets).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /internal/pricing-sources/:id/price-sources", () => {
+  it("stores broker note + fan-out extracts member outlets (201)", async () => {
+    mockSourceExists.mockResolvedValueOnce(true);
+    mockInsertBrokerPriceSource.mockResolvedValueOnce("note-id-1");
+    mockExtractForSource.mockResolvedValueOnce([
+      { outletId: OUTLET_ID, pricing: internalDTO },
+      { outletId: "44444444-4444-4444-4444-444444444444", pricing: { ...internalDTO, outletId: "44444444-4444-4444-4444-444444444444" } },
+    ]);
+    const res = await request(app)
+      .post(`/internal/pricing-sources/${SOURCE_ID}/price-sources`)
+      .set("x-api-key", API_KEY)
+      .send({ rawText: "Single article $150, permanent, 1 dofollow.", sourceType: "email" });
+    expect(res.status).toBe(201);
+    expect(res.body.priceSourceId).toBe("note-id-1");
+    expect(res.body.extracted).toHaveLength(2);
+  });
+
+  it("returns 404 when source missing", async () => {
+    mockSourceExists.mockResolvedValueOnce(false);
+    const res = await request(app)
+      .post(`/internal/pricing-sources/${SOURCE_ID}/price-sources`)
+      .set("x-api-key", API_KEY)
+      .send({ rawText: "x" });
+    expect(res.status).toBe(404);
+    expect(mockInsertBrokerPriceSource).not.toHaveBeenCalled();
+  });
+
+  it("returns 502 when fan-out extraction fails (note stored)", async () => {
+    mockSourceExists.mockResolvedValueOnce(true);
+    mockInsertBrokerPriceSource.mockResolvedValueOnce("note-id-1");
+    mockExtractForSource.mockRejectedValueOnce(new Error("chat down"));
+    const res = await request(app)
+      .post(`/internal/pricing-sources/${SOURCE_ID}/price-sources`)
+      .set("x-api-key", API_KEY)
+      .send({ rawText: "x" });
+    expect(res.status).toBe(502);
   });
 });
