@@ -18,4 +18,6 @@ export const config = {
   journalistsServiceApiKey: process.env.JOURNALISTS_SERVICE_API_KEY || "",
   ahrefServiceUrl: process.env.AHREF_SERVICE_URL || "",
   ahrefServiceApiKey: process.env.AHREF_SERVICE_API_KEY || "",
+  scrapingServiceUrl: process.env.SCRAPING_SERVICE_URL || "",
+  scrapingServiceApiKey: process.env.SCRAPING_SERVICE_API_KEY || "",
 };

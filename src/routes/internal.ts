@@ -2,7 +2,14 @@ import { Router, Request, Response } from "express";
 import { pool } from "../db/pool";
 import { config } from "../config";
 import { validateBody } from "../middleware/validate";
-import { internalOutletsBodySchema, transferBrandBodySchema, createPriceSourceSchema } from "../schemas";
+import {
+  internalOutletsBodySchema,
+  transferBrandBodySchema,
+  createPriceSourceSchema,
+  ensureOutletSchema,
+  createPricingSourceSchema,
+  linkSourceOutletsSchema,
+} from "../schemas";
 import { fetchOutletStatuses } from "../services/outlet-status";
 import { buildServiceHeaders } from "../services/headers";
 import {
@@ -11,6 +18,12 @@ import {
   insertPriceSource,
   extractAndUpsertPricing,
   getInternalPricing,
+  ensureOutlet,
+  ensureSource,
+  sourceExists,
+  linkSourceOutlets,
+  insertBrokerPriceSource,
+  extractForSource,
 } from "../services/pricing";
 
 const router = Router();
@@ -234,6 +247,92 @@ router.get(
     } catch (err) {
       console.error("[outlets-service] Error getting internal pricing:", err);
       res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// POST /internal/outlets/ensure — upsert a global outlet (publication) by
+// domain. Admin/broker curation path (the only other create is org-scoped).
+router.post(
+  "/outlets/ensure",
+  validateBody(ensureOutletSchema),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { outletName, outletUrl, outletDomain } = req.body;
+      const result = await ensureOutlet(outletName, outletUrl, outletDomain);
+      res.status(result.created ? 201 : 200).json(result);
+    } catch (err) {
+      console.error("[outlets-service] Error ensuring outlet:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// POST /internal/pricing-sources — create/ensure a broker pricing source.
+router.post(
+  "/pricing-sources",
+  validateBody(createPricingSourceSchema),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { name, domain } = req.body;
+      const source = await ensureSource(name, domain ?? null);
+      res.status(201).json(source);
+    } catch (err) {
+      console.error("[outlets-service] Error creating pricing source:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// POST /internal/pricing-sources/:id/outlets — link outlets (broker inventory).
+router.post(
+  "/pricing-sources/:id/outlets",
+  validateBody(linkSourceOutletsSchema),
+  async (req: Request, res: Response): Promise<void> => {
+    const sourceId = req.params.id as string;
+    try {
+      if (!(await sourceExists(sourceId))) {
+        res.status(404).json({ error: "Pricing source not found" });
+        return;
+      }
+      const linked = await linkSourceOutlets(sourceId, req.body.outletIds);
+      res.json({ linked, requested: req.body.outletIds.length });
+    } catch (err) {
+      console.error("[outlets-service] Error linking source outlets:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// POST /internal/pricing-sources/:id/price-sources — append a broker pricing
+// note (stored once), then fan-out re-extract every outlet in its inventory.
+router.post(
+  "/pricing-sources/:id/price-sources",
+  validateBody(createPriceSourceSchema),
+  async (req: Request, res: Response): Promise<void> => {
+    const sourceId = req.params.id as string;
+
+    let priceSourceId: string;
+    try {
+      if (!(await sourceExists(sourceId))) {
+        res.status(404).json({ error: "Pricing source not found" });
+        return;
+      }
+      priceSourceId = await insertBrokerPriceSource(sourceId, req.body);
+    } catch (err) {
+      console.error("[outlets-service] Error inserting broker price source:", err);
+      res.status(500).json({ error: "Internal server error" });
+      return;
+    }
+
+    // Fan-out extraction across the broker's inventory depends on the LLM —
+    // the note is already persisted, so fail loud (502) and let reextract retry.
+    try {
+      const extracted = await extractForSource(sourceId);
+      res.status(201).json({ priceSourceId, extracted });
+    } catch (err) {
+      console.error("[outlets-service] Error fanning out broker extraction:", err);
+      res.status(502).json({ error: "Pricing extraction failed" });
     }
   }
 );

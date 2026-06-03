@@ -182,7 +182,28 @@ export const ingestPriceSourceResponseSchema = z.object({
   pricing: outletPricingInternalSchema,
 });
 
+// Ensure (upsert) a global outlet by domain — admin/broker curation path.
+export const ensureOutletSchema = z.object({
+  outletName: z.string().min(1),
+  outletUrl: z.string().url(),
+  outletDomain: z.string().min(1),
+});
+
+// Create/ensure a broker pricing source.
+export const createPricingSourceSchema = z.object({
+  name: z.string().min(1),
+  domain: z.string().min(1).optional(),
+});
+
+// Link outlets (a broker's inventory) to a source.
+export const linkSourceOutletsSchema = z.object({
+  outletIds: z.array(z.string().uuid()).min(1),
+});
+
 export type CreatePriceSource = z.infer<typeof createPriceSourceSchema>;
+export type EnsureOutlet = z.infer<typeof ensureOutletSchema>;
+export type CreatePricingSource = z.infer<typeof createPricingSourceSchema>;
+export type LinkSourceOutlets = z.infer<typeof linkSourceOutletsSchema>;
 
 // --- Stats ---
 
@@ -284,6 +305,44 @@ export const statsCostsResponseSchema = z.object({
     })
   ),
 });
+
+// --- Editorial Emails ---
+
+export const editorialEmailDiscoverSchema = z.object({
+  outletName: z.string().min(1),
+  domain: z.string().min(1),
+  url: z.string().url(),
+});
+
+export const editorialEmailDiscoverBatchSchema = z.object({
+  outlets: z.array(editorialEmailDiscoverSchema).min(1).max(50),
+});
+
+const editorialEmailStatusEnum = z.enum([
+  "found",
+  "found_google",
+  "parked_dead",
+  "no_email_found",
+]);
+
+export const editorialEmailItemSchema = z.object({
+  email: z.string(),
+  score: z.number(),
+  source: z.string(),
+});
+
+export const editorialEmailResultSchema = z.object({
+  domain: z.string(),
+  status: editorialEmailStatusEnum,
+  emails: z.array(editorialEmailItemSchema),
+});
+
+export const editorialEmailBatchResultSchema = z.object({
+  results: z.array(editorialEmailResultSchema),
+});
+
+export type EditorialEmailDiscover = z.infer<typeof editorialEmailDiscoverSchema>;
+export type EditorialEmailDiscoverBatch = z.infer<typeof editorialEmailDiscoverBatchSchema>;
 
 // Type exports
 export type CreateOutlet = z.infer<typeof createOutletSchema>;
