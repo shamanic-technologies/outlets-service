@@ -20,4 +20,6 @@ export const config = {
   ahrefServiceApiKey: process.env.AHREF_SERVICE_API_KEY || "",
   scrapingServiceUrl: process.env.SCRAPING_SERVICE_URL || "",
   scrapingServiceApiKey: process.env.SCRAPING_SERVICE_API_KEY || "",
+  emailGatewayServiceUrl: process.env.EMAIL_GATEWAY_SERVICE_URL || "",
+  emailGatewayServiceApiKey: process.env.EMAIL_GATEWAY_SERVICE_API_KEY || "",
 };
