@@ -83,10 +83,11 @@ async function runLadder(
     }
   }
 
-  // Rung 3 — fresh fetch retry (bypass cache) for JS-rendered contact pages.
+  // Rung 3 — JS-render retry (scrape.do render=true&super=true) for client-rendered
+  // contact pages whose emails aren't in the initial HTML.
   if (found.size === 0 && !parked) {
     for (const p of ["/contact", "/contact-us", ""]) {
-      const html = await scrapeRawHtml(base + p, ctx, { skipCache: true });
+      const html = await scrapeRawHtml(base + p, ctx, { skipCache: true, render: true });
       if (html) for (const e of extractEmails(html)) if (!found.has(e)) found.set(e, base + p);
       if (found.size > 0) break;
     }
