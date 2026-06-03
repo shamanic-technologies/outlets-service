@@ -1332,6 +1332,11 @@
                           "outletDomain": {
                             "type": "string"
                           },
+                          "domainRating": {
+                            "type": "integer",
+                            "nullable": true,
+                            "description": "Ahrefs Domain Rating from ahref-service (live read). null when ahref has not scraped this domain yet."
+                          },
                           "createdAt": {
                             "type": "string",
                             "format": "date-time"
@@ -1657,6 +1662,7 @@
                           "outletName",
                           "outletUrl",
                           "outletDomain",
+                          "domainRating",
                           "createdAt",
                           "relevanceScore",
                           "status",
@@ -1746,6 +1752,7 @@
                       "outletName": "TechCrunch",
                       "outletUrl": "https://techcrunch.com",
                       "outletDomain": "techcrunch.com",
+                      "domainRating": 93,
                       "createdAt": "2026-01-01T00:00:00Z",
                       "relevanceScore": 85,
                       "status": {
@@ -1918,7 +1925,24 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OutletResponse"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OutletResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "domainRating": {
+                          "type": "integer",
+                          "nullable": true,
+                          "description": "Ahrefs Domain Rating from ahref-service (live read). null when ahref has not scraped this domain yet."
+                        }
+                      },
+                      "required": [
+                        "domainRating"
+                      ]
+                    }
+                  ]
                 }
               }
             }

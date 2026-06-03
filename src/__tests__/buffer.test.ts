@@ -286,7 +286,7 @@ describe("POST /orgs/buffer/next", () => {
     // reuseCycle → exhausted (no reusable outlets)
     mockReuseCycle.mockResolvedValueOnce(0);
     // discoverCycle fills the buffer with 3 outlets
-    mockDiscoverCycle.mockResolvedValueOnce(3);
+    mockDiscoverCycle.mockResolvedValueOnce({ inserted: 3, domains: [] });
 
     // claimNext iteration 2 (after refill) → found outlet
     mockQuery.mockResolvedValueOnce({ rows: [makeOutletRow()] });
@@ -315,7 +315,7 @@ describe("POST /orgs/buffer/next", () => {
     // reuseCycle → exhausted
     mockReuseCycle.mockResolvedValueOnce(0);
     // discoverCycle returns 0 (category cap reached)
-    mockDiscoverCycle.mockResolvedValueOnce(0);
+    mockDiscoverCycle.mockResolvedValueOnce({ inserted: 0, domains: [] });
 
     const res = await withHeaders(
       request(app).post("/orgs/buffer/next")
@@ -334,7 +334,7 @@ describe("POST /orgs/buffer/next", () => {
     // reuseCycle → exhausted
     mockReuseCycle.mockResolvedValueOnce(0);
     // Discover attempt 1 → fills 2 outlets
-    mockDiscoverCycle.mockResolvedValueOnce(2);
+    mockDiscoverCycle.mockResolvedValueOnce({ inserted: 2, domains: [] });
     // Claim → gets one but it's blocked
     mockQuery.mockResolvedValueOnce({ rows: [makeOutletRow({ relevance_score: "90.00" })] });
     mockQuery.mockResolvedValueOnce({ rows: [] }); // block cache
@@ -352,7 +352,7 @@ describe("POST /orgs/buffer/next", () => {
     // reuseCycle → exhausted
     mockReuseCycle.mockResolvedValueOnce(0);
     // Discover attempt 2 → fills 1 outlet
-    mockDiscoverCycle.mockResolvedValueOnce(1);
+    mockDiscoverCycle.mockResolvedValueOnce({ inserted: 1, domains: [] });
     // Claim → gets one, not blocked
     mockQuery.mockResolvedValueOnce({ rows: [makeOutletRow()] });
     mockQuery.mockResolvedValueOnce({ rows: [] }); // block cache
@@ -382,7 +382,7 @@ describe("POST /orgs/buffer/next", () => {
     // reuseCycle → exhausted
     mockReuseCycle.mockResolvedValueOnce(0);
     // discoverCycle → 0 (category cap)
-    mockDiscoverCycle.mockResolvedValueOnce(0);
+    mockDiscoverCycle.mockResolvedValueOnce({ inserted: 0, domains: [] });
 
     const res = await withHeaders(
       request(app).post("/orgs/buffer/next")

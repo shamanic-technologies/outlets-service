@@ -3,6 +3,7 @@ import { validateBody } from "../middleware/validate";
 import { discoverSchema } from "../schemas";
 import { discoverCycle } from "../services/category-discovery";
 import { createChildRun, closeRun } from "../services/runs";
+import { triggerDrCompute } from "../services/ahref";
 import { traceEvent } from "../lib/trace-event";
 
 const router = Router();
@@ -29,10 +30,26 @@ router.post(
       }
 
       let totalDiscovered = 0;
+      const discoveredDomains: string[] = [];
       while (totalDiscovered < count) {
-        const discovered = await discoverCycle(ctx);
-        totalDiscovered += discovered;
-        if (discovered === 0) break;
+        const { inserted, domains } = await discoverCycle(ctx);
+        totalDiscovered += inserted;
+        discoveredDomains.push(...domains);
+        if (inserted === 0) break;
+      }
+
+      // Trigger ahref-service to compute DR for the freshly-discovered domains.
+      // Fire-and-forget: the scrape is paid + slow, and ahref owns the spend;
+      // discover must not block on it or fail if it errors. DR is served live
+      // on GET /orgs/outlets once ahref has scraped.
+      const uniqueDomains = [...new Set(discoveredDomains)];
+      if (uniqueDomains.length > 0) {
+        triggerDrCompute(uniqueDomains, ctx).catch((err) =>
+          console.error(
+            "[outlets-service] ahref dr-compute trigger failed:",
+            err instanceof Error ? err.message : err
+          )
+        );
       }
 
       if (ctx.runId) {
