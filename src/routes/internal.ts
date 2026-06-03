@@ -2,9 +2,16 @@ import { Router, Request, Response } from "express";
 import { pool } from "../db/pool";
 import { config } from "../config";
 import { validateBody } from "../middleware/validate";
-import { internalOutletsBodySchema, transferBrandBodySchema } from "../schemas";
+import { internalOutletsBodySchema, transferBrandBodySchema, createPriceSourceSchema } from "../schemas";
 import { fetchOutletStatuses } from "../services/outlet-status";
 import { buildServiceHeaders } from "../services/headers";
+import {
+  outletExists,
+  hasPriceSources,
+  insertPriceSource,
+  extractAndUpsertPricing,
+  getInternalPricing,
+} from "../services/pricing";
 
 const router = Router();
 
@@ -153,6 +160,79 @@ router.post(
       });
     } catch (err) {
       console.error("[outlets-service] Error transferring brand:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// POST /internal/outlets/:id/price-sources — append a raw bronze note, then
+// re-derive silver pricing from ALL of the outlet's notes. Returns the new
+// bronze id + the refreshed (internal) pricing.
+router.post(
+  "/outlets/:id/price-sources",
+  validateBody(createPriceSourceSchema),
+  async (req: Request, res: Response): Promise<void> => {
+    const outletId = req.params.id as string;
+
+    let priceSourceId: string;
+    try {
+      if (!(await outletExists(outletId))) {
+        res.status(404).json({ error: "Outlet not found" });
+        return;
+      }
+      priceSourceId = await insertPriceSource(outletId, req.body);
+    } catch (err) {
+      console.error("[outlets-service] Error inserting price source:", err);
+      res.status(500).json({ error: "Internal server error" });
+      return;
+    }
+
+    // Extraction depends on the LLM (chat-service). The bronze note is already
+    // persisted, so a failure here is recoverable via the reextract endpoint —
+    // fail loud with 502 rather than swallowing.
+    try {
+      const pricing = await extractAndUpsertPricing(outletId);
+      res.status(201).json({ priceSourceId, pricing });
+    } catch (err) {
+      console.error("[outlets-service] Error extracting pricing:", err);
+      res.status(502).json({ error: "Pricing extraction failed" });
+    }
+  }
+);
+
+// POST /internal/outlets/:id/pricing/reextract — re-run silver extraction over
+// the existing bronze notes without adding a new one.
+router.post(
+  "/outlets/:id/pricing/reextract",
+  async (req: Request, res: Response): Promise<void> => {
+    const outletId = req.params.id as string;
+    try {
+      if (!(await hasPriceSources(outletId))) {
+        res.status(404).json({ error: "No price sources for outlet" });
+        return;
+      }
+      const pricing = await extractAndUpsertPricing(outletId);
+      res.json({ pricing });
+    } catch (err) {
+      console.error("[outlets-service] Error re-extracting pricing:", err);
+      res.status(502).json({ error: "Pricing extraction failed" });
+    }
+  }
+);
+
+// GET /internal/outlets/:id/pricing — full silver pricing incl. retail cost.
+router.get(
+  "/outlets/:id/pricing",
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const pricing = await getInternalPricing(req.params.id as string);
+      if (!pricing) {
+        res.status(404).json({ error: "Pricing not found" });
+        return;
+      }
+      res.json(pricing);
+    } catch (err) {
+      console.error("[outlets-service] Error getting internal pricing:", err);
       res.status(500).json({ error: "Internal server error" });
     }
   }
