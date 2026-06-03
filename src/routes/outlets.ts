@@ -10,6 +10,7 @@ import {
   searchOutletsSchema,
 } from "../schemas";
 import { fetchOutletStatuses, countOutletStatuses, mergeStatusCounts, type ScopeFilters } from "../services/outlet-status";
+import { getPublicPricingForOrg } from "../services/pricing";
 
 const router = Router();
 
@@ -367,6 +368,23 @@ router.get("/:id", async (req: Request, res: Response): Promise<void> => {
     });
   } catch (err) {
     console.error("[outlets-service] Error getting outlet:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /org/outlets/:id/pricing — SELL price only (retail + multiplier never
+// leave the service). Gated on the org owning the outlet (tenant isolation).
+router.get("/:id/pricing", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ctx = req.orgContext!;
+    const pricing = await getPublicPricingForOrg(req.params.id as string, ctx.orgId);
+    if (!pricing) {
+      res.status(404).json({ error: "Pricing not found" });
+      return;
+    }
+    res.json(pricing);
+  } catch (err) {
+    console.error("[outlets-service] Error getting outlet pricing:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -57,3 +57,56 @@ export async function chatComplete(
   console.log(`[outlets-service] chatComplete: completed in ${elapsed}ms model=${req.model}`);
   return res.json() as Promise<CompleteResponse>;
 }
+
+export interface PlatformCompleteRequest {
+  provider: string;
+  model: string;
+  message: string;
+  systemPrompt: string;
+  responseFormat?: "json";
+  responseSchema?: Record<string, unknown>;
+  temperature?: number;
+}
+
+/**
+ * Org-less platform LLM completion. Hits chat-service /internal/platform-complete,
+ * which creates its OWN platform run and declares token (+ search) cost on it,
+ * failing loud (502) if the cost can't be tracked. So outlets-service does NOT
+ * declare any cost here — it just forwards the call with the platform api-key
+ * (no org/user/run identity headers).
+ */
+export async function platformComplete(
+  req: PlatformCompleteRequest
+): Promise<CompleteResponse> {
+  const start = Date.now();
+  console.log(`[outlets-service] platformComplete: calling chat-service model=${req.model} provider=${req.provider}`);
+
+  let res: Response;
+  try {
+    res = await fetch(`${config.chatServiceUrl}/internal/platform-complete`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": config.chatServiceApiKey,
+      },
+      body: JSON.stringify(req),
+      signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
+    });
+  } catch (err) {
+    const elapsed = Date.now() - start;
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      throw new Error(`[outlets-service] chat-service /internal/platform-complete timed out after ${elapsed}ms (limit=${CHAT_TIMEOUT_MS}ms, model=${req.model}, provider=${req.provider})`);
+    }
+    throw new Error(`[outlets-service] chat-service /internal/platform-complete fetch failed after ${elapsed}ms: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  const elapsed = Date.now() - start;
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`[outlets-service] chat-service /internal/platform-complete failed (${res.status}) after ${elapsed}ms: ${body}`);
+  }
+
+  console.log(`[outlets-service] platformComplete: completed in ${elapsed}ms model=${req.model}`);
+  return res.json() as Promise<CompleteResponse>;
+}

@@ -348,6 +348,51 @@ export async function runMigration(): Promise<void> {
       FOR EACH ROW EXECUTE FUNCTION sync_campaign_categories_relevance_cols();
   `);
 
+  // Step 19: Bronze — raw per-outlet pricing notes (verbatim journalist emails,
+  // Google Doc / spreadsheet pastes). Append-only source of truth; never edited.
+  // Cascade-deletes with the outlet.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS outlet_price_sources (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      outlet_id UUID NOT NULL REFERENCES outlets(id) ON DELETE CASCADE,
+      raw_text TEXT NOT NULL,
+      source_type TEXT,
+      captured_by TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_outlet_price_sources_outlet ON outlet_price_sources(outlet_id);
+  `);
+
+  // Step 20: Silver — LLM-extracted structured pricing, re-derived from ALL
+  // bronzes for the outlet on every ingest. One row per outlet (derived cache,
+  // recomputable from bronze). `amount_cents` is the RETAIL cost (what we pay
+  // the outlet) and is INTERNAL-ONLY — it must never cross the /orgs boundary.
+  // `sell_price_cents` is generated = round(retail * sales_multiplier); it is the
+  // only price exposed externally. `sales_multiplier` defaults to 2.0 and is left
+  // untouched by re-extraction so a per-outlet override survives.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS outlet_pricing (
+      outlet_id UUID PRIMARY KEY REFERENCES outlets(id) ON DELETE CASCADE,
+      amount_cents INTEGER,
+      currency TEXT,
+      sales_multiplier NUMERIC(4,2) NOT NULL DEFAULT 2.0,
+      sell_price_cents INTEGER GENERATED ALWAYS AS ((round(amount_cents * sales_multiplier))::integer) STORED,
+      article_type TEXT CHECK (article_type IN ('organic', 'sponsored')),
+      allows_dofollow_backlink BOOLEAN,
+      online_duration_months INTEGER,
+      is_permanent BOOLEAN,
+      conditions_note TEXT,
+      source_bronze_ids UUID[] NOT NULL DEFAULT '{}',
+      extraction_rationale TEXT,
+      confidence NUMERIC(4,3),
+      model TEXT,
+      prompt_version TEXT,
+      extracted_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
   console.log("[outlets-service] Migration complete.");
 }
 
