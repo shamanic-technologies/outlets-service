@@ -112,6 +112,12 @@ describe("POST /orgs/outlets/editorial-emails/discover", () => {
     expect(res.body.status).toBe("found_google");
     expect(res.body.emails[0].email).toBe("news@outlet.com");
     expect(mockSerper).toHaveBeenCalledWith("Outlet", "outlet.com", expect.anything());
+    // rung 3 escalates to JS render before the serper fallback
+    expect(mockScrape).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.anything(),
+      expect.objectContaining({ render: true })
+    );
   });
 
   it("returns no_email_found when every rung is empty", async () => {
