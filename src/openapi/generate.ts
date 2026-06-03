@@ -20,6 +20,10 @@ import {
   statusCountsSchema,
   transferBrandBodySchema,
   transferBrandResponseSchema,
+  editorialEmailDiscoverSchema,
+  editorialEmailDiscoverBatchSchema,
+  editorialEmailResultSchema,
+  editorialEmailBatchResultSchema,
 } from "../schemas";
 import { zodToJsonSchema } from "./zod-to-json";
 
@@ -118,6 +122,10 @@ const spec = {
       StatsCostsResponse: zodToJsonSchema(statsCostsResponseSchema),
       TransferBrandBody: zodToJsonSchema(transferBrandBodySchema),
       TransferBrandResponse: zodToJsonSchema(transferBrandResponseSchema),
+      EditorialEmailDiscover: zodToJsonSchema(editorialEmailDiscoverSchema),
+      EditorialEmailDiscoverBatch: zodToJsonSchema(editorialEmailDiscoverBatchSchema),
+      EditorialEmailResult: zodToJsonSchema(editorialEmailResultSchema),
+      EditorialEmailBatchResult: zodToJsonSchema(editorialEmailBatchResultSchema),
       HealthResponse: zodToJsonSchema(healthResponseSchema),
       ErrorResponse: zodToJsonSchema(errorResponseSchema),
     },
@@ -469,6 +477,67 @@ const spec = {
             content: { "application/json": { schema: ref("DiscoverResponse") } },
           },
           "400": { description: "Invalid request", content: { "application/json": { schema: ref("ErrorResponse") } } },
+          "502": { description: "Upstream service error", content: { "application/json": { schema: ref("ErrorResponse") } } },
+        },
+      },
+    },
+    "/orgs/outlets/editorial-emails/discover": {
+      post: {
+        summary: "Discover editorial emails for one outlet (org-scoped)",
+        description: "Resolves newsroom/editorial contact emails from an outlet domain via a fallback ladder (scraping-service raw fetch of contact/about paths → sitemap discovery → render retry → serper Google fallback). Results are cached per (org, domain) for 60 days, including terminal no_email_found / parked_dead. Editorial-typed addresses (editorial@/editor/news/press…) are surfaced first.",
+        parameters: [...orgHeaders],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: ref("EditorialEmailDiscover"),
+              example: { outletName: "Citywealth", domain: "citywealthmag.com", url: "https://citywealthmag.com" },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Discovery result (status ∈ found | found_google | parked_dead | no_email_found)",
+            content: {
+              "application/json": {
+                schema: ref("EditorialEmailResult"),
+                example: {
+                  domain: "citywealthmag.com",
+                  status: "found",
+                  emails: [{ email: "editorial@citywealthmag.com", score: 0, source: "https://citywealthmag.com/contact" }],
+                },
+              },
+            },
+          },
+          "400": { description: "Validation error", content: { "application/json": { schema: ref("ErrorResponse") } } },
+          "502": { description: "Upstream service error", content: { "application/json": { schema: ref("ErrorResponse") } } },
+        },
+      },
+    },
+    "/orgs/outlets/editorial-emails/discover-batch": {
+      post: {
+        summary: "Discover editorial emails for many outlets (org-scoped)",
+        description: "Batch variant of editorial-email discovery. Runs a concurrency pool of 8 across domains (each domain's ladder is internally sequential so its early-stop works). Max 50 outlets per request — chunk larger sets.",
+        parameters: [...orgHeaders],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: ref("EditorialEmailDiscoverBatch"),
+              example: {
+                outlets: [
+                  { outletName: "Citywealth", domain: "citywealthmag.com", url: "https://citywealthmag.com" },
+                ],
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Per-outlet discovery results",
+            content: { "application/json": { schema: ref("EditorialEmailBatchResult") } },
+          },
+          "400": { description: "Validation error", content: { "application/json": { schema: ref("ErrorResponse") } } },
           "502": { description: "Upstream service error", content: { "application/json": { schema: ref("ErrorResponse") } } },
         },
       },

@@ -16,4 +16,6 @@ export const config = {
   runsServiceApiKey: process.env.RUNS_SERVICE_API_KEY || "",
   journalistsServiceUrl: process.env.JOURNALISTS_SERVICE_URL || "",
   journalistsServiceApiKey: process.env.JOURNALISTS_SERVICE_API_KEY || "",
+  scrapingServiceUrl: process.env.SCRAPING_SERVICE_URL || "",
+  scrapingServiceApiKey: process.env.SCRAPING_SERVICE_API_KEY || "",
 };

@@ -232,6 +232,44 @@ export const statsCostsResponseSchema = z.object({
   ),
 });
 
+// --- Editorial Emails ---
+
+export const editorialEmailDiscoverSchema = z.object({
+  outletName: z.string().min(1),
+  domain: z.string().min(1),
+  url: z.string().url(),
+});
+
+export const editorialEmailDiscoverBatchSchema = z.object({
+  outlets: z.array(editorialEmailDiscoverSchema).min(1).max(50),
+});
+
+const editorialEmailStatusEnum = z.enum([
+  "found",
+  "found_google",
+  "parked_dead",
+  "no_email_found",
+]);
+
+export const editorialEmailItemSchema = z.object({
+  email: z.string(),
+  score: z.number(),
+  source: z.string(),
+});
+
+export const editorialEmailResultSchema = z.object({
+  domain: z.string(),
+  status: editorialEmailStatusEnum,
+  emails: z.array(editorialEmailItemSchema),
+});
+
+export const editorialEmailBatchResultSchema = z.object({
+  results: z.array(editorialEmailResultSchema),
+});
+
+export type EditorialEmailDiscover = z.infer<typeof editorialEmailDiscoverSchema>;
+export type EditorialEmailDiscoverBatch = z.infer<typeof editorialEmailDiscoverBatchSchema>;
+
 // Type exports
 export type CreateOutlet = z.infer<typeof createOutletSchema>;
 export type UpdateOutlet = z.infer<typeof updateOutletSchema>;
