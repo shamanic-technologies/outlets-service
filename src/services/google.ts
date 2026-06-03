@@ -1,6 +1,7 @@
 import { config } from "../config";
 import type { OrgContext } from "../middleware/org-context";
 import { buildServiceHeaders } from "./headers";
+import { extractEmails, rootDomain } from "../lib/email-extract";
 
 const GOOGLE_TIMEOUT_MS = 60_000; // 60 seconds
 
@@ -146,6 +147,25 @@ export async function validateOutletBatch<T extends { name: string; domain: stri
     ...o,
     valid: (response.results[i]?.results.length ?? 0) > 0,
   }));
+}
+
+/**
+ * Editorial-email Google fallback via serper (google-service /search/web).
+ * Reuses the existing searchSingle wrapper (google-service declares the serper
+ * cost on the forwarded run). Returns only emails whose domain matches the
+ * outlet root (drops junk picked up from snippets).
+ */
+export async function serperEditorialEmails(
+  outletName: string,
+  domain: string,
+  ctx: OrgContext
+): Promise<string[]> {
+  const query = `"${outletName}" (editor OR editorial OR press OR newsroom) email contact ${domain}`;
+  const response = await searchSingle(query, "web", ctx, { num: 20 });
+  const root = rootDomain(domain);
+  return extractEmails(JSON.stringify(response.results)).filter((e) =>
+    (e.split("@")[1] || "").includes(root)
+  );
 }
 
 export { searchSingle };

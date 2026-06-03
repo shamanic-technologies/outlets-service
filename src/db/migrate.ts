@@ -393,6 +393,36 @@ export async function runMigration(): Promise<void> {
     );
   `);
 
+  // Step 21: Editorial-email discovery — silver rows + per-domain lookup cache.
+  // `outlet_editorial_email_lookups` holds the terminal status per (org, domain)
+  // and doubles as the cache key (TTL filtered on discovered_at). It records
+  // no_email_found / parked_dead too, so dead/form-only domains are not re-scraped.
+  // `outlet_editorial_emails` holds the normalized silver rows. Both are org-scoped.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS outlet_editorial_email_lookups (
+      org_id TEXT NOT NULL,
+      domain TEXT NOT NULL,
+      status TEXT NOT NULL,
+      discovered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (org_id, domain)
+    );
+    CREATE INDEX IF NOT EXISTS idx_oeel_lookup
+      ON outlet_editorial_email_lookups(org_id, domain, discovered_at);
+
+    CREATE TABLE IF NOT EXISTS outlet_editorial_emails (
+      org_id TEXT NOT NULL,
+      domain TEXT NOT NULL,
+      email TEXT NOT NULL,
+      role TEXT,
+      score INT NOT NULL,
+      source TEXT NOT NULL,
+      discovered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (org_id, domain, email)
+    );
+    CREATE INDEX IF NOT EXISTS idx_oee_org_domain
+      ON outlet_editorial_emails(org_id, domain);
+  `);
+
   console.log("[outlets-service] Migration complete.");
 }
 
