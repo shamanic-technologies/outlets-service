@@ -318,13 +318,15 @@ describe("GET /orgs/outlets", () => {
     expect(res.body.outlets[0].domainRating).toBeNull();
   });
 
-  it("returns 500 when ahref dr-status fails (fail-loud, not masked as null)", async () => {
+  it("serves domainRating null (200, best-effort) when ahref dr-status fails", async () => {
     singleOutletListMocks("techcrunch.com");
     mockGetDrStatus.mockRejectedValueOnce(new Error("ahref-service /orgs/domains/dr-status failed (503): down"));
 
     const res = await withIdentity(request(app).get("/orgs/outlets")).query({ campaignId: CAMPAIGN_ID });
 
-    expect(res.status).toBe(500);
+    // DR is decorative — an ahref outage must not break the list
+    expect(res.status).toBe(200);
+    expect(res.body.outlets[0].domainRating).toBeNull();
   });
 
   it("returns DB-only status when no journalist data exists for outlet", async () => {

@@ -338,11 +338,21 @@ router.get(
       });
 
       // Enrich page outlets with Domain Rating from ahref-service (live read).
-      // null = ahref has not scraped that domain yet. Fail-loud (matches the
-      // journalist-status enrichment above): an ahref failure 500s the list
-      // rather than masking an outage as "no DR".
+      // Best-effort: DR is a decorative annotation, not core list data, so an
+      // ahref outage (or no ahref in this environment) must not 500 the list.
+      // On failure we log loudly and serve domainRating: null (same shape as
+      // "not yet scraped"). Symmetric with the non-blocking dr-compute trigger
+      // on discover.
       const pageDomains = [...new Set(outlets.map((o) => normalizeDomain(o.outletDomain)))];
-      const drMap = await getDrStatus(pageDomains, ctx);
+      let drMap = new Map<string, number | null>();
+      try {
+        drMap = await getDrStatus(pageDomains, ctx);
+      } catch (err) {
+        console.warn(
+          "[outlets-service] ahref dr-status read failed, serving null domainRating:",
+          err instanceof Error ? err.message : err
+        );
+      }
       const outletsWithDr = outlets.map((o) => ({
         ...o,
         domainRating: drMap.get(normalizeDomain(o.outletDomain)) ?? null,
@@ -375,13 +385,23 @@ router.get("/:id", async (req: Request, res: Response): Promise<void> => {
     }
 
     const r = result.rows[0];
-    const drMap = await getDrStatus([normalizeDomain(r.outlet_domain)], ctx);
+    // Best-effort DR enrichment (see GET / list route): never 500 the outlet on an ahref outage.
+    let domainRating: number | null = null;
+    try {
+      const drMap = await getDrStatus([normalizeDomain(r.outlet_domain)], ctx);
+      domainRating = drMap.get(normalizeDomain(r.outlet_domain)) ?? null;
+    } catch (err) {
+      console.warn(
+        "[outlets-service] ahref dr-status read failed for outlet, serving null domainRating:",
+        err instanceof Error ? err.message : err
+      );
+    }
     res.json({
       id: r.id,
       outletName: r.outlet_name,
       outletUrl: r.outlet_url,
       outletDomain: r.outlet_domain,
-      domainRating: drMap.get(normalizeDomain(r.outlet_domain)) ?? null,
+      domainRating,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     });
