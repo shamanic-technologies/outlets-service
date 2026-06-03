@@ -20,6 +20,7 @@ import {
   ensureSource,
   linkSourceOutlets,
   extractForSource,
+  hasPriceSources,
 } from "../services/pricing";
 
 const OUTLET_ID = "11111111-1111-1111-1111-111111111111";
@@ -273,6 +274,18 @@ describe("broker / source pricing", () => {
       .mockResolvedValueOnce({ rowCount: 0 }); // O2 already linked
     const linked = await linkSourceOutlets(SOURCE_ID, [O1, O2]);
     expect(linked).toBe(1);
+  });
+
+  it("hasPriceSources counts broker coverage, not just direct notes", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ "?column?": 1 }] });
+    expect(await hasPriceSources(O1)).toBe(true);
+    const sql = mockQuery.mock.calls[0][0] as string;
+    expect(sql).toContain("source_outlets"); // broker-coverage branch present
+  });
+
+  it("hasPriceSources false when neither direct nor broker note exists", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    expect(await hasPriceSources(O1)).toBe(false);
   });
 
   it("extractForSource fans out extraction over every member outlet", async () => {

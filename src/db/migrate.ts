@@ -468,6 +468,16 @@ export async function runMigration(): Promise<void> {
     END $$;
   `);
 
+  // Step 25: Make pricing_sources.domain unique index NON-partial. The Step 22
+  // partial index (WHERE domain IS NOT NULL) cannot be inferred by
+  // `INSERT ... ON CONFLICT (domain)` (Postgres 42P10), which broke ensureSource.
+  // A plain unique index still allows multiple NULL domains (NULLs are distinct)
+  // and IS inferable by ON CONFLICT (domain). Drop + recreate; idempotent.
+  await pool.query(`
+    DROP INDEX IF EXISTS idx_pricing_sources_domain;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_pricing_sources_domain ON pricing_sources(domain);
+  `);
+
   console.log("[outlets-service] Migration complete.");
 }
 

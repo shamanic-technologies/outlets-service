@@ -221,6 +221,7 @@ const spec = {
                           outletName: { type: "string" },
                           outletUrl: { type: "string" },
                           outletDomain: { type: "string" },
+                          domainRating: { type: "integer", nullable: true, description: "Ahrefs Domain Rating from ahref-service (live read). null when ahref has not scraped this domain yet." },
                           createdAt: { type: "string", format: "date-time" },
                           relevanceScore: { type: "number", description: "Max relevance score across all campaigns for this outlet." },
                           status: outletStatusObject,
@@ -247,7 +248,7 @@ const spec = {
                             },
                           },
                         },
-                        required: ["id", "outletName", "outletUrl", "outletDomain", "createdAt", "relevanceScore", "status", "campaigns"],
+                        required: ["id", "outletName", "outletUrl", "outletDomain", "domainRating", "createdAt", "relevanceScore", "status", "campaigns"],
                       },
                     },
                     total: { type: "integer", description: "Total distinct outlets matching filters (not truncated by pagination)" },
@@ -265,6 +266,7 @@ const spec = {
                       outletName: "TechCrunch",
                       outletUrl: "https://techcrunch.com",
                       outletDomain: "techcrunch.com",
+                      domainRating: 93,
                       createdAt: "2026-01-01T00:00:00Z",
                       relevanceScore: 85,
                       status: {
@@ -311,7 +313,25 @@ const spec = {
         summary: "Get outlet by ID (org-scoped)",
         parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }, ...orgHeaders],
         responses: {
-          "200": { description: "Outlet found", content: { "application/json": { schema: ref("OutletResponse") } } },
+          "200": {
+            description: "Outlet found",
+            content: {
+              "application/json": {
+                schema: {
+                  allOf: [
+                    ref("OutletResponse"),
+                    {
+                      type: "object",
+                      properties: {
+                        domainRating: { type: "integer", nullable: true, description: "Ahrefs Domain Rating from ahref-service (live read). null when ahref has not scraped this domain yet." },
+                      },
+                      required: ["domainRating"],
+                    },
+                  ],
+                },
+              },
+            },
+          },
           "404": { description: "Outlet not found" },
         },
       },

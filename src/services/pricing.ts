@@ -158,8 +158,15 @@ export async function outletExists(outletId: string): Promise<boolean> {
 }
 
 export async function hasPriceSources(outletId: string): Promise<boolean> {
+  // Mirror the extraction union: an outlet has price sources if it has a direct
+  // note OR is covered by a broker note (source whose network includes it).
   const r = await pool.query(
-    `SELECT 1 FROM outlet_price_sources WHERE outlet_id = $1 LIMIT 1`,
+    `SELECT 1 FROM outlet_price_sources WHERE outlet_id = $1
+     UNION ALL
+     SELECT 1 FROM outlet_price_sources b
+       JOIN source_outlets so ON so.source_id = b.source_id
+       WHERE so.outlet_id = $1
+     LIMIT 1`,
     [outletId]
   );
   return r.rows.length > 0;
