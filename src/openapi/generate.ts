@@ -24,6 +24,10 @@ import {
   editorialEmailDiscoverBatchSchema,
   editorialEmailResultSchema,
   editorialEmailBatchResultSchema,
+  createPriceSourceSchema,
+  outletPricingInternalSchema,
+  outletPricingPublicSchema,
+  ingestPriceSourceResponseSchema,
 } from "../schemas";
 import { zodToJsonSchema } from "./zod-to-json";
 
@@ -126,6 +130,10 @@ const spec = {
       EditorialEmailDiscoverBatch: zodToJsonSchema(editorialEmailDiscoverBatchSchema),
       EditorialEmailResult: zodToJsonSchema(editorialEmailResultSchema),
       EditorialEmailBatchResult: zodToJsonSchema(editorialEmailBatchResultSchema),
+      CreatePriceSource: zodToJsonSchema(createPriceSourceSchema),
+      OutletPricingInternal: zodToJsonSchema(outletPricingInternalSchema),
+      OutletPricingPublic: zodToJsonSchema(outletPricingPublicSchema),
+      IngestPriceSourceResponse: zodToJsonSchema(ingestPriceSourceResponseSchema),
       HealthResponse: zodToJsonSchema(healthResponseSchema),
       ErrorResponse: zodToJsonSchema(errorResponseSchema),
     },
@@ -348,6 +356,17 @@ const spec = {
             },
           },
           "404": { description: "Campaign outlet not found" },
+        },
+      },
+    },
+    "/orgs/outlets/{id}/pricing": {
+      get: {
+        summary: "Get outlet sell pricing (org-scoped)",
+        description: "Returns the SELL price (retail × sales multiplier) plus article terms for an outlet. Retail cost and the multiplier are never exposed here. Gated on the org owning the outlet (present in one of its campaigns) — 404 otherwise.",
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }, ...orgHeaders],
+        responses: {
+          "200": { description: "Sell pricing", content: { "application/json": { schema: ref("OutletPricingPublic") } } },
+          "404": { description: "Pricing not found (or outlet not owned by org)", content: { "application/json": { schema: ref("ErrorResponse") } } },
         },
       },
     },
@@ -617,6 +636,50 @@ const spec = {
           },
           "400": { description: "Validation error", content: { "application/json": { schema: ref("ErrorResponse") } } },
           "500": { description: "Internal error", content: { "application/json": { schema: ref("ErrorResponse") } } },
+        },
+      },
+    },
+    "/internal/outlets/{id}/price-sources": {
+      post: {
+        summary: "Append a raw pricing note + re-extract (internal)",
+        description: "Appends one verbatim bronze note (journalist email / doc / sheet paste) for the outlet, then re-derives the silver pricing from ALL of the outlet's notes via the platform LLM. Returns the new bronze id and the refreshed internal pricing (incl. retail).",
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: ref("CreatePriceSource"),
+              example: { rawText: "Hi! Sponsored post is $500, one dofollow link, stays up 12 months, 2 images max.", sourceType: "email" },
+            },
+          },
+        },
+        responses: {
+          "201": { description: "Note stored + pricing extracted", content: { "application/json": { schema: ref("IngestPriceSourceResponse") } } },
+          "404": { description: "Outlet not found", content: { "application/json": { schema: ref("ErrorResponse") } } },
+          "502": { description: "Pricing extraction failed (note was stored — retry via reextract)", content: { "application/json": { schema: ref("ErrorResponse") } } },
+        },
+      },
+    },
+    "/internal/outlets/{id}/pricing/reextract": {
+      post: {
+        summary: "Re-run silver pricing extraction (internal)",
+        description: "Re-derives the silver pricing from the outlet's existing bronze notes without adding a new one. 404 if the outlet has no notes.",
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: {
+          "200": { description: "Pricing re-extracted", content: { "application/json": { schema: { type: "object", properties: { pricing: ref("OutletPricingInternal") }, required: ["pricing"] } } } },
+          "404": { description: "No price sources for outlet", content: { "application/json": { schema: ref("ErrorResponse") } } },
+          "502": { description: "Pricing extraction failed", content: { "application/json": { schema: ref("ErrorResponse") } } },
+        },
+      },
+    },
+    "/internal/outlets/{id}/pricing": {
+      get: {
+        summary: "Get full outlet pricing incl. retail (internal)",
+        description: "Returns the full silver pricing row including the retail cost (`amountCents`), sales multiplier, sell price, and extraction audit fields.",
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: {
+          "200": { description: "Internal pricing", content: { "application/json": { schema: ref("OutletPricingInternal") } } },
+          "404": { description: "Pricing not found", content: { "application/json": { schema: ref("ErrorResponse") } } },
         },
       },
     },

@@ -857,6 +857,304 @@
           "results"
         ]
       },
+      "CreatePriceSource": {
+        "type": "object",
+        "properties": {
+          "rawText": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sourceType": {
+            "type": "string",
+            "enum": [
+              "email",
+              "gdoc",
+              "spreadsheet",
+              "manual"
+            ]
+          },
+          "capturedBy": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "rawText"
+        ]
+      },
+      "OutletPricingInternal": {
+        "type": "object",
+        "properties": {
+          "outletId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "amountCents": {
+            "type": "integer",
+            "nullable": true
+          },
+          "currency": {
+            "type": "string",
+            "nullable": true
+          },
+          "salesMultiplier": {
+            "type": "number"
+          },
+          "sellPriceCents": {
+            "type": "integer",
+            "nullable": true
+          },
+          "articleType": {
+            "type": "string",
+            "enum": [
+              "organic",
+              "sponsored"
+            ],
+            "nullable": true
+          },
+          "allowsDofollowBacklink": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "onlineDurationMonths": {
+            "type": "integer",
+            "nullable": true
+          },
+          "isPermanent": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "conditionsNote": {
+            "type": "string",
+            "nullable": true
+          },
+          "confidence": {
+            "type": "number",
+            "nullable": true
+          },
+          "model": {
+            "type": "string",
+            "nullable": true
+          },
+          "promptVersion": {
+            "type": "string",
+            "nullable": true
+          },
+          "sourceBronzeIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "extractionRationale": {
+            "type": "string",
+            "nullable": true
+          },
+          "extractedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "bronzeCount": {
+            "type": "integer"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "outletId",
+          "amountCents",
+          "currency",
+          "salesMultiplier",
+          "sellPriceCents",
+          "articleType",
+          "allowsDofollowBacklink",
+          "onlineDurationMonths",
+          "isPermanent",
+          "conditionsNote",
+          "confidence",
+          "model",
+          "promptVersion",
+          "sourceBronzeIds",
+          "extractionRationale",
+          "extractedAt",
+          "bronzeCount",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "OutletPricingPublic": {
+        "type": "object",
+        "properties": {
+          "outletId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sellPriceCents": {
+            "type": "integer",
+            "nullable": true
+          },
+          "currency": {
+            "type": "string",
+            "nullable": true
+          },
+          "articleType": {
+            "type": "string",
+            "enum": [
+              "organic",
+              "sponsored"
+            ],
+            "nullable": true
+          },
+          "allowsDofollowBacklink": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "onlineDurationMonths": {
+            "type": "integer",
+            "nullable": true
+          },
+          "isPermanent": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "conditionsNote": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "outletId",
+          "sellPriceCents",
+          "currency",
+          "articleType",
+          "allowsDofollowBacklink",
+          "onlineDurationMonths",
+          "isPermanent",
+          "conditionsNote"
+        ]
+      },
+      "IngestPriceSourceResponse": {
+        "type": "object",
+        "properties": {
+          "priceSourceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "pricing": {
+            "type": "object",
+            "properties": {
+              "outletId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "amountCents": {
+                "type": "integer",
+                "nullable": true
+              },
+              "currency": {
+                "type": "string",
+                "nullable": true
+              },
+              "salesMultiplier": {
+                "type": "number"
+              },
+              "sellPriceCents": {
+                "type": "integer",
+                "nullable": true
+              },
+              "articleType": {
+                "type": "string",
+                "enum": [
+                  "organic",
+                  "sponsored"
+                ],
+                "nullable": true
+              },
+              "allowsDofollowBacklink": {
+                "type": "boolean",
+                "nullable": true
+              },
+              "onlineDurationMonths": {
+                "type": "integer",
+                "nullable": true
+              },
+              "isPermanent": {
+                "type": "boolean",
+                "nullable": true
+              },
+              "conditionsNote": {
+                "type": "string",
+                "nullable": true
+              },
+              "confidence": {
+                "type": "number",
+                "nullable": true
+              },
+              "model": {
+                "type": "string",
+                "nullable": true
+              },
+              "promptVersion": {
+                "type": "string",
+                "nullable": true
+              },
+              "sourceBronzeIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "extractionRationale": {
+                "type": "string",
+                "nullable": true
+              },
+              "extractedAt": {
+                "type": "string",
+                "nullable": true
+              },
+              "bronzeCount": {
+                "type": "integer"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "outletId",
+              "amountCents",
+              "currency",
+              "salesMultiplier",
+              "sellPriceCents",
+              "articleType",
+              "allowsDofollowBacklink",
+              "onlineDurationMonths",
+              "isPermanent",
+              "conditionsNote",
+              "confidence",
+              "model",
+              "promptVersion",
+              "sourceBronzeIds",
+              "extractionRationale",
+              "extractedAt",
+              "bronzeCount",
+              "createdAt",
+              "updatedAt"
+            ]
+          }
+        },
+        "required": [
+          "priceSourceId",
+          "pricing"
+        ]
+      },
       "HealthResponse": {
         "type": "object",
         "properties": {
@@ -2041,6 +2339,112 @@
         }
       }
     },
+    "/orgs/outlets/{id}/pricing": {
+      "get": {
+        "summary": "Get outlet sell pricing (org-scoped)",
+        "description": "Returns the SELL price (retail × sales multiplier) plus article terms for an outlet. Retail cost and the multiplier are never exposed here. Gated on the org owning the outlet (present in one of its campaigns) — 404 otherwise.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-org-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (from client-service)"
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID (optional)"
+          },
+          {
+            "in": "header",
+            "name": "x-run-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Run ID (optional)"
+          },
+          {
+            "in": "header",
+            "name": "x-feature-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Feature slug (optional)"
+          },
+          {
+            "in": "header",
+            "name": "x-campaign-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Campaign ID (optional)"
+          },
+          {
+            "in": "header",
+            "name": "x-brand-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Brand ID(s) — comma-separated UUIDs (optional)"
+          },
+          {
+            "in": "header",
+            "name": "x-workflow-slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workflow slug (optional)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sell pricing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutletPricingPublic"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Pricing not found (or outlet not owned by org)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/orgs/outlets/bulk": {
       "post": {
         "summary": "Bulk upsert outlets (org-scoped)",
@@ -3179,6 +3583,165 @@
           },
           "500": {
             "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/outlets/{id}/price-sources": {
+      "post": {
+        "summary": "Append a raw pricing note + re-extract (internal)",
+        "description": "Appends one verbatim bronze note (journalist email / doc / sheet paste) for the outlet, then re-derives the silver pricing from ALL of the outlet's notes via the platform LLM. Returns the new bronze id and the refreshed internal pricing (incl. retail).",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePriceSource"
+              },
+              "example": {
+                "rawText": "Hi! Sponsored post is $500, one dofollow link, stays up 12 months, 2 images max.",
+                "sourceType": "email"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Note stored + pricing extracted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestPriceSourceResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Outlet not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Pricing extraction failed (note was stored — retry via reextract)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/outlets/{id}/pricing/reextract": {
+      "post": {
+        "summary": "Re-run silver pricing extraction (internal)",
+        "description": "Re-derives the silver pricing from the outlet's existing bronze notes without adding a new one. 404 if the outlet has no notes.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pricing re-extracted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "pricing": {
+                      "$ref": "#/components/schemas/OutletPricingInternal"
+                    }
+                  },
+                  "required": [
+                    "pricing"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No price sources for outlet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Pricing extraction failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/outlets/{id}/pricing": {
+      "get": {
+        "summary": "Get full outlet pricing incl. retail (internal)",
+        "description": "Returns the full silver pricing row including the retail cost (`amountCents`), sales multiplier, sell price, and extraction audit fields.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Internal pricing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutletPricingInternal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Pricing not found",
             "content": {
               "application/json": {
                 "schema": {
