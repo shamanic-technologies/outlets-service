@@ -169,7 +169,7 @@ router.post(
               continue; // retry claim from reused outlets
             }
 
-            const filled = await discoverCycle(ctx);
+            const { inserted: filled } = await discoverCycle(ctx);
             if (filled === 0) {
               console.log(`[outlets-service] buffer/next: discover cycle exhausted (category cap) for campaign ${ctx.campaignId}`);
               break;

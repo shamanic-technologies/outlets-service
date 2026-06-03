@@ -29,6 +29,13 @@ vi.mock("../services/outlet-status", async (importOriginal) => {
   };
 });
 
+// Mock ahref service (DR enrichment on GET /orgs/outlets and /:id)
+const mockGetDrStatus = vi.fn();
+vi.mock("../services/ahref", () => ({
+  getDrStatus: (...args: unknown[]) => mockGetDrStatus(...args),
+  triggerDrCompute: (...args: unknown[]) => Promise.resolve(),
+}));
+
 const API_KEY = "test-key";
 const ORG_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const USER_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
@@ -75,6 +82,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockConnect.mockResolvedValue(undefined);
   mockFetchOutletStatuses.mockResolvedValue(emptyEnrichment());
+  mockGetDrStatus.mockResolvedValue(new Map());
   app = createApp();
 });
 
@@ -256,6 +264,67 @@ describe("GET /orgs/outlets", () => {
       expect.any(Object),
       { campaignId: CAMPAIGN_ID }
     );
+  });
+
+  function singleOutletListMocks(domain: string) {
+    const OUTLET_ID = "11111111-1111-1111-1111-111111111111";
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: OUTLET_ID }], rowCount: 1 });
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: OUTLET_ID,
+          outlet_name: "Outlet",
+          outlet_url: `https://${domain}`,
+          outlet_domain: domain,
+          campaign_id: CAMPAIGN_ID,
+          feature_slug: "pr-outreach",
+          brand_ids: [BRAND_ID],
+          why_relevant: "x",
+          why_not_relevant: "y",
+          relevance_score: "85.00",
+          outlet_status: "open",
+          status_reason: "discovered",
+          status_detail: null,
+          overall_relevance: null,
+          relevance_rationale: null,
+          run_id: RUN_ID,
+          created_at: "2026-01-01T00:00:00Z",
+          campaign_updated_at: "2026-01-02T00:00:00Z",
+        },
+      ],
+    });
+    mockFetchOutletStatuses.mockResolvedValueOnce(emptyEnrichment());
+    mockQuery.mockResolvedValueOnce({ rows: [{ open_count: 1, served_count: 0, skipped_count: 0 }] });
+  }
+
+  it("merges domainRating from ahref-service into each outlet", async () => {
+    singleOutletListMocks("techcrunch.com");
+    mockGetDrStatus.mockResolvedValueOnce(new Map([["techcrunch.com", 93]]));
+
+    const res = await withIdentity(request(app).get("/orgs/outlets")).query({ campaignId: CAMPAIGN_ID });
+
+    expect(res.status).toBe(200);
+    expect(res.body.outlets[0].domainRating).toBe(93);
+    expect(mockGetDrStatus).toHaveBeenCalledWith(["techcrunch.com"], expect.any(Object));
+  });
+
+  it("sets domainRating null when ahref has not scraped the domain", async () => {
+    singleOutletListMocks("newpaper.com");
+    mockGetDrStatus.mockResolvedValueOnce(new Map([["newpaper.com", null]]));
+
+    const res = await withIdentity(request(app).get("/orgs/outlets")).query({ campaignId: CAMPAIGN_ID });
+
+    expect(res.status).toBe(200);
+    expect(res.body.outlets[0].domainRating).toBeNull();
+  });
+
+  it("returns 500 when ahref dr-status fails (fail-loud, not masked as null)", async () => {
+    singleOutletListMocks("techcrunch.com");
+    mockGetDrStatus.mockRejectedValueOnce(new Error("ahref-service /orgs/domains/dr-status failed (503): down"));
+
+    const res = await withIdentity(request(app).get("/orgs/outlets")).query({ campaignId: CAMPAIGN_ID });
+
+    expect(res.status).toBe(500);
   });
 
   it("returns DB-only status when no journalist data exists for outlet", async () => {
@@ -509,6 +578,29 @@ describe("GET /orgs/outlets/:id", () => {
     );
     expect(res.status).toBe(200);
     expect(res.body.outletName).toBe("TechCrunch");
+  });
+
+  it("includes domainRating from ahref-service", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: "11111111-1111-1111-1111-111111111111",
+          outlet_name: "TechCrunch",
+          outlet_url: "https://techcrunch.com",
+          outlet_domain: "techcrunch.com",
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-02T00:00:00Z",
+        },
+      ],
+    });
+    mockGetDrStatus.mockResolvedValueOnce(new Map([["techcrunch.com", 93]]));
+
+    const res = await withBaseIdentity(
+      request(app).get("/orgs/outlets/11111111-1111-1111-1111-111111111111")
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.domainRating).toBe(93);
+    expect(mockGetDrStatus).toHaveBeenCalledWith(["techcrunch.com"], expect.any(Object));
   });
 
   it("returns 404 for missing outlet", async () => {

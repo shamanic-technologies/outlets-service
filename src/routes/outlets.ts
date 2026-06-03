@@ -11,6 +11,7 @@ import {
 } from "../schemas";
 import { fetchOutletStatuses, countOutletStatuses, mergeStatusCounts, type ScopeFilters } from "../services/outlet-status";
 import { getPublicPricingForOrg } from "../services/pricing";
+import { getDrStatus } from "../services/ahref";
 
 const router = Router();
 
@@ -20,6 +21,11 @@ function extractDomain(url: string): string {
   } catch {
     return url;
   }
+}
+
+/** Normalize a domain the same way ahref-service does (www stripped, case-folded) so DR lookups match. */
+function normalizeDomain(domain: string): string {
+  return domain.toLowerCase().replace(/^www\./, "");
 }
 
 // POST /org/outlets — create outlet (upsert by outlet_url)
@@ -331,7 +337,18 @@ router.get(
         };
       });
 
-      res.json({ outlets, total, byOutreachStatus: hybridByOutreachStatus });
+      // Enrich page outlets with Domain Rating from ahref-service (live read).
+      // null = ahref has not scraped that domain yet. Fail-loud (matches the
+      // journalist-status enrichment above): an ahref failure 500s the list
+      // rather than masking an outage as "no DR".
+      const pageDomains = [...new Set(outlets.map((o) => normalizeDomain(o.outletDomain)))];
+      const drMap = await getDrStatus(pageDomains, ctx);
+      const outletsWithDr = outlets.map((o) => ({
+        ...o,
+        domainRating: drMap.get(normalizeDomain(o.outletDomain)) ?? null,
+      }));
+
+      res.json({ outlets: outletsWithDr, total, byOutreachStatus: hybridByOutreachStatus });
     } catch (err) {
       console.error("[outlets-service] Error listing outlets:", err);
       res.status(500).json({ error: "Internal server error" });
@@ -358,11 +375,13 @@ router.get("/:id", async (req: Request, res: Response): Promise<void> => {
     }
 
     const r = result.rows[0];
+    const drMap = await getDrStatus([normalizeDomain(r.outlet_domain)], ctx);
     res.json({
       id: r.id,
       outletName: r.outlet_name,
       outletUrl: r.outlet_url,
       outletDomain: r.outlet_domain,
+      domainRating: drMap.get(normalizeDomain(r.outlet_domain)) ?? null,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     });

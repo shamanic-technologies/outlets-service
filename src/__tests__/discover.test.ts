@@ -33,6 +33,12 @@ vi.mock("../services/category-discovery", () => ({
   discoverCycle: (...args: unknown[]) => mockDiscoverCycle(...args),
 }));
 
+// Mock ahref service (DR compute trigger)
+const mockTriggerDrCompute = vi.fn();
+vi.mock("../services/ahref", () => ({
+  triggerDrCompute: (...args: unknown[]) => mockTriggerDrCompute(...args),
+}));
+
 const API_KEY = "test-key";
 const ORG_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const USER_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
@@ -60,16 +66,18 @@ beforeEach(() => {
   mockConnect.mockResolvedValue(undefined);
   mockCreateChildRun.mockResolvedValue(CHILD_RUN_ID);
   mockCloseRun.mockResolvedValue(undefined);
+  mockTriggerDrCompute.mockResolvedValue(undefined);
   app = createApp();
 });
 
 describe("POST /orgs/outlets/discover", () => {
   it("creates a child run, discovers outlets via discoverCycle, closes run as completed", async () => {
-    // discoverCycle returns 5 outlets on first call, 3 on second, then 0 (done)
+    // discoverCycle returns 5 outlets on first call, 3 on second, then 0 (done).
+    // "b.com" repeats across cycles → must be deduped in the dr-compute trigger.
     mockDiscoverCycle
-      .mockResolvedValueOnce(5)
-      .mockResolvedValueOnce(3)
-      .mockResolvedValueOnce(0);
+      .mockResolvedValueOnce({ inserted: 5, domains: ["a.com", "b.com"] })
+      .mockResolvedValueOnce({ inserted: 3, domains: ["b.com", "c.com"] })
+      .mockResolvedValueOnce({ inserted: 0, domains: [] });
 
     const res = await withHeaders(
       request(app).post("/orgs/outlets/discover")
@@ -83,13 +91,16 @@ describe("POST /orgs/outlets/discover", () => {
     expect(mockCreateChildRun).toHaveBeenCalledWith("discover", expect.objectContaining({ orgId: ORG_ID, runId: RUN_ID }));
     // Verify run was closed as completed
     expect(mockCloseRun).toHaveBeenCalledWith(CHILD_RUN_ID, "completed", expect.anything());
+    // Verify ahref DR compute was triggered once with the deduped discovered domains
+    expect(mockTriggerDrCompute).toHaveBeenCalledTimes(1);
+    expect(mockTriggerDrCompute.mock.calls[0][0]).toEqual(["a.com", "b.com", "c.com"]);
   });
 
   it("uses default count of 15 when not specified", async () => {
     // Returns 15 in two batches, then stops because count reached
     mockDiscoverCycle
-      .mockResolvedValueOnce(10)
-      .mockResolvedValueOnce(5);
+      .mockResolvedValueOnce({ inserted: 10, domains: ["x.com"] })
+      .mockResolvedValueOnce({ inserted: 5, domains: ["y.com"] });
 
     const res = await withHeaders(
       request(app).post("/orgs/outlets/discover")
@@ -100,7 +111,7 @@ describe("POST /orgs/outlets/discover", () => {
   });
 
   it("stops when discoverCycle returns 0", async () => {
-    mockDiscoverCycle.mockResolvedValueOnce(0);
+    mockDiscoverCycle.mockResolvedValueOnce({ inserted: 0, domains: [] });
 
     const res = await withHeaders(
       request(app).post("/orgs/outlets/discover")
@@ -110,6 +121,25 @@ describe("POST /orgs/outlets/discover", () => {
     expect(res.body.discovered).toBe(0);
     expect(mockDiscoverCycle).toHaveBeenCalledTimes(1);
     expect(mockCloseRun).toHaveBeenCalledWith(CHILD_RUN_ID, "completed", expect.anything());
+    // No domains discovered → no dr-compute trigger
+    expect(mockTriggerDrCompute).not.toHaveBeenCalled();
+  });
+
+  it("succeeds even when the ahref dr-compute trigger fails (non-blocking)", async () => {
+    mockDiscoverCycle
+      .mockResolvedValueOnce({ inserted: 2, domains: ["a.com", "b.com"] })
+      .mockResolvedValueOnce({ inserted: 0, domains: [] });
+    mockTriggerDrCompute.mockRejectedValueOnce(new Error("ahref-service /orgs/domains/dr-compute failed (502): apify down"));
+
+    const res = await withHeaders(
+      request(app).post("/orgs/outlets/discover")
+    ).send({ count: 10 });
+
+    // Discover must not fail because the (fire-and-forget) DR trigger errored
+    expect(res.status).toBe(200);
+    expect(res.body.discovered).toBe(2);
+    expect(mockCloseRun).toHaveBeenCalledWith(CHILD_RUN_ID, "completed", expect.anything());
+    expect(mockTriggerDrCompute).toHaveBeenCalledTimes(1);
   });
 
   it("closes run as failed on error", async () => {

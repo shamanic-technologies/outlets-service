@@ -281,7 +281,7 @@ export async function getActiveCategory(campaignId: string): Promise<CampaignCat
 export async function discoverOutletsInCategory(
   category: CampaignCategory,
   ctx: OrgContext
-): Promise<number> {
+): Promise<{ inserted: number; domains: string[] }> {
   const { brandContext, featureInput } = await buildBrandContext(ctx);
 
   // Known domains for this category = validated outlets (cco) ∪ Google-rejected
@@ -343,7 +343,7 @@ export async function discoverOutletsInCategory(
     // All LLM retries failed — mark category exhausted to avoid infinite loop
     await markCategoryStatus(category.id, "exhausted");
     console.log(`[outlets-service] Category "${category.categoryName} / ${category.categoryGeo}" exhausted (LLM failed) for campaign ${category.campaignId}`);
-    return 0;
+    return { inserted: 0, domains: [] };
   }
 
   // Filter out already-known domains (LLM might repeat them despite instructions)
@@ -359,7 +359,7 @@ export async function discoverOutletsInCategory(
     // All were duplicates — mark exhausted
     await markCategoryStatus(category.id, "exhausted");
     console.log(`[outlets-service] Category "${category.categoryName} / ${category.categoryGeo}" exhausted (all duplicates) for campaign ${category.campaignId}`);
-    return 0;
+    return { inserted: 0, domains: [] };
   }
 
   // Split candidates: already in outlets table (previously validated) vs truly new
@@ -404,7 +404,7 @@ export async function discoverOutletsInCategory(
     // No valid outlets — mark exhausted
     await markCategoryStatus(category.id, "exhausted");
     console.log(`[outlets-service] Category "${category.categoryName} / ${category.categoryGeo}" exhausted (0 validated) for campaign ${category.campaignId}`);
-    return 0;
+    return { inserted: 0, domains: [] };
   }
 
   // Sort by domain to ensure consistent lock ordering across concurrent transactions (prevents deadlocks)
@@ -491,7 +491,7 @@ export async function discoverOutletsInCategory(
   }
 
   console.log(`[outlets-service] Discovered ${inserted} outlets in category "${category.categoryName} / ${category.categoryGeo}" for campaign ${category.campaignId}`);
-  return inserted;
+  return { inserted, domains: validOutlets.map((o) => o.domain) };
 }
 
 async function markCategoryStatus(categoryId: string, status: "exhausted" | "capped"): Promise<void> {
@@ -693,7 +693,7 @@ export async function reuseCycle(ctx: OrgContext): Promise<number> {
  * 3. When no active category remains, the campaign's discovery is over —
  *    return 0. Never regenerate categories.
  */
-export async function discoverCycle(ctx: OrgContext): Promise<number> {
+export async function discoverCycle(ctx: OrgContext): Promise<{ inserted: number; domains: string[] }> {
   // Ensure the upfront category batch has been generated
   const existing = await pool.query(
     `SELECT COUNT(*) AS cnt FROM campaign_categories WHERE campaign_id = $1`,
@@ -703,7 +703,7 @@ export async function discoverCycle(ctx: OrgContext): Promise<number> {
     const generated = await generateAllCategories(ctx);
     if (generated === 0) {
       console.error("[outlets-service] discoverCycle: failed to generate initial categories");
-      return 0;
+      return { inserted: 0, domains: [] };
     }
   }
 
@@ -713,11 +713,11 @@ export async function discoverCycle(ctx: OrgContext): Promise<number> {
 
     if (!activeCategory) {
       console.log(`[outlets-service] discoverCycle: all categories exhausted for campaign ${ctx.campaignId}`);
-      return 0;
+      return { inserted: 0, domains: [] };
     }
 
     const found = await discoverOutletsInCategory(activeCategory, ctx);
-    if (found > 0) return found;
+    if (found.inserted > 0) return found;
 
     // Category was exhausted (0 outlets) — loop to try the next one
     console.log(`[outlets-service] discoverCycle: category "${activeCategory.categoryName}" yielded 0, trying next`);

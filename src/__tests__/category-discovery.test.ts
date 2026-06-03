@@ -365,7 +365,8 @@ describe("discoverOutletsInCategory", () => {
 
     const result = await discoverOutletsInCategory(category, ctx);
 
-    expect(result).toBe(1);
+    expect(result.inserted).toBe(1);
+    expect(result.domains).toEqual(["good.com"]);
 
     // Verify 2 INSERTs into rejected_domains
     const rejectedInserts = mockQuery.mock.calls.filter(
@@ -408,7 +409,7 @@ describe("discoverOutletsInCategory", () => {
 
     const result = await discoverOutletsInCategory(category, ctx);
 
-    expect(result).toBe(0);
+    expect(result.inserted).toBe(0);
     expect(mockValidateOutletBatch).not.toHaveBeenCalled();
 
     const exhaustedCall = mockQuery.mock.calls.find(
@@ -452,7 +453,7 @@ describe("discoverOutletsInCategory", () => {
 
     const result = await discoverOutletsInCategory(category, ctx);
 
-    expect(result).toBe(0);
+    expect(result.inserted).toBe(0);
     const exhaustedCall = mockQuery.mock.calls.find(
       (call) =>
         typeof call[0] === "string" &&
@@ -503,7 +504,7 @@ describe("discoverOutletsInCategory", () => {
 
     const result = await discoverOutletsInCategory(category, ctx);
 
-    expect(result).toBe(2);
+    expect(result.inserted).toBe(2);
     expect(mockValidateOutletBatch).not.toHaveBeenCalled();
   });
 
@@ -669,7 +670,7 @@ describe("discoverOutletsInCategory", () => {
 
     const result = await discoverOutletsInCategory(almostFullCategory, ctx);
 
-    expect(result).toBe(3);
+    expect(result.inserted).toBe(3);
     const cappedCall = mockQuery.mock.calls.find(
       (call) =>
         typeof call[0] === "string" &&
@@ -743,7 +744,8 @@ describe("discoverCycle", () => {
 
     const result = await discoverCycle(ctx);
 
-    expect(result).toBe(1);
+    expect(result.inserted).toBe(1);
+    expect(result.domains).toEqual(["techcrunch.com"]);
     // Exactly 2 LLM calls: 1 for category gen (pro) + 1 for outlet gen (flash)
     expect(mockChatComplete).toHaveBeenCalledTimes(2);
     expect(mockChatComplete.mock.calls[0][0].model).toBe("pro");
@@ -760,7 +762,7 @@ describe("discoverCycle", () => {
 
     const result = await discoverCycle(ctx);
 
-    expect(result).toBe(0);
+    expect(result.inserted).toBe(0);
     // No LLM call — no regeneration
     expect(mockChatComplete).not.toHaveBeenCalled();
   });
@@ -843,7 +845,7 @@ describe("discoverCycle", () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ outlets_found: 1 }] });
 
     const result = await discoverCycle(ctx);
-    expect(result).toBe(1);
+    expect(result.inserted).toBe(1);
   });
 
   it("returns 0 when initial category generation fails", async () => {
@@ -864,7 +866,7 @@ describe("discoverCycle", () => {
     }
 
     const result = await discoverCycle(ctx);
-    expect(result).toBe(0);
+    expect(result.inserted).toBe(0);
   });
 });
 
