@@ -21,7 +21,7 @@ const MAP_TIMEOUT_MS = 30_000;
 export async function scrapeRawHtml(
   url: string,
   ctx: OrgContext,
-  opts?: { skipCache?: boolean }
+  opts?: { skipCache?: boolean; render?: boolean }
 ): Promise<string | null> {
   let res: Response;
   try {
@@ -32,6 +32,7 @@ export async function scrapeRawHtml(
         url,
         provider: "scrape-do",
         enrich: false,
+        render: opts?.render ?? false,
         skipCache: opts?.skipCache ?? false,
         options: { formats: ["rawHtml"] },
       }),
