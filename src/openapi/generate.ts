@@ -20,10 +20,17 @@ import {
   statusCountsSchema,
   transferBrandBodySchema,
   transferBrandResponseSchema,
+  editorialEmailDiscoverSchema,
+  editorialEmailDiscoverBatchSchema,
+  editorialEmailResultSchema,
+  editorialEmailBatchResultSchema,
   createPriceSourceSchema,
   outletPricingInternalSchema,
   outletPricingPublicSchema,
   ingestPriceSourceResponseSchema,
+  ensureOutletSchema,
+  createPricingSourceSchema,
+  linkSourceOutletsSchema,
 } from "../schemas";
 import { zodToJsonSchema } from "./zod-to-json";
 
@@ -122,10 +129,17 @@ const spec = {
       StatsCostsResponse: zodToJsonSchema(statsCostsResponseSchema),
       TransferBrandBody: zodToJsonSchema(transferBrandBodySchema),
       TransferBrandResponse: zodToJsonSchema(transferBrandResponseSchema),
+      EditorialEmailDiscover: zodToJsonSchema(editorialEmailDiscoverSchema),
+      EditorialEmailDiscoverBatch: zodToJsonSchema(editorialEmailDiscoverBatchSchema),
+      EditorialEmailResult: zodToJsonSchema(editorialEmailResultSchema),
+      EditorialEmailBatchResult: zodToJsonSchema(editorialEmailBatchResultSchema),
       CreatePriceSource: zodToJsonSchema(createPriceSourceSchema),
       OutletPricingInternal: zodToJsonSchema(outletPricingInternalSchema),
       OutletPricingPublic: zodToJsonSchema(outletPricingPublicSchema),
       IngestPriceSourceResponse: zodToJsonSchema(ingestPriceSourceResponseSchema),
+      EnsureOutlet: zodToJsonSchema(ensureOutletSchema),
+      CreatePricingSource: zodToJsonSchema(createPricingSourceSchema),
+      LinkSourceOutlets: zodToJsonSchema(linkSourceOutletsSchema),
       HealthResponse: zodToJsonSchema(healthResponseSchema),
       ErrorResponse: zodToJsonSchema(errorResponseSchema),
     },
@@ -512,6 +526,67 @@ const spec = {
         },
       },
     },
+    "/orgs/outlets/editorial-emails/discover": {
+      post: {
+        summary: "Discover editorial emails for one outlet (org-scoped)",
+        description: "Resolves newsroom/editorial contact emails from an outlet domain via a fallback ladder (scraping-service raw fetch of contact/about paths → sitemap discovery → render retry → serper Google fallback). Results are cached per (org, domain) for 60 days, including terminal no_email_found / parked_dead. Editorial-typed addresses (editorial@/editor/news/press…) are surfaced first.",
+        parameters: [...orgHeaders],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: ref("EditorialEmailDiscover"),
+              example: { outletName: "Citywealth", domain: "citywealthmag.com", url: "https://citywealthmag.com" },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Discovery result (status ∈ found | found_google | parked_dead | no_email_found)",
+            content: {
+              "application/json": {
+                schema: ref("EditorialEmailResult"),
+                example: {
+                  domain: "citywealthmag.com",
+                  status: "found",
+                  emails: [{ email: "editorial@citywealthmag.com", score: 0, source: "https://citywealthmag.com/contact" }],
+                },
+              },
+            },
+          },
+          "400": { description: "Validation error", content: { "application/json": { schema: ref("ErrorResponse") } } },
+          "502": { description: "Upstream service error", content: { "application/json": { schema: ref("ErrorResponse") } } },
+        },
+      },
+    },
+    "/orgs/outlets/editorial-emails/discover-batch": {
+      post: {
+        summary: "Discover editorial emails for many outlets (org-scoped)",
+        description: "Batch variant of editorial-email discovery. Runs a concurrency pool of 8 across domains (each domain's ladder is internally sequential so its early-stop works). Max 50 outlets per request — chunk larger sets.",
+        parameters: [...orgHeaders],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: ref("EditorialEmailDiscoverBatch"),
+              example: {
+                outlets: [
+                  { outletName: "Citywealth", domain: "citywealthmag.com", url: "https://citywealthmag.com" },
+                ],
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Per-outlet discovery results",
+            content: { "application/json": { schema: ref("EditorialEmailBatchResult") } },
+          },
+          "400": { description: "Validation error", content: { "application/json": { schema: ref("ErrorResponse") } } },
+          "502": { description: "Upstream service error", content: { "application/json": { schema: ref("ErrorResponse") } } },
+        },
+      },
+    },
     "/orgs/buffer/next": {
       post: {
         summary: "Pull next outlet(s) from buffer (org-scoped)",
@@ -631,6 +706,66 @@ const spec = {
         responses: {
           "200": { description: "Internal pricing", content: { "application/json": { schema: ref("OutletPricingInternal") } } },
           "404": { description: "Pricing not found", content: { "application/json": { schema: ref("ErrorResponse") } } },
+        },
+      },
+    },
+    "/internal/outlets/ensure": {
+      post: {
+        summary: "Ensure (upsert) a global outlet by domain (internal)",
+        description: "Upserts a publication into the global outlets registry, keyed by domain. The admin/broker curation path — the only other outlet-create is org-scoped. Returns 201 when created, 200 when it already existed.",
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: ref("EnsureOutlet"), example: { outletName: "TechBullion", outletUrl: "https://techbullion.com", outletDomain: "techbullion.com" } } },
+        },
+        responses: {
+          "200": { description: "Outlet already existed" },
+          "201": { description: "Outlet created" },
+          "400": { description: "Validation error", content: { "application/json": { schema: ref("ErrorResponse") } } },
+        },
+      },
+    },
+    "/internal/pricing-sources": {
+      post: {
+        summary: "Create/ensure a broker pricing source (internal)",
+        description: "A broker resells placement across many outlets, so its single quote prices N publications. Ensured by domain when provided.",
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: ref("CreatePricingSource"), example: { name: "Matrix Global Brands", domain: "matrixglobalbrands.com" } } },
+        },
+        responses: {
+          "201": { description: "Source created/ensured" },
+          "400": { description: "Validation error", content: { "application/json": { schema: ref("ErrorResponse") } } },
+        },
+      },
+    },
+    "/internal/pricing-sources/{id}/outlets": {
+      post: {
+        summary: "Link outlets to a broker source (internal)",
+        description: "Registers which outlets a broker covers (its inventory). Idempotent.",
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: ref("LinkSourceOutlets"), example: { outletIds: ["11111111-2222-3333-4444-555555555555"] } } },
+        },
+        responses: {
+          "200": { description: "Outlets linked", content: { "application/json": { schema: { type: "object", properties: { linked: { type: "integer" }, requested: { type: "integer" } }, required: ["linked", "requested"] } } } },
+          "404": { description: "Source not found", content: { "application/json": { schema: ref("ErrorResponse") } } },
+        },
+      },
+    },
+    "/internal/pricing-sources/{id}/price-sources": {
+      post: {
+        summary: "Append a broker pricing note + fan-out re-extract (internal)",
+        description: "Stores one broker quote (once), then re-derives silver pricing for EVERY outlet in the broker's inventory — the quote feeds each member outlet's extraction context. Returns the bronze id + per-outlet pricing.",
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: ref("CreatePriceSource"), example: { rawText: "Single article $150, permanent, 1 dofollow link, up to 3 photos.", sourceType: "email" } } },
+        },
+        responses: {
+          "201": { description: "Note stored + fan-out extracted", content: { "application/json": { schema: { type: "object", properties: { priceSourceId: { type: "string", format: "uuid" }, extracted: { type: "array", items: { type: "object", properties: { outletId: { type: "string", format: "uuid" }, pricing: ref("OutletPricingInternal") }, required: ["outletId", "pricing"] } } }, required: ["priceSourceId", "extracted"] } } } },
+          "404": { description: "Source not found", content: { "application/json": { schema: ref("ErrorResponse") } } },
+          "502": { description: "Extraction failed (note stored — retry)", content: { "application/json": { schema: ref("ErrorResponse") } } },
         },
       },
     },

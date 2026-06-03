@@ -17,6 +17,10 @@ import {
   extractAndUpsertPricing,
   getInternalPricing,
   getPublicPricingForOrg,
+  ensureSource,
+  linkSourceOutlets,
+  extractForSource,
+  hasPriceSources,
 } from "../services/pricing";
 
 const OUTLET_ID = "11111111-1111-1111-1111-111111111111";
@@ -227,5 +231,79 @@ describe("getInternalPricing", () => {
   it("returns null when no pricing exists", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     expect(await getInternalPricing(OUTLET_ID)).toBeNull();
+  });
+});
+
+describe("broker / source pricing", () => {
+  const SOURCE_ID = "33333333-3333-3333-3333-333333333333";
+  const O1 = "aaaaaaaa-1111-1111-1111-111111111111";
+  const O2 = "bbbbbbbb-2222-2222-2222-222222222222";
+
+  it("extraction context unions direct notes with broker notes covering the outlet", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [bronzeRow] });
+    mockPlatformComplete.mockResolvedValueOnce({
+      content: "",
+      json: { rationale: "ok" },
+      tokensInput: 10,
+      tokensOutput: 5,
+      model: "m",
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [silver()] });
+
+    await extractAndUpsertPricing(OUTLET_ID);
+
+    const bronzeLoadSql = mockQuery.mock.calls[0][0] as string;
+    expect(bronzeLoadSql).toContain("WHERE outlet_id = $1");
+    expect(bronzeLoadSql).toContain("source_id IN (SELECT source_id FROM source_outlets WHERE outlet_id = $1)");
+  });
+
+  it("ensureSource upserts by domain", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: SOURCE_ID, name: "Matrix", domain: "matrixglobalbrands.com", kind: "broker" }],
+    });
+    const src = await ensureSource("Matrix", "matrixglobalbrands.com");
+    expect(src.id).toBe(SOURCE_ID);
+    const sql = mockQuery.mock.calls[0][0] as string;
+    expect(sql).toContain("INSERT INTO pricing_sources");
+    expect(sql).toContain("ON CONFLICT (domain) DO UPDATE");
+  });
+
+  it("linkSourceOutlets counts only newly-linked rows", async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rowCount: 1 }) // O1 inserted
+      .mockResolvedValueOnce({ rowCount: 0 }); // O2 already linked
+    const linked = await linkSourceOutlets(SOURCE_ID, [O1, O2]);
+    expect(linked).toBe(1);
+  });
+
+  it("hasPriceSources counts broker coverage, not just direct notes", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ "?column?": 1 }] });
+    expect(await hasPriceSources(O1)).toBe(true);
+    const sql = mockQuery.mock.calls[0][0] as string;
+    expect(sql).toContain("source_outlets"); // broker-coverage branch present
+  });
+
+  it("hasPriceSources false when neither direct nor broker note exists", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    expect(await hasPriceSources(O1)).toBe(false);
+  });
+
+  it("extractForSource fans out extraction over every member outlet", async () => {
+    // listSourceOutletIds → 2 outlets
+    mockQuery.mockResolvedValueOnce({ rows: [{ outlet_id: O1 }, { outlet_id: O2 }] });
+    // O1: bronze load + upsert
+    mockQuery.mockResolvedValueOnce({ rows: [bronzeRow] });
+    mockPlatformComplete.mockResolvedValueOnce({ content: "", json: { rationale: "o1" }, tokensInput: 10, tokensOutput: 5, model: "m" });
+    mockQuery.mockResolvedValueOnce({ rows: [silver({ outlet_id: O1 })] });
+    // O2: bronze load + upsert
+    mockQuery.mockResolvedValueOnce({ rows: [bronzeRow] });
+    mockPlatformComplete.mockResolvedValueOnce({ content: "", json: { rationale: "o2" }, tokensInput: 10, tokensOutput: 5, model: "m" });
+    mockQuery.mockResolvedValueOnce({ rows: [silver({ outlet_id: O2 })] });
+
+    const results = await extractForSource(SOURCE_ID);
+
+    expect(results).toHaveLength(2);
+    expect(results.map((r) => r.outletId).sort()).toEqual([O1, O2].sort());
+    expect(mockPlatformComplete).toHaveBeenCalledTimes(2);
   });
 });

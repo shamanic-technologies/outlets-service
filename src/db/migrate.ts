@@ -393,6 +393,91 @@ export async function runMigration(): Promise<void> {
     );
   `);
 
+  // Step 21: Editorial-email discovery — silver rows + per-domain lookup cache.
+  // `outlet_editorial_email_lookups` holds the terminal status per (org, domain)
+  // and doubles as the cache key (TTL filtered on discovered_at). It records
+  // no_email_found / parked_dead too, so dead/form-only domains are not re-scraped.
+  // `outlet_editorial_emails` holds the normalized silver rows. Both are org-scoped.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS outlet_editorial_email_lookups (
+      org_id TEXT NOT NULL,
+      domain TEXT NOT NULL,
+      status TEXT NOT NULL,
+      discovered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (org_id, domain)
+    );
+    CREATE INDEX IF NOT EXISTS idx_oeel_lookup
+      ON outlet_editorial_email_lookups(org_id, domain, discovered_at);
+
+    CREATE TABLE IF NOT EXISTS outlet_editorial_emails (
+      org_id TEXT NOT NULL,
+      domain TEXT NOT NULL,
+      email TEXT NOT NULL,
+      role TEXT,
+      score INT NOT NULL,
+      source TEXT NOT NULL,
+      discovered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (org_id, domain, email)
+    );
+    CREATE INDEX IF NOT EXISTS idx_oee_org_domain
+      ON outlet_editorial_emails(org_id, domain);
+  `);
+
+  // Step 22: Pricing sources — a "seller" you buy placement through. A broker
+  // (e.g. MatrixGlobalBrands) resells placement across MANY outlets, so its
+  // single quote prices N publications at once. Direct sellers (the outlet's
+  // own editorial team) need no row here — "direct" is implicit = the outlet.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pricing_sources (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name TEXT NOT NULL,
+      domain TEXT,
+      kind TEXT NOT NULL DEFAULT 'broker' CHECK (kind IN ('broker')),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_pricing_sources_domain
+      ON pricing_sources(domain) WHERE domain IS NOT NULL;
+  `);
+
+  // Step 23: source_outlets — which outlets a broker covers (its inventory).
+  // A broker's pricing note fans out to every outlet in this membership.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS source_outlets (
+      source_id UUID NOT NULL REFERENCES pricing_sources(id) ON DELETE CASCADE,
+      outlet_id UUID NOT NULL REFERENCES outlets(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (source_id, outlet_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_source_outlets_outlet ON source_outlets(outlet_id);
+  `);
+
+  // Step 24: A bronze note now belongs to EITHER one outlet (direct quote) OR
+  // one source (broker quote covering many outlets). Make outlet_id nullable,
+  // add source_id, enforce exactly-one. Existing rows have outlet_id set +
+  // source_id null → satisfy the CHECK, so this is additive-safe.
+  await pool.query(`
+    ALTER TABLE outlet_price_sources ALTER COLUMN outlet_id DROP NOT NULL;
+    ALTER TABLE outlet_price_sources ADD COLUMN IF NOT EXISTS source_id UUID REFERENCES pricing_sources(id) ON DELETE CASCADE;
+    CREATE INDEX IF NOT EXISTS idx_outlet_price_sources_source ON outlet_price_sources(source_id);
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_price_source_target') THEN
+        ALTER TABLE outlet_price_sources ADD CONSTRAINT chk_price_source_target
+          CHECK ((outlet_id IS NOT NULL) <> (source_id IS NOT NULL));
+      END IF;
+    END $$;
+  `);
+
+  // Step 25: Make pricing_sources.domain unique index NON-partial. The Step 22
+  // partial index (WHERE domain IS NOT NULL) cannot be inferred by
+  // `INSERT ... ON CONFLICT (domain)` (Postgres 42P10), which broke ensureSource.
+  // A plain unique index still allows multiple NULL domains (NULLs are distinct)
+  // and IS inferable by ON CONFLICT (domain). Drop + recreate; idempotent.
+  await pool.query(`
+    DROP INDEX IF EXISTS idx_pricing_sources_domain;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_pricing_sources_domain ON pricing_sources(domain);
+  `);
+
   console.log("[outlets-service] Migration complete.");
 }
 

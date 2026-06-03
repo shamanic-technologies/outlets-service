@@ -158,8 +158,15 @@ export async function outletExists(outletId: string): Promise<boolean> {
 }
 
 export async function hasPriceSources(outletId: string): Promise<boolean> {
+  // Mirror the extraction union: an outlet has price sources if it has a direct
+  // note OR is covered by a broker note (source whose network includes it).
   const r = await pool.query(
-    `SELECT 1 FROM outlet_price_sources WHERE outlet_id = $1 LIMIT 1`,
+    `SELECT 1 FROM outlet_price_sources WHERE outlet_id = $1
+     UNION ALL
+     SELECT 1 FROM outlet_price_sources b
+       JOIN source_outlets so ON so.source_id = b.source_id
+       WHERE so.outlet_id = $1
+     LIMIT 1`,
     [outletId]
   );
   return r.rows.length > 0;
@@ -188,10 +195,14 @@ export async function insertPriceSource(
 export async function extractAndUpsertPricing(
   outletId: string
 ): Promise<OutletPricingInternal> {
+  // Context = direct notes for this outlet ∪ broker notes whose network covers
+  // it. A broker's single quote (stored once) thus feeds every member outlet's
+  // extraction without being duplicated.
   const bronzes = await pool.query(
     `SELECT id, raw_text, source_type, created_at
      FROM outlet_price_sources
      WHERE outlet_id = $1
+        OR source_id IN (SELECT source_id FROM source_outlets WHERE outlet_id = $1)
      ORDER BY created_at ASC`,
     [outletId]
   );
@@ -307,4 +318,126 @@ export async function getPublicPricingForOrg(
     [outletId, orgId]
   );
   return r.rows.length > 0 ? toPublicDTO(r.rows[0]) : null;
+}
+
+// --- Broker / source operations ---
+
+export interface EnsureOutletResult {
+  id: string;
+  outletName: string;
+  outletDomain: string;
+  created: boolean;
+}
+
+/**
+ * Upsert a global outlet (publication) by domain. Fills the gap that the only
+ * other outlet-create path is org-scoped — admin pricing curation needs to
+ * create publications without an org/campaign.
+ */
+export async function ensureOutlet(
+  name: string,
+  url: string,
+  domain: string
+): Promise<EnsureOutletResult> {
+  const r = await pool.query(
+    `INSERT INTO outlets (outlet_name, outlet_url, outlet_domain)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (outlet_domain)
+     DO UPDATE SET outlet_name = EXCLUDED.outlet_name, outlet_url = EXCLUDED.outlet_url, updated_at = CURRENT_TIMESTAMP
+     RETURNING id, outlet_name, outlet_domain, (xmax = 0) AS created`,
+    [name, url, domain]
+  );
+  const row = r.rows[0];
+  return { id: row.id, outletName: row.outlet_name, outletDomain: row.outlet_domain, created: row.created };
+}
+
+export interface PricingSource {
+  id: string;
+  name: string;
+  domain: string | null;
+  kind: string;
+}
+
+/** Upsert a broker source by domain (or create nameless if no domain). */
+export async function ensureSource(name: string, domain: string | null): Promise<PricingSource> {
+  if (domain) {
+    const r = await pool.query(
+      `INSERT INTO pricing_sources (name, domain, kind)
+       VALUES ($1, $2, 'broker')
+       ON CONFLICT (domain) DO UPDATE SET name = EXCLUDED.name, updated_at = CURRENT_TIMESTAMP
+       RETURNING id, name, domain, kind`,
+      [name, domain]
+    );
+    const row = r.rows[0];
+    return { id: row.id, name: row.name, domain: row.domain, kind: row.kind };
+  }
+  const r = await pool.query(
+    `INSERT INTO pricing_sources (name, domain, kind) VALUES ($1, NULL, 'broker')
+     RETURNING id, name, domain, kind`,
+    [name]
+  );
+  const row = r.rows[0];
+  return { id: row.id, name: row.name, domain: row.domain, kind: row.kind };
+}
+
+export async function sourceExists(sourceId: string): Promise<boolean> {
+  const r = await pool.query(`SELECT 1 FROM pricing_sources WHERE id = $1`, [sourceId]);
+  return r.rows.length > 0;
+}
+
+/** Link outlets to a broker source (its inventory). Idempotent. Returns count linked. */
+export async function linkSourceOutlets(sourceId: string, outletIds: string[]): Promise<number> {
+  let linked = 0;
+  for (const outletId of outletIds) {
+    const r = await pool.query(
+      `INSERT INTO source_outlets (source_id, outlet_id) VALUES ($1, $2)
+       ON CONFLICT (source_id, outlet_id) DO NOTHING`,
+      [sourceId, outletId]
+    );
+    if (r.rowCount && r.rowCount > 0) linked++;
+  }
+  return linked;
+}
+
+export async function listSourceOutletIds(sourceId: string): Promise<string[]> {
+  const r = await pool.query(
+    `SELECT outlet_id FROM source_outlets WHERE source_id = $1 ORDER BY outlet_id`,
+    [sourceId]
+  );
+  return r.rows.map((row: { outlet_id: string }) => row.outlet_id);
+}
+
+/** Append a broker pricing note (covers many outlets — stored once on the source). */
+export async function insertBrokerPriceSource(
+  sourceId: string,
+  input: CreatePriceSource
+): Promise<string> {
+  const r = await pool.query(
+    `INSERT INTO outlet_price_sources (source_id, raw_text, source_type, captured_by)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id`,
+    [sourceId, input.rawText, input.sourceType ?? null, input.capturedBy ?? null]
+  );
+  return r.rows[0].id;
+}
+
+export interface FanOutResult {
+  outletId: string;
+  pricing: OutletPricingInternal;
+}
+
+/**
+ * Re-derive silver for EVERY outlet in a broker's inventory. Called after a
+ * broker note is ingested — its quote now feeds each member outlet's context.
+ * Fan-out: one LLM extraction per member outlet (heavy for large networks —
+ * debounce later if needed).
+ */
+export async function extractForSource(sourceId: string): Promise<FanOutResult[]> {
+  const outletIds = await listSourceOutletIds(sourceId);
+  const results: FanOutResult[] = [];
+  for (const outletId of outletIds) {
+    const pricing = await extractAndUpsertPricing(outletId);
+    results.push({ outletId, pricing });
+  }
+  return results;
 }
