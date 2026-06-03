@@ -131,6 +131,59 @@ export const internalOutletsBodySchema = z.object({
   message: "At least one of ids or campaignId is required",
 });
 
+// --- Pricing ---
+
+/** Body for POST /internal/outlets/:id/price-sources — append one raw bronze note. */
+export const createPriceSourceSchema = z.object({
+  rawText: z.string().min(1),
+  sourceType: z.enum(["email", "gdoc", "spreadsheet", "manual"]).optional(),
+  capturedBy: z.string().optional(),
+});
+
+const articleTypeEnum = z.enum(["organic", "sponsored"]);
+
+/** Internal pricing DTO — includes RETAIL (`amountCents`) + margin. Never exposed under /orgs. */
+export const outletPricingInternalSchema = z.object({
+  outletId: z.string().uuid(),
+  amountCents: z.number().int().nullable(),
+  currency: z.string().nullable(),
+  salesMultiplier: z.number(),
+  sellPriceCents: z.number().int().nullable(),
+  articleType: articleTypeEnum.nullable(),
+  allowsDofollowBacklink: z.boolean().nullable(),
+  onlineDurationMonths: z.number().int().nullable(),
+  isPermanent: z.boolean().nullable(),
+  conditionsNote: z.string().nullable(),
+  confidence: z.number().nullable(),
+  model: z.string().nullable(),
+  promptVersion: z.string().nullable(),
+  sourceBronzeIds: z.array(z.string().uuid()),
+  extractionRationale: z.string().nullable(),
+  extractedAt: z.string().nullable(),
+  bronzeCount: z.number().int(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+/** Public pricing DTO (org-facing) — SELL price only. No retail, no multiplier. */
+export const outletPricingPublicSchema = z.object({
+  outletId: z.string().uuid(),
+  sellPriceCents: z.number().int().nullable(),
+  currency: z.string().nullable(),
+  articleType: articleTypeEnum.nullable(),
+  allowsDofollowBacklink: z.boolean().nullable(),
+  onlineDurationMonths: z.number().int().nullable(),
+  isPermanent: z.boolean().nullable(),
+  conditionsNote: z.string().nullable(),
+});
+
+export const ingestPriceSourceResponseSchema = z.object({
+  priceSourceId: z.string().uuid(),
+  pricing: outletPricingInternalSchema,
+});
+
+export type CreatePriceSource = z.infer<typeof createPriceSourceSchema>;
+
 // --- Stats ---
 
 const statsGroupByEnum = z.enum([
