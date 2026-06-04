@@ -187,7 +187,7 @@ export async function insertPriceSource(
 
 /**
  * Re-derive the silver pricing row for an outlet from ALL of its bronze notes.
- * Calls the platform LLM (Gemini Pro) with retry on malformed JSON. Fails loud
+ * Calls the platform LLM (Gemini Flash) with retry on malformed JSON. Fails loud
  * (throws) if there are no bronzes or extraction never yields valid JSON — the
  * caller maps that to a 502/404. `sales_multiplier` is intentionally left out of
  * the UPDATE so any manual per-outlet override survives re-extraction.
@@ -219,7 +219,7 @@ export async function extractAndUpsertPricing(
   for (let retry = 0; retry <= MAX_LLM_RETRIES; retry++) {
     const response = await platformComplete({
       provider: "google",
-      model: "pro",
+      model: "flash",
       message,
       systemPrompt: PRICING_EXTRACTION_SYSTEM_PROMPT,
       responseFormat: "json",

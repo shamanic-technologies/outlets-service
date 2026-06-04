@@ -69,7 +69,7 @@ beforeEach(() => {
 });
 
 describe("extractAndUpsertPricing", () => {
-  it("loads all bronzes and calls the platform LLM (google/pro) with the pricing responseSchema", async () => {
+  it("loads all bronzes and calls the platform LLM (google/flash) with the pricing responseSchema", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [bronzeRow] }); // SELECT bronzes
     mockPlatformComplete.mockResolvedValueOnce({
       content: "",
@@ -94,7 +94,7 @@ describe("extractAndUpsertPricing", () => {
     expect(mockPlatformComplete).toHaveBeenCalledTimes(1);
     const call = mockPlatformComplete.mock.calls[0][0];
     expect(call.provider).toBe("google");
-    expect(call.model).toBe("pro");
+    expect(call.model).toBe("flash");
     expect(call.responseFormat).toBe("json");
     expect(call.responseSchema.required).toEqual(["rationale"]);
     // The message feeds the raw bronze note to the model
