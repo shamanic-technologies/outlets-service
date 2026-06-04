@@ -162,22 +162,51 @@ async function main(): Promise<void> {
     return;
   }
 
+  // Bounded concurrency — the bottleneck is per-query round-trip latency to the
+  // remote DB, so a handful of parallel workers cuts wall-clock from ~1h to a few
+  // minutes. Capped at the pg pool's default max (10) to avoid client starvation.
+  const CONCURRENCY = 10;
   let created = 0;
   let updated = 0;
   let done = 0;
-  for (const row of deduped) {
-    const result = await importOutlet(row);
-    if (result === "created") created++;
-    else updated++;
-    done++;
-    if (done % 250 === 0) {
-      console.log(`[tremplin-import] ${done}/${deduped.length} (created=${created} updated=${updated})`);
+  let failed = 0;
+  const errors: { domain: string; error: string }[] = [];
+  let cursor = 0;
+
+  async function worker(): Promise<void> {
+    while (cursor < deduped.length) {
+      const row = deduped[cursor++];
+      try {
+        const result = await importOutlet(row);
+        if (result === "created") created++;
+        else updated++;
+      } catch (err) {
+        failed++;
+        errors.push({ domain: row.domain, error: String(err) });
+      }
+      done++;
+      if (done % 500 === 0) {
+        console.log(
+          `[tremplin-import] ${done}/${deduped.length} (created=${created} updated=${updated} failed=${failed})`
+        );
+      }
     }
   }
-  console.log(
-    `[tremplin-import] DONE — outlets created=${created} updated=${updated} total=${done}`
-  );
+
+  await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
   await pool.end();
+
+  if (failed > 0) {
+    console.error(`[tremplin-import] ${failed} rows FAILED (first 10):`);
+    for (const e of errors.slice(0, 10)) console.error(`  ${e.domain}: ${e.error}`);
+  }
+  console.log(
+    `[tremplin-import] DONE — outlets created=${created} updated=${updated} failed=${failed} total=${done}`
+  );
+
+  // Fail loud: a partial import must surface a non-zero exit so the operator
+  // re-runs (the import is idempotent, so a re-run only retries the failures).
+  if (failed > 0) process.exit(1);
 }
 
 if (require.main === module || process.argv[1]?.includes("import-tremplin-catalog")) {
