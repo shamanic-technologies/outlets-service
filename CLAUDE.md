@@ -61,3 +61,12 @@ Two classes of cross-service read enrichment, and they have OPPOSITE failure mod
 - **Reads** (`GET /orgs/outlets`, `GET /orgs/outlets/:id`) merge `domainRating` live from ahref `GET /orgs/domains/dr-status` (best-effort, see above). `null` = not yet scraped OR ahref unreachable.
 - `discoverCycle` / `discoverOutletsInCategory` in `category-discovery.ts` return `{ inserted, domains }` so the route can collect discovered domains for the trigger. The `buffer/next` discovery path does NOT trigger dr-compute (follow-up, not yet wired).
 - Env vars: `AHREF_SERVICE_URL`, `AHREF_SERVICE_API_KEY` (the key = ahref's own inbound key, shared).
+
+## Pricing ingestion (bronze → silver → sell)
+
+Per-article purchase pricing flows `outlet_price_sources` (bronze, raw notes, append-only) → `outlet_pricing` (silver, one row/outlet) → `sell_price_cents` (generated = `round(amount_cents × sales_multiplier)`, default ×2.0). `amount_cents` is the INTERNAL retail cost — never crosses the `/orgs` boundary. Two derivation paths feed the SAME silver table:
+
+- **Messy notes → LLM extraction.** Journalist email replies / doc-sheet pastes go through `extractAndUpsertPricing` (`pricing.ts`), which calls the platform LLM (**Gemini Flash** — `provider:"google", model:"flash"`). Only path that should spend LLM tokens. Broker notes (`source_id` set) fan out one extraction per member outlet.
+- **Structured catalogs → deterministic import, NO LLM.** A clean broker rate-card CSV is imported by `scripts/import-tremplin-catalog.ts` (`tsx scripts/... --file <csv> [--dry-run]`): pure column parse → `outlet_pricing` (`model='deterministic-import'`, `confidence=1.0`). Running the LLM per row over a clean price column would only burn ~Nk calls and risk hallucinating an exact price. Parse/map helpers live in `src/lib/tremplin-catalog.ts` (unit-tested); the script is thin DB glue (not part of the deployed service).
+
+Idempotency: outlets upsert on domain; bronze guarded on `(outlet_id, captured_by)` (month-stamped marker, e.g. `tremplin-2026-06`) so re-imports append a fresh snapshot without dups; silver upserts on `outlet_id`. `sales_multiplier` is left out of every UPDATE so a manual per-outlet margin override survives re-derivation. The sensitive-topic 2–3× surcharge is a sell-side, per-order rule — NOT baked into `amount_cents`. Catalog DR/traffic/lang columns are ignored on import (DR stays ahref-service's).
