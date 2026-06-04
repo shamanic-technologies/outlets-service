@@ -7,6 +7,7 @@ import bufferRouter from "./routes/buffer";
 import statsRouter from "./routes/stats";
 import discoverRouter from "./routes/discover";
 import editorialEmailsRouter from "./routes/editorial-emails";
+import priceRequestsRouter from "./routes/price-requests";
 import path from "path";
 import fs from "fs";
 
@@ -46,6 +47,9 @@ export function createApp() {
 
   // Editorial-emails route (must be before /orgs/outlets/:id to avoid path conflicts)
   app.use("/orgs/outlets/editorial-emails", editorialEmailsRouter);
+
+  // Price-requests route (must be before /orgs/outlets/:id to avoid path conflicts)
+  app.use("/orgs/outlets/price-requests", priceRequestsRouter);
 
   // Buffer route
   app.use("/orgs/buffer", bufferRouter);

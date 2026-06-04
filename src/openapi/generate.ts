@@ -24,6 +24,9 @@ import {
   editorialEmailDiscoverBatchSchema,
   editorialEmailResultSchema,
   editorialEmailBatchResultSchema,
+  priceRequestBatchSchema,
+  priceRequestResultSchema,
+  priceRequestBatchResponseSchema,
   createPriceSourceSchema,
   outletPricingInternalSchema,
   outletPricingPublicSchema,
@@ -101,6 +104,24 @@ const outletStatusObject = {
   required: ["outletStatus"],
 };
 
+/** Public sell-pricing object on each listed outlet. null until a silver price exists. Retail cost + multiplier are never exposed. */
+const outletPricingObject = {
+  type: "object",
+  nullable: true,
+  description: "Public sell pricing for the outlet (retail cost + multiplier never exposed). null until a silver pricing row exists.",
+  properties: {
+    outletId: { type: "string", format: "uuid" },
+    sellPriceCents: { type: "integer", nullable: true },
+    currency: { type: "string", nullable: true },
+    articleType: { type: "string", enum: ["organic", "sponsored"], nullable: true },
+    allowsDofollowBacklink: { type: "boolean", nullable: true },
+    onlineDurationMonths: { type: "integer", nullable: true },
+    isPermanent: { type: "boolean", nullable: true },
+    conditionsNote: { type: "string", nullable: true },
+  },
+  required: ["outletId", "sellPriceCents", "currency", "articleType", "allowsDofollowBacklink", "onlineDurationMonths", "isPermanent", "conditionsNote"],
+};
+
 const spec = {
   openapi: "3.0.0",
   info: {
@@ -133,6 +154,9 @@ const spec = {
       EditorialEmailDiscoverBatch: zodToJsonSchema(editorialEmailDiscoverBatchSchema),
       EditorialEmailResult: zodToJsonSchema(editorialEmailResultSchema),
       EditorialEmailBatchResult: zodToJsonSchema(editorialEmailBatchResultSchema),
+      PriceRequestBatch: zodToJsonSchema(priceRequestBatchSchema),
+      PriceRequestResult: zodToJsonSchema(priceRequestResultSchema),
+      PriceRequestBatchResponse: zodToJsonSchema(priceRequestBatchResponseSchema),
       CreatePriceSource: zodToJsonSchema(createPriceSourceSchema),
       OutletPricingInternal: zodToJsonSchema(outletPricingInternalSchema),
       OutletPricingPublic: zodToJsonSchema(outletPricingPublicSchema),
@@ -225,6 +249,8 @@ const spec = {
                           createdAt: { type: "string", format: "date-time" },
                           relevanceScore: { type: "number", description: "Max relevance score across all campaigns for this outlet." },
                           status: outletStatusObject,
+                          pricing: outletPricingObject,
+                          priceRequestStatus: { type: "string", enum: ["ongoing", "received"], nullable: true, description: "Pay-per-publish request lifecycle: 'ongoing' = rate-card email sent, awaiting reply; 'received' = a price landed after the request; null = never requested." },
                           campaigns: {
                             type: "array",
                             description: "Campaign-level data for this outlet. Status breakdown is in status.byCampaign.",
@@ -248,7 +274,7 @@ const spec = {
                             },
                           },
                         },
-                        required: ["id", "outletName", "outletUrl", "outletDomain", "domainRating", "createdAt", "relevanceScore", "status", "campaigns"],
+                        required: ["id", "outletName", "outletUrl", "outletDomain", "domainRating", "createdAt", "relevanceScore", "status", "pricing", "priceRequestStatus", "campaigns"],
                       },
                     },
                     total: { type: "integer", description: "Total distinct outlets matching filters (not truncated by pagination)" },
@@ -269,6 +295,17 @@ const spec = {
                       domainRating: 93,
                       createdAt: "2026-01-01T00:00:00Z",
                       relevanceScore: 85,
+                      pricing: {
+                        outletId: "11111111-2222-3333-4444-555555555555",
+                        sellPriceCents: 100000,
+                        currency: "USD",
+                        articleType: "sponsored",
+                        allowsDofollowBacklink: true,
+                        onlineDurationMonths: null,
+                        isPermanent: true,
+                        conditionsNote: "1 dofollow link, up to 3 images",
+                      },
+                      priceRequestStatus: "received",
                       status: {
                         outletStatus: "served",
                         statusReason: "buffer_claimed",
@@ -584,6 +621,39 @@ const spec = {
           },
           "400": { description: "Validation error", content: { "application/json": { schema: ref("ErrorResponse") } } },
           "502": { description: "Upstream service error", content: { "application/json": { schema: ref("ErrorResponse") } } },
+        },
+      },
+    },
+    "/orgs/outlets/price-requests": {
+      post: {
+        summary: "Request pay-per-publish rate cards for outlets (org-scoped)",
+        description: "For each owned outlet: resolves its editorial email (reusing editorial-email discovery), emails the pay-per-publish rate-card request via email-gateway (broadcast channel → Instantly warmed inboxes), and records the request as awaiting a reply. The reply is ingested later as a bronze pricing note; the outlet's priceRequestStatus then derives to 'received'. Per-outlet failures (no editorial email, unowned outlet, send error) are returned inline without aborting the batch. Max 50 outlets per request.",
+        parameters: [...orgHeaders],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: ref("PriceRequestBatch"),
+              example: { outletIds: ["11111111-2222-3333-4444-555555555555"] },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Per-outlet results. status='ongoing' when the request email was sent; status='error' with an error message otherwise.",
+            content: {
+              "application/json": {
+                schema: ref("PriceRequestBatchResponse"),
+                example: {
+                  results: [
+                    { outletId: "11111111-2222-3333-4444-555555555555", status: "ongoing", editorialEmail: "editorial@citywealthmag.com", messageId: "instantly-lead-abc123" },
+                  ],
+                },
+              },
+            },
+          },
+          "400": { description: "Validation error", content: { "application/json": { schema: ref("ErrorResponse") } } },
+          "502": { description: "Upstream service error (runs-service / email-gateway)", content: { "application/json": { schema: ref("ErrorResponse") } } },
         },
       },
     },

@@ -383,6 +383,101 @@ describe("GET /orgs/outlets", () => {
     expect(mockFetchOutletStatuses).toHaveBeenCalledOnce();
   });
 
+  it("enriches outlets with sell pricing + priceRequestStatus=received (price landed after request)", async () => {
+    const OUTLET_ID = "11111111-1111-1111-1111-111111111111";
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: OUTLET_ID }], rowCount: 1 });
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: OUTLET_ID,
+          outlet_name: "TechCrunch",
+          outlet_url: "https://techcrunch.com",
+          outlet_domain: "techcrunch.com",
+          campaign_id: CAMPAIGN_ID,
+          feature_slug: "pr-outreach",
+          brand_ids: [BRAND_ID],
+          why_relevant: "x",
+          why_not_relevant: "y",
+          relevance_score: "85.00",
+          outlet_status: "open",
+          status_reason: "discovered",
+          status_detail: null,
+          overall_relevance: null,
+          relevance_rationale: null,
+          run_id: RUN_ID,
+          created_at: "2026-01-01T00:00:00Z",
+          campaign_updated_at: "2026-01-02T00:00:00Z",
+          // pricing (silver) + request lifecycle columns
+          sell_price_cents: 100000,
+          currency: "USD",
+          article_type: "sponsored",
+          allows_dofollow_backlink: true,
+          online_duration_months: null,
+          is_permanent: true,
+          conditions_note: "1 dofollow link",
+          pricing_updated_at: "2026-02-01T00:00:00Z",
+          price_requested_at: "2026-01-10T00:00:00Z",
+        },
+      ],
+    });
+    mockFetchOutletStatuses.mockResolvedValueOnce(emptyEnrichment());
+    mockQuery.mockResolvedValueOnce({ rows: [{ open_count: 1, served_count: 0, skipped_count: 0 }] });
+
+    const res = await withBaseIdentity(request(app).get("/orgs/outlets")).query({ campaignId: CAMPAIGN_ID });
+
+    expect(res.status).toBe(200);
+    const outlet = res.body.outlets[0];
+    expect(outlet.pricing).toMatchObject({ outletId: OUTLET_ID, sellPriceCents: 100000, currency: "USD", articleType: "sponsored", isPermanent: true });
+    expect(outlet.priceRequestStatus).toBe("received"); // pricing updated after the request
+  });
+
+  it("marks priceRequestStatus=ongoing when a request exists but no price has landed yet", async () => {
+    const OUTLET_ID = "11111111-1111-1111-1111-111111111111";
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: OUTLET_ID }], rowCount: 1 });
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: OUTLET_ID,
+          outlet_name: "TechCrunch",
+          outlet_url: "https://techcrunch.com",
+          outlet_domain: "techcrunch.com",
+          campaign_id: CAMPAIGN_ID,
+          feature_slug: "pr-outreach",
+          brand_ids: [BRAND_ID],
+          why_relevant: "x",
+          why_not_relevant: "y",
+          relevance_score: "85.00",
+          outlet_status: "open",
+          status_reason: "discovered",
+          status_detail: null,
+          overall_relevance: null,
+          relevance_rationale: null,
+          run_id: RUN_ID,
+          created_at: "2026-01-01T00:00:00Z",
+          campaign_updated_at: "2026-01-02T00:00:00Z",
+          sell_price_cents: null,
+          currency: null,
+          article_type: null,
+          allows_dofollow_backlink: null,
+          online_duration_months: null,
+          is_permanent: null,
+          conditions_note: null,
+          pricing_updated_at: null,
+          price_requested_at: "2026-01-10T00:00:00Z",
+        },
+      ],
+    });
+    mockFetchOutletStatuses.mockResolvedValueOnce(emptyEnrichment());
+    mockQuery.mockResolvedValueOnce({ rows: [{ open_count: 1, served_count: 0, skipped_count: 0 }] });
+
+    const res = await withBaseIdentity(request(app).get("/orgs/outlets")).query({ campaignId: CAMPAIGN_ID });
+
+    expect(res.status).toBe(200);
+    const outlet = res.body.outlets[0];
+    expect(outlet.pricing).toBeNull();
+    expect(outlet.priceRequestStatus).toBe("ongoing");
+  });
+
   it("returns structured status for multi-campaign outlet (brand-scoped)", async () => {
     const OUTLET_ID = "11111111-1111-1111-1111-111111111111";
     const CAMPAIGN_ID_2 = "33333333-3333-3333-3333-333333333333";

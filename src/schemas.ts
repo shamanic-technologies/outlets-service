@@ -344,6 +344,27 @@ export const editorialEmailBatchResultSchema = z.object({
 export type EditorialEmailDiscover = z.infer<typeof editorialEmailDiscoverSchema>;
 export type EditorialEmailDiscoverBatch = z.infer<typeof editorialEmailDiscoverBatchSchema>;
 
+// --- Price requests (pay-per-publish) ---
+
+/** Body for POST /orgs/outlets/price-requests — request rate cards for 1..N outlets. */
+export const priceRequestBatchSchema = z.object({
+  outletIds: z.array(z.string().uuid()).min(1).max(50),
+});
+
+export const priceRequestResultSchema = z.object({
+  outletId: z.string().uuid(),
+  status: z.enum(["ongoing", "error"]),
+  editorialEmail: z.string().optional(),
+  messageId: z.string().optional(),
+  error: z.string().optional(),
+});
+
+export const priceRequestBatchResponseSchema = z.object({
+  results: z.array(priceRequestResultSchema),
+});
+
+export type PriceRequestBatch = z.infer<typeof priceRequestBatchSchema>;
+
 // Type exports
 export type CreateOutlet = z.infer<typeof createOutletSchema>;
 export type UpdateOutlet = z.infer<typeof updateOutletSchema>;
