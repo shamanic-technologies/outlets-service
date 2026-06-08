@@ -318,13 +318,20 @@ describe("GET /orgs/outlets", () => {
     expect(res.body.outlets[0].domainRating).toBeNull();
   });
 
-  it("returns 500 when ahref dr-status fails (fail-loud, not masked as null)", async () => {
+  it("sets domainRating null when ahref dr-status fails", async () => {
     singleOutletListMocks("techcrunch.com");
     mockGetDrStatus.mockRejectedValueOnce(new Error("ahref-service /orgs/domains/dr-status failed (503): down"));
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
     const res = await withIdentity(request(app).get("/orgs/outlets")).query({ campaignId: CAMPAIGN_ID });
 
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(200);
+    expect(res.body.outlets[0].domainRating).toBeNull();
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[outlets-service] ahref dr-status unavailable; returning null domainRating:",
+      expect.any(Error)
+    );
+    warnSpy.mockRestore();
   });
 
   it("returns DB-only status when no journalist data exists for outlet", async () => {
@@ -696,6 +703,34 @@ describe("GET /orgs/outlets/:id", () => {
     expect(res.status).toBe(200);
     expect(res.body.domainRating).toBe(93);
     expect(mockGetDrStatus).toHaveBeenCalledWith(["techcrunch.com"], expect.any(Object));
+  });
+
+  it("sets domainRating null when ahref-service fails", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: "11111111-1111-1111-1111-111111111111",
+          outlet_name: "TechCrunch",
+          outlet_url: "https://techcrunch.com",
+          outlet_domain: "techcrunch.com",
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-02T00:00:00Z",
+        },
+      ],
+    });
+    mockGetDrStatus.mockRejectedValueOnce(new Error("ahref-service /orgs/domains/dr-status failed (431):"));
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const res = await withBaseIdentity(
+      request(app).get("/orgs/outlets/11111111-1111-1111-1111-111111111111")
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.domainRating).toBeNull();
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[outlets-service] ahref dr-status unavailable; returning null domainRating:",
+      expect.any(Error)
+    );
+    warnSpy.mockRestore();
   });
 
   it("returns 404 for missing outlet", async () => {

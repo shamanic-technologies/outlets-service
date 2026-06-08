@@ -13,6 +13,7 @@ import { fetchOutletStatuses, countOutletStatuses, mergeStatusCounts, type Scope
 import { getPublicPricingForOrg } from "../services/pricing";
 import { getDrStatus } from "../services/ahref";
 import { derivePriceRequestStatus } from "../services/price-requests";
+import type { OrgContext } from "../middleware/org-context";
 
 const router = Router();
 
@@ -27,6 +28,18 @@ function extractDomain(url: string): string {
 /** Normalize a domain the same way ahref-service does (www stripped, case-folded) so DR lookups match. */
 function normalizeDomain(domain: string): string {
   return domain.toLowerCase().replace(/^www\./, "");
+}
+
+async function getDrStatusBestEffort(
+  domains: string[],
+  ctx: OrgContext
+): Promise<Map<string, number | null>> {
+  try {
+    return await getDrStatus(domains, ctx);
+  } catch (err) {
+    console.warn("[outlets-service] ahref dr-status unavailable; returning null domainRating:", err);
+    return new Map();
+  }
 }
 
 // POST /org/outlets — create outlet (upsert by outlet_url)
@@ -384,11 +397,10 @@ router.get(
       });
 
       // Enrich page outlets with Domain Rating from ahref-service (live read).
-      // null = ahref has not scraped that domain yet. Fail-loud (matches the
-      // journalist-status enrichment above): an ahref failure 500s the list
-      // rather than masking an outage as "no DR".
+      // null = ahref has not scraped that domain yet or the decorative DR read
+      // is unavailable. Core journalist-status enrichment above remains fail-loud.
       const pageDomains = [...new Set(outlets.map((o) => normalizeDomain(o.outletDomain)))];
-      const drMap = await getDrStatus(pageDomains, ctx);
+      const drMap = await getDrStatusBestEffort(pageDomains, ctx);
       const outletsWithDr = outlets.map((o) => ({
         ...o,
         domainRating: drMap.get(normalizeDomain(o.outletDomain)) ?? null,
@@ -421,7 +433,7 @@ router.get("/:id", async (req: Request, res: Response): Promise<void> => {
     }
 
     const r = result.rows[0];
-    const drMap = await getDrStatus([normalizeDomain(r.outlet_domain)], ctx);
+    const drMap = await getDrStatusBestEffort([normalizeDomain(r.outlet_domain)], ctx);
     res.json({
       id: r.id,
       outletName: r.outlet_name,
