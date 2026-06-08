@@ -11,28 +11,41 @@ interface DrStatusRow {
   latestValidDr: number | null;
 }
 
-/**
- * Read cached Domain Ratings for a list of domains from ahref-service.
- * Pure read — no spend. Returns a map of normalized domain -> latestValidDr
- * (null when the domain has not been scraped yet).
- *
- * Domains are normalized server-side (www stripped, case-folded); the response
- * `domain` is the normalized form, so we key the map on it.
- *
- * Fail-loud: any timeout / non-2xx throws (mirrors fetchOutletStatuses).
- */
-export async function getDrStatus(
+const MAX_DR_STATUS_URL_LENGTH = 6_000;
+
+function buildDrStatusUrl(domains: string[]): string {
+  const params = new URLSearchParams({ domains: domains.join(",") });
+  return `${config.ahrefServiceUrl}/orgs/domains/dr-status?${params}`;
+}
+
+function chunkDomainsForDrStatus(domains: string[]): string[][] {
+  const chunks: string[][] = [];
+  let current: string[] = [];
+
+  for (const domain of domains) {
+    const next = [...current, domain];
+    if (current.length > 0 && buildDrStatusUrl(next).length > MAX_DR_STATUS_URL_LENGTH) {
+      chunks.push(current);
+      current = [domain];
+    } else {
+      current = next;
+    }
+  }
+
+  if (current.length > 0) chunks.push(current);
+  return chunks;
+}
+
+async function fetchDrStatusChunk(
   domains: string[],
   ctx: OrgContext
-): Promise<Map<string, number | null>> {
-  if (domains.length === 0) return new Map();
-
-  const params = new URLSearchParams({ domains: domains.join(",") });
+): Promise<DrStatusRow[]> {
+  const url = buildDrStatusUrl(domains);
 
   let res: Response;
   try {
     res = await fetch(
-      `${config.ahrefServiceUrl}/orgs/domains/dr-status?${params}`,
+      url,
       {
         method: "GET",
         headers: buildServiceHeaders(config.ahrefServiceApiKey, ctx),
@@ -53,8 +66,34 @@ export async function getDrStatus(
     );
   }
 
-  const rows = (await res.json()) as DrStatusRow[];
-  return new Map(rows.map((r) => [r.domain, r.latestValidDr]));
+  return (await res.json()) as DrStatusRow[];
+}
+
+/**
+ * Read cached Domain Ratings for a list of domains from ahref-service.
+ * Pure read — no spend. Returns a map of normalized domain -> latestValidDr
+ * (null when the domain has not been scraped yet).
+ *
+ * Domains are normalized server-side (www stripped, case-folded); the response
+ * `domain` is the normalized form, so we key the map on it.
+ *
+ * Fail-loud: any timeout / non-2xx throws (mirrors fetchOutletStatuses).
+ */
+export async function getDrStatus(
+  domains: string[],
+  ctx: OrgContext
+): Promise<Map<string, number | null>> {
+  if (domains.length === 0) return new Map();
+
+  const drMap = new Map<string, number | null>();
+  for (const chunk of chunkDomainsForDrStatus(domains)) {
+    const rows = await fetchDrStatusChunk(chunk, ctx);
+    for (const row of rows) {
+      drMap.set(row.domain, row.latestValidDr);
+    }
+  }
+
+  return drMap;
 }
 
 /**
