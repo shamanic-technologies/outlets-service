@@ -334,6 +334,71 @@ describe("GET /orgs/outlets", () => {
     warnSpy.mockRestore();
   });
 
+  it("skips invalid outlet domains before calling ahref dr-status", async () => {
+    const OUTLET_ID_1 = "11111111-1111-1111-1111-111111111111";
+    const OUTLET_ID_2 = "22222222-2222-2222-2222-222222222222";
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: OUTLET_ID_1 }, { id: OUTLET_ID_2 }], rowCount: 2 });
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: OUTLET_ID_1,
+          outlet_name: "TechCrunch",
+          outlet_url: "https://techcrunch.com",
+          outlet_domain: "techcrunch.com",
+          campaign_id: CAMPAIGN_ID,
+          feature_slug: "pr-outreach",
+          brand_ids: [BRAND_ID],
+          why_relevant: "x",
+          why_not_relevant: "y",
+          relevance_score: "85.00",
+          outlet_status: "open",
+          status_reason: "discovered",
+          status_detail: null,
+          overall_relevance: null,
+          relevance_rationale: null,
+          run_id: RUN_ID,
+          created_at: "2026-01-01T00:00:00Z",
+          campaign_updated_at: "2026-01-02T00:00:00Z",
+        },
+        {
+          id: OUTLET_ID_2,
+          outlet_name: "Bad Domain",
+          outlet_url: "https://example.com",
+          outlet_domain: "-",
+          campaign_id: CAMPAIGN_ID,
+          feature_slug: "pr-outreach",
+          brand_ids: [BRAND_ID],
+          why_relevant: "x",
+          why_not_relevant: "y",
+          relevance_score: "70.00",
+          outlet_status: "open",
+          status_reason: "discovered",
+          status_detail: null,
+          overall_relevance: null,
+          relevance_rationale: null,
+          run_id: RUN_ID,
+          created_at: "2026-01-01T00:00:00Z",
+          campaign_updated_at: "2026-01-02T00:00:00Z",
+        },
+      ],
+    });
+    mockFetchOutletStatuses.mockResolvedValueOnce(emptyEnrichment());
+    mockQuery.mockResolvedValueOnce({ rows: [{ open_count: 2, served_count: 0, skipped_count: 0 }] });
+    mockGetDrStatus.mockResolvedValueOnce(new Map([["techcrunch.com", 93]]));
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const res = await withIdentity(request(app).get("/orgs/outlets")).query({ campaignId: CAMPAIGN_ID });
+
+    expect(res.status).toBe(200);
+    expect(res.body.outlets.find((o: any) => o.outletDomain === "techcrunch.com").domainRating).toBe(93);
+    expect(res.body.outlets.find((o: any) => o.outletDomain === "-").domainRating).toBeNull();
+    expect(mockGetDrStatus).toHaveBeenCalledWith(["techcrunch.com"], expect.any(Object));
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[outlets-service] skipping invalid outlet domain(s) for ahref DR lookup: -"
+    );
+    warnSpy.mockRestore();
+  });
+
   it("returns DB-only status when no journalist data exists for outlet", async () => {
     const OUTLET_ID = "11111111-1111-1111-1111-111111111111";
 
@@ -731,6 +796,29 @@ describe("GET /orgs/outlets/:id", () => {
       expect.any(Error)
     );
     warnSpy.mockRestore();
+  });
+
+  it("does not call ahref-service for an invalid outlet domain", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: "11111111-1111-1111-1111-111111111111",
+          outlet_name: "Bad Domain",
+          outlet_url: "https://example.com",
+          outlet_domain: "-",
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-02T00:00:00Z",
+        },
+      ],
+    });
+
+    const res = await withBaseIdentity(
+      request(app).get("/orgs/outlets/11111111-1111-1111-1111-111111111111")
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.domainRating).toBeNull();
+    expect(mockGetDrStatus).not.toHaveBeenCalled();
   });
 
   it("returns 404 for missing outlet", async () => {
