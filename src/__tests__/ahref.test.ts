@@ -65,6 +65,28 @@ describe("getDrStatus", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("chunks large domain lists to keep dr-status URLs bounded", async () => {
+    const domains = Array.from(
+      { length: 240 },
+      (_, i) => `long-domain-${String(i).padStart(3, "0")}-${"a".repeat(40)}.example.com`
+    );
+    fetchMock.mockImplementation(async (url: string) => {
+      const encodedDomains = url.split("domains=")[1] ?? "";
+      const chunkDomains = decodeURIComponent(encodedDomains).split(",").filter(Boolean);
+      return okJson(chunkDomains.map((domain) => ({ domain, latestValidDr: 42 })));
+    });
+
+    const map = await getDrStatus(domains, ctx);
+
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(1);
+    expect(map.size).toBe(domains.length);
+    expect(map.get(domains[0])).toBe(42);
+    expect(map.get(domains[domains.length - 1])).toBe(42);
+    for (const [url] of fetchMock.mock.calls) {
+      expect((url as string).length).toBeLessThanOrEqual(6_000);
+    }
+  });
+
   it("throws on non-2xx (fail-loud)", async () => {
     fetchMock.mockResolvedValueOnce(errResponse(503, "down"));
     await expect(getDrStatus(["x.com"], ctx)).rejects.toThrow(/dr-status failed \(503\)/);
