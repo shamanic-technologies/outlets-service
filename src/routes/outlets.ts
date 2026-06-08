@@ -27,13 +27,54 @@ function extractDomain(url: string): string {
 
 /** Normalize a domain the same way ahref-service does (www stripped, case-folded) so DR lookups match. */
 function normalizeDomain(domain: string): string {
-  return domain.toLowerCase().replace(/^www\./, "");
+  return domain.trim().toLowerCase().replace(/^www\./, "");
+}
+
+function isValidDomainForDrLookup(domain: string): boolean {
+  if (domain.length === 0 || domain.length > 253 || domain.includes("..")) return false;
+
+  const labels = domain.split(".");
+  if (labels.length < 2) return false;
+
+  const labelPattern = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+  if (!labels.every((label) => labelPattern.test(label))) return false;
+
+  return /^[a-z]{2,63}$/.test(labels[labels.length - 1]);
+}
+
+function normalizeDomainForDrLookup(domain: string): string | null {
+  const normalized = normalizeDomain(domain);
+  return isValidDomainForDrLookup(normalized) ? normalized : null;
+}
+
+function buildDrLookupDomains(domains: string[]): string[] {
+  const validDomains = new Set<string>();
+  const invalidDomains = new Set<string>();
+
+  for (const domain of domains) {
+    const normalized = normalizeDomainForDrLookup(domain);
+    if (normalized) {
+      validDomains.add(normalized);
+    } else {
+      invalidDomains.add(domain);
+    }
+  }
+
+  if (invalidDomains.size > 0) {
+    console.warn(
+      `[outlets-service] skipping invalid outlet domain(s) for ahref DR lookup: ${[...invalidDomains].slice(0, 5).join(", ")}`
+    );
+  }
+
+  return [...validDomains];
 }
 
 async function getDrStatusBestEffort(
   domains: string[],
   ctx: OrgContext
 ): Promise<Map<string, number | null>> {
+  if (domains.length === 0) return new Map();
+
   try {
     return await getDrStatus(domains, ctx);
   } catch (err) {
@@ -399,11 +440,13 @@ router.get(
       // Enrich page outlets with Domain Rating from ahref-service (live read).
       // null = ahref has not scraped that domain yet or the decorative DR read
       // is unavailable. Core journalist-status enrichment above remains fail-loud.
-      const pageDomains = [...new Set(outlets.map((o) => normalizeDomain(o.outletDomain)))];
+      const pageDomains = buildDrLookupDomains(outlets.map((o) => o.outletDomain));
       const drMap = await getDrStatusBestEffort(pageDomains, ctx);
       const outletsWithDr = outlets.map((o) => ({
         ...o,
-        domainRating: drMap.get(normalizeDomain(o.outletDomain)) ?? null,
+        domainRating: normalizeDomainForDrLookup(o.outletDomain)
+          ? drMap.get(normalizeDomain(o.outletDomain)) ?? null
+          : null,
       }));
 
       res.json({ outlets: outletsWithDr, total, byOutreachStatus: hybridByOutreachStatus });
@@ -433,13 +476,14 @@ router.get("/:id", async (req: Request, res: Response): Promise<void> => {
     }
 
     const r = result.rows[0];
-    const drMap = await getDrStatusBestEffort([normalizeDomain(r.outlet_domain)], ctx);
+    const drDomain = normalizeDomainForDrLookup(r.outlet_domain);
+    const drMap = await getDrStatusBestEffort(drDomain ? [drDomain] : [], ctx);
     res.json({
       id: r.id,
       outletName: r.outlet_name,
       outletUrl: r.outlet_url,
       outletDomain: r.outlet_domain,
-      domainRating: drMap.get(normalizeDomain(r.outlet_domain)) ?? null,
+      domainRating: drDomain ? drMap.get(drDomain) ?? null : null,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     });
