@@ -887,8 +887,26 @@ describe("reuseCycle", () => {
   it("inserts blocked outlets as skipped without calling LLM", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [
-        { outlet_id: OUTLET_ID_1, outlet_name: "Blocked", outlet_domain: "blocked.com" },
-        { outlet_id: OUTLET_ID_2, outlet_name: "Also Blocked", outlet_domain: "alsoblocked.com" },
+        {
+          outlet_id: OUTLET_ID_1,
+          outlet_name: "Blocked",
+          outlet_domain: "blocked.com",
+          why_relevant: "Strong vertical fit",
+          why_not_relevant: "Small audience",
+          relevance_score: "88.00",
+          overall_relevance: "high",
+          relevance_rationale: "Previous campaign assessment",
+        },
+        {
+          outlet_id: OUTLET_ID_2,
+          outlet_name: "Also Blocked",
+          outlet_domain: "alsoblocked.com",
+          why_relevant: "Relevant niche readership",
+          why_not_relevant: "Lower DR",
+          relevance_score: "72.00",
+          overall_relevance: null,
+          relevance_rationale: null,
+        },
       ],
     });
 
@@ -908,6 +926,14 @@ describe("reuseCycle", () => {
     );
     expect(insertCalls).toHaveLength(2);
     expect(insertCalls[0][0]).toContain("'skipped'");
+    expect(insertCalls[0][1][6]).toBe("Strong vertical fit");
+    expect(insertCalls[0][1][7]).toBe("Small audience");
+    expect(insertCalls[0][1][8]).toBe(88);
+    expect(insertCalls[0][1][10]).toBe("high");
+    expect(insertCalls[0][1][11]).toBe("Previous campaign assessment");
+    expect(insertCalls[1][1][8]).toBe(72);
+    expect(insertCalls[1][1][10]).toBe("high");
+    expect(insertCalls[0][1][7]).not.toContain("Blocked");
   });
 
   it("scores non-blocked outlets via LLM and inserts all", async () => {
