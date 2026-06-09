@@ -17,6 +17,11 @@ router.post(
     const ctx = req.orgContext!;
     const { outletIds } = req.body as PriceRequestBatch;
 
+    if (!ctx.campaignId?.trim()) {
+      res.status(400).json({ error: "Missing required header: x-campaign-id" });
+      return;
+    }
+
     let childRunId: string | undefined;
     try {
       childRunId = await createChildRun("outlet-price-request", ctx);
