@@ -32,8 +32,6 @@ vi.mock("../services/email-gateway", () => ({
 const API_KEY = "test-key";
 const ORG_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const CAMPAIGN_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc";
-const FALLBACK_CAMPAIGN_ID = "dddddddd-dddd-dddd-dddd-dddddddddddd";
-const BRAND_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 const CHILD_RUN_ID = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee";
 const OUTLET_ID = "11111111-1111-1111-1111-111111111111";
 const OUTLET_ID_2 = "22222222-2222-2222-2222-222222222222";
@@ -47,15 +45,7 @@ function withOrgOnlyHeaders(req: request.Test): request.Test {
 }
 
 function ownedRow(id: string, domain: string) {
-  return {
-    id,
-    outlet_name: "Outlet " + domain,
-    outlet_url: `https://${domain}`,
-    outlet_domain: domain,
-    campaign_id: FALLBACK_CAMPAIGN_ID,
-    brand_ids: [BRAND_ID],
-    workflow_slug: "price-request-workflow",
-  };
+  return { id, outlet_name: "Outlet " + domain, outlet_url: `https://${domain}`, outlet_domain: domain };
 }
 
 let app: Express;
@@ -186,7 +176,7 @@ describe("POST /orgs/outlets/price-requests", () => {
     expect(res.body.error).toContain("x-org-id");
   });
 
-  it("falls back to the owned outlet campaign when x-campaign-id is missing", async () => {
+  it("does not invent campaign context when x-campaign-id is missing", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [ownedRow(OUTLET_ID, "outlet.com")] });
 
     const res = await withOrgOnlyHeaders(request(app).post("/orgs/outlets/price-requests")).send({
@@ -200,11 +190,11 @@ describe("POST /orgs/outlets/price-requests", () => {
     expect(mockSend).toHaveBeenCalledTimes(1);
 
     const [sendReq, sendCtx] = mockSend.mock.calls[0];
-    expect(sendReq.campaignId).toBe(FALLBACK_CAMPAIGN_ID);
-    expect(sendReq.workflowSlug).toBe("price-request-workflow");
-    expect(sendCtx.campaignId).toBe(FALLBACK_CAMPAIGN_ID);
-    expect(sendCtx.brandIds).toEqual([BRAND_ID]);
-    expect(sendCtx.workflowSlug).toBe("price-request-workflow");
+    expect(sendReq.campaignId).toBeUndefined();
+    expect(sendReq.workflowSlug).toBeUndefined();
+    expect(sendCtx.campaignId).toBeUndefined();
+    expect(sendCtx.brandIds).toEqual([]);
+    expect(sendCtx.workflowSlug).toBeUndefined();
   });
 
   it("returns 5xx and closes the run as failed on a handler-level DB failure", async () => {
