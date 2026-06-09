@@ -503,6 +503,17 @@ async function markCategoryStatus(categoryId: string, status: "exhausted" | "cap
 
 const REUSE_BATCH_SIZE = 10;
 
+interface ReusableOutlet {
+  outletId: string;
+  outletName: string;
+  outletDomain: string;
+  previousWhyRelevant: string;
+  previousWhyNotRelevant: string;
+  previousRelevanceScore: number;
+  previousOverallRelevance: string | null;
+  previousRelevanceRationale: string | null;
+}
+
 /**
  * Reuse cycle: recycle outlets already known for this brand but not yet in this campaign.
  * 1. Fetch 10 reusable outlets
@@ -513,13 +524,28 @@ const REUSE_BATCH_SIZE = 10;
 export async function reuseCycle(ctx: OrgContext): Promise<number> {
   // Find outlets associated with this brand in other campaigns, not yet in this campaign
   const reusable = await pool.query(
-    `SELECT DISTINCT o.id AS outlet_id, o.outlet_name, o.outlet_domain
-     FROM campaign_outlets co
-     JOIN outlets o ON o.id = co.outlet_id
-     WHERE co.brand_ids && $1
-       AND co.outlet_id NOT IN (
-         SELECT outlet_id FROM campaign_outlets WHERE campaign_id = $2
-       )
+    `WITH reusable AS (
+       SELECT o.id AS outlet_id, o.outlet_name, o.outlet_domain,
+              co.why_relevant, co.why_not_relevant, co.relevance_score,
+              co.overall_relevance, co.relevance_rationale, co.updated_at,
+              ROW_NUMBER() OVER (
+                PARTITION BY o.id
+                ORDER BY co.relevance_score DESC NULLS LAST, co.updated_at DESC
+              ) AS rn
+       FROM campaign_outlets co
+       JOIN outlets o ON o.id = co.outlet_id
+       WHERE co.brand_ids && $1
+         AND co.campaign_id <> $2
+         AND NOT EXISTS (
+           SELECT 1 FROM campaign_outlets existing
+           WHERE existing.campaign_id = $2 AND existing.outlet_id = co.outlet_id
+         )
+     )
+     SELECT outlet_id, outlet_name, outlet_domain, why_relevant, why_not_relevant,
+            relevance_score, overall_relevance, relevance_rationale
+     FROM reusable
+     WHERE rn = 1
+     ORDER BY relevance_score DESC NULLS LAST, updated_at DESC
      LIMIT $3`,
     [ctx.brandIds, ctx.campaignId, REUSE_BATCH_SIZE]
   );
@@ -529,17 +555,35 @@ export async function reuseCycle(ctx: OrgContext): Promise<number> {
     return 0;
   }
 
-  const outlets = reusable.rows.map((r: { outlet_id: string; outlet_name: string; outlet_domain: string }) => ({
-    outletId: r.outlet_id,
-    outletName: r.outlet_name,
-    outletDomain: r.outlet_domain,
-  }));
+  const outlets: ReusableOutlet[] = reusable.rows.map((r: {
+    outlet_id: string;
+    outlet_name: string;
+    outlet_domain: string;
+    why_relevant: string;
+    why_not_relevant: string;
+    relevance_score: string | number;
+    overall_relevance: string | null;
+    relevance_rationale: string | null;
+  }) => {
+    const previousRelevanceScore = Number(r.relevance_score);
+
+    return {
+      outletId: r.outlet_id,
+      outletName: r.outlet_name,
+      outletDomain: r.outlet_domain,
+      previousWhyRelevant: r.why_relevant,
+      previousWhyNotRelevant: r.why_not_relevant,
+      previousRelevanceScore,
+      previousOverallRelevance: r.overall_relevance,
+      previousRelevanceRationale: r.relevance_rationale,
+    };
+  });
 
   console.log(`[outlets-service] reuseCycle: checking ${outlets.length} reusable outlets for campaign ${ctx.campaignId}`);
 
   // Step 1: Check blocked status (free call — no LLM cost)
-  const blocked: typeof outlets = [];
-  const available: typeof outlets = [];
+  const blocked: ReusableOutlet[] = [];
+  const available: ReusableOutlet[] = [];
 
   for (const o of outlets) {
     const result = await isOutletBlocked(o.outletId, ctx);
@@ -552,11 +596,11 @@ export async function reuseCycle(ctx: OrgContext): Promise<number> {
 
   let inserted = 0;
 
-  // Step 2: Insert blocked outlets as 'skipped' (no LLM needed)
+  // Step 2: Insert blocked outlets as 'skipped' while preserving relevance from prior scoring.
   for (const o of blocked) {
     const result = await pool.query(
-      `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_ids, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, status_reason, status_detail, overall_relevance, run_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'skipped', 'blocked', $10, $11, $12)
+      `INSERT INTO campaign_outlets (campaign_id, outlet_id, org_id, brand_ids, feature_slug, workflow_slug, why_relevant, why_not_relevant, relevance_score, status, status_reason, status_detail, overall_relevance, relevance_rationale, run_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'skipped', 'blocked', $10, $11, $12, $13)
        ON CONFLICT (campaign_id, outlet_id) DO NOTHING`,
       [
         ctx.campaignId,
@@ -565,11 +609,12 @@ export async function reuseCycle(ctx: OrgContext): Promise<number> {
         ctx.brandIds,
         ctx.featureSlug,
         ctx.workflowSlug,
-        "Reused from previous campaign",
-        "Blocked — journalist contacted in cooldown period",
-        0,
+        o.previousWhyRelevant,
+        o.previousWhyNotRelevant,
+        o.previousRelevanceScore,
         `Reuse cycle: outlet ${o.outletId} (${o.outletDomain}) blocked — journalist already contacted or in cooldown`,
-        "low",
+        o.previousOverallRelevance ?? relevanceBand(o.previousRelevanceScore),
+        o.previousRelevanceRationale,
         ctx.runId,
       ]
     );
