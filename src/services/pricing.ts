@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { pool } from "../db/pool";
+import type { OrgContext } from "../middleware/org-context";
+import { getDrStatus, triggerDrCompute, triggerInternalDrCompute } from "./ahref";
 import { platformComplete } from "./chat";
 import type { CreatePriceSource } from "../schemas";
 
@@ -318,6 +320,80 @@ export async function getPublicPricingForOrg(
     [outletId, orgId]
   );
   return r.rows.length > 0 ? toPublicDTO(r.rows[0]) : null;
+}
+
+function hasCachedDr(drMap: Map<string, number | null>): boolean {
+  for (const dr of drMap.values()) {
+    if (dr !== null) return true;
+  }
+  return false;
+}
+
+async function getOutletDomainAndFallbackOrg(
+  outletId: string
+): Promise<{ domain: string | null; orgId: string | null }> {
+  const r = await pool.query(
+    `SELECT o.outlet_domain,
+            req.org_id AS fallback_org_id
+     FROM outlets o
+     LEFT JOIN LATERAL (
+       SELECT org_id
+       FROM outlet_price_requests
+       WHERE outlet_id = o.id
+       ORDER BY updated_at DESC
+       LIMIT 1
+     ) req ON TRUE
+     WHERE o.id = $1`,
+    [outletId]
+  );
+
+  if (r.rows.length === 0) return { domain: null, orgId: null };
+  return {
+    domain: r.rows[0].outlet_domain ?? null,
+    orgId: r.rows[0].fallback_org_id ?? null,
+  };
+}
+
+function buildDrTriggerContext(
+  ctx: Partial<OrgContext> | null | undefined,
+  fallbackOrgId: string | null
+): OrgContext | null {
+  const orgId = ctx?.orgId ?? fallbackOrgId;
+  if (!orgId) return null;
+  return {
+    orgId,
+    userId: ctx?.userId,
+    runId: ctx?.runId,
+    featureSlug: ctx?.featureSlug,
+    campaignId: ctx?.campaignId,
+    brandIds: ctx?.brandIds ?? [],
+    workflowSlug: ctx?.workflowSlug,
+  };
+}
+
+/**
+ * Pricing is a strong signal that an outlet is worth enriching. Org-aware calls
+ * read the ahref cache first; platform calls use ahref's internal compute path,
+ * which owns the cache/staleness check before spending. Caller fires this
+ * non-blocking and logs failures.
+ */
+export async function triggerDrComputeIfMissingForOutlet(
+  outletId: string,
+  ctx?: Partial<OrgContext> | null
+): Promise<void> {
+  const { domain, orgId: fallbackOrgId } = await getOutletDomainAndFallbackOrg(outletId);
+  if (!domain) return;
+
+  const triggerCtx = buildDrTriggerContext(ctx, fallbackOrgId);
+  if (!triggerCtx) {
+    await triggerInternalDrCompute([domain]);
+    return;
+  }
+
+  const drMap = await getDrStatus([domain], triggerCtx);
+  if (hasCachedDr(drMap)) return;
+
+  await triggerDrCompute([domain], triggerCtx);
 }
 
 // --- Broker / source operations ---

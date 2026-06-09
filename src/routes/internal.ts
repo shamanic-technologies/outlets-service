@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { pool } from "../db/pool";
 import { config } from "../config";
+import type { OrgContext } from "../middleware/org-context";
 import { validateBody } from "../middleware/validate";
 import {
   internalOutletsBodySchema,
@@ -24,9 +25,40 @@ import {
   linkSourceOutlets,
   insertBrokerPriceSource,
   extractForSource,
+  triggerDrComputeIfMissingForOutlet,
 } from "../services/pricing";
 
 const router = Router();
+
+function headerValue(req: Request, name: string): string | undefined {
+  const value = req.headers[name];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function optionalOrgContext(req: Request): Partial<OrgContext> | null {
+  const orgId = headerValue(req, "x-org-id");
+  if (!orgId) return null;
+
+  return {
+    orgId,
+    userId: headerValue(req, "x-user-id"),
+    runId: headerValue(req, "x-run-id"),
+    featureSlug: headerValue(req, "x-feature-slug"),
+    campaignId: headerValue(req, "x-campaign-id"),
+    brandIds: String(headerValue(req, "x-brand-id") ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+    workflowSlug: headerValue(req, "x-workflow-slug"),
+  };
+}
+
+function logDrTriggerFailure(outletId: string, err: unknown): void {
+  console.error(
+    `[outlets-service] ahref dr-compute trigger failed for outlet ${outletId}:`,
+    err instanceof Error ? err.message : err
+  );
+}
 
 // POST /internal/outlets — lookup by IDs and/or campaignId
 router.post(
@@ -205,6 +237,9 @@ router.post(
     // fail loud with 502 rather than swallowing.
     try {
       const pricing = await extractAndUpsertPricing(outletId);
+      void triggerDrComputeIfMissingForOutlet(outletId, optionalOrgContext(req)).catch((err) =>
+        logDrTriggerFailure(outletId, err)
+      );
       res.status(201).json({ priceSourceId, pricing });
     } catch (err) {
       console.error("[outlets-service] Error extracting pricing:", err);
@@ -225,6 +260,9 @@ router.post(
         return;
       }
       const pricing = await extractAndUpsertPricing(outletId);
+      void triggerDrComputeIfMissingForOutlet(outletId, optionalOrgContext(req)).catch((err) =>
+        logDrTriggerFailure(outletId, err)
+      );
       res.json({ pricing });
     } catch (err) {
       console.error("[outlets-service] Error re-extracting pricing:", err);
@@ -329,6 +367,12 @@ router.post(
     // the note is already persisted, so fail loud (502) and let reextract retry.
     try {
       const extracted = await extractForSource(sourceId);
+      const ctx = optionalOrgContext(req);
+      for (const row of extracted) {
+        void triggerDrComputeIfMissingForOutlet(row.outletId, ctx).catch((err) =>
+          logDrTriggerFailure(row.outletId, err)
+        );
+      }
       res.status(201).json({ priceSourceId, extracted });
     } catch (err) {
       console.error("[outlets-service] Error fanning out broker extraction:", err);
