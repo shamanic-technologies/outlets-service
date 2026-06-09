@@ -31,11 +31,16 @@ vi.mock("../services/email-gateway", () => ({
 
 const API_KEY = "test-key";
 const ORG_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+const CAMPAIGN_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc";
 const CHILD_RUN_ID = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee";
 const OUTLET_ID = "11111111-1111-1111-1111-111111111111";
 const OUTLET_ID_2 = "22222222-2222-2222-2222-222222222222";
 
 function withHeaders(req: request.Test): request.Test {
+  return req.set("x-api-key", API_KEY).set("x-org-id", ORG_ID).set("x-campaign-id", CAMPAIGN_ID);
+}
+
+function withOrgOnlyHeaders(req: request.Test): request.Test {
   return req.set("x-api-key", API_KEY).set("x-org-id", ORG_ID);
 }
 
@@ -83,6 +88,7 @@ describe("POST /orgs/outlets/price-requests", () => {
     expect(sendReq.subject).toBe("Branded content placement — rate card request");
     expect(sendReq.sequence[0].step).toBe(1);
     expect(sendReq.sequence[0].bodyHtml).toContain("branded content placement on Outlet outlet.com");
+    expect(sendReq.campaignId).toBe(CAMPAIGN_ID);
     expect(sendReq.idempotencyKey).toBe(`price-request:${OUTLET_ID}`);
 
     // request row persisted
@@ -168,6 +174,19 @@ describe("POST /orgs/outlets/price-requests", () => {
       .send({ outletIds: [OUTLET_ID] });
     expect(res.status).toBe(400);
     expect(res.body.error).toContain("x-org-id");
+  });
+
+  it("returns 400 when x-campaign-id is missing before starting downstream work", async () => {
+    const res = await withOrgOnlyHeaders(request(app).post("/orgs/outlets/price-requests")).send({
+      outletIds: [OUTLET_ID],
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("x-campaign-id");
+    expect(mockCreateChildRun).not.toHaveBeenCalled();
+    expect(mockDiscover).not.toHaveBeenCalled();
+    expect(mockSend).not.toHaveBeenCalled();
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 
   it("returns 5xx and closes the run as failed on a handler-level DB failure", async () => {
