@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { getDrStatus, triggerDrCompute } from "../services/ahref";
+import { getDrStatus, triggerDrCompute, triggerInternalDrCompute } from "../services/ahref";
 import type { OrgContext } from "../middleware/org-context";
 
 const ctx: OrgContext = {
@@ -113,5 +113,31 @@ describe("triggerDrCompute", () => {
   it("throws on non-2xx (fail-loud)", async () => {
     fetchMock.mockResolvedValueOnce(errResponse(502, "apify failed"));
     await expect(triggerDrCompute(["x.com"], ctx)).rejects.toThrow(/dr-compute failed \(502\)/);
+  });
+});
+
+describe("triggerInternalDrCompute", () => {
+  it("POSTs { domains } to internal dr-compute with service auth only", async () => {
+    fetchMock.mockResolvedValueOnce(okJson({ requested: 2, queued: 1 }));
+
+    await triggerInternalDrCompute(["x.com", "y.com"]);
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toContain("/internal/domains/dr-compute");
+    expect((init as RequestInit).method).toBe("POST");
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ domains: ["x.com", "y.com"] });
+    expect((init as any).headers["x-api-key"]).toBeDefined();
+    expect((init as any).headers["x-org-id"]).toBeUndefined();
+    expect((init as any).headers["x-user-id"]).toBeUndefined();
+  });
+
+  it("does not fetch for empty input", async () => {
+    await triggerInternalDrCompute([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("throws on non-2xx (fail-loud)", async () => {
+    fetchMock.mockResolvedValueOnce(errResponse(502, "platform run failed"));
+    await expect(triggerInternalDrCompute(["x.com"])).rejects.toThrow(/internal\/domains\/dr-compute failed \(502\)/);
   });
 });

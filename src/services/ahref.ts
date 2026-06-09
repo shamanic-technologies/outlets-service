@@ -135,3 +135,40 @@ export async function triggerDrCompute(
     );
   }
 }
+
+/**
+ * Trigger DR compute from an internal/platform caller with service auth only.
+ * ahref-service owns cache checks, spend declaration, platform run tracking, and
+ * scrape idempotency on this path.
+ */
+export async function triggerInternalDrCompute(domains: string[]): Promise<void> {
+  if (domains.length === 0) return;
+
+  let res: Response;
+  try {
+    res = await fetch(
+      `${config.ahrefServiceUrl}/internal/domains/dr-compute`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": config.ahrefServiceApiKey,
+        },
+        body: JSON.stringify({ domains }),
+        signal: AbortSignal.timeout(60_000),
+      }
+    );
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      throw new Error(`[outlets-service] ahref-service /internal/domains/dr-compute timed out after 60s`);
+    }
+    throw new Error(`[outlets-service] ahref-service /internal/domains/dr-compute fetch failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(
+      `[outlets-service] ahref-service /internal/domains/dr-compute failed (${res.status}): ${body}`
+    );
+  }
+}
