@@ -25,6 +25,7 @@ const mockSourceExists = vi.fn();
 const mockLinkSourceOutlets = vi.fn();
 const mockInsertBrokerPriceSource = vi.fn();
 const mockExtractForSource = vi.fn();
+const mockTriggerDrComputeIfMissing = vi.fn();
 vi.mock("../services/pricing", () => ({
   outletExists: (...a: unknown[]) => mockOutletExists(...a),
   hasPriceSources: (...a: unknown[]) => mockHasPriceSources(...a),
@@ -38,6 +39,7 @@ vi.mock("../services/pricing", () => ({
   linkSourceOutlets: (...a: unknown[]) => mockLinkSourceOutlets(...a),
   insertBrokerPriceSource: (...a: unknown[]) => mockInsertBrokerPriceSource(...a),
   extractForSource: (...a: unknown[]) => mockExtractForSource(...a),
+  triggerDrComputeIfMissingForOutlet: (...a: unknown[]) => mockTriggerDrComputeIfMissing(...a),
 }));
 
 const API_KEY = "test-key";
@@ -82,6 +84,7 @@ let app: Express;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockTriggerDrComputeIfMissing.mockResolvedValue(undefined);
   app = createApp();
 });
 
@@ -101,6 +104,29 @@ describe("POST /internal/outlets/:id/price-sources", () => {
     expect(res.body.pricing.amountCents).toBe(50000);
     expect(res.body.pricing.sellPriceCents).toBe(100000);
     expect(mockExtract).toHaveBeenCalledWith(OUTLET_ID);
+    expect(mockTriggerDrComputeIfMissing).toHaveBeenCalledWith(OUTLET_ID, null);
+  });
+
+  it("passes optional org headers to the fire-and-forget DR trigger", async () => {
+    mockOutletExists.mockResolvedValueOnce(true);
+    mockInsertPriceSource.mockResolvedValueOnce(BRONZE_ID);
+    mockExtract.mockResolvedValueOnce(internalDTO);
+
+    const res = await request(app)
+      .post(`/internal/outlets/${OUTLET_ID}/price-sources`)
+      .set("x-api-key", API_KEY)
+      .set("x-org-id", ORG_ID)
+      .set("x-run-id", "cccccccc-cccc-cccc-cccc-cccccccccccc")
+      .send({ rawText: "Sponsored post $500, 1 dofollow, 12 months", sourceType: "email" });
+
+    expect(res.status).toBe(201);
+    expect(mockTriggerDrComputeIfMissing).toHaveBeenCalledWith(
+      OUTLET_ID,
+      expect.objectContaining({
+        orgId: ORG_ID,
+        runId: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+      })
+    );
   });
 
   it("returns 404 when the outlet does not exist", async () => {
@@ -113,6 +139,7 @@ describe("POST /internal/outlets/:id/price-sources", () => {
     expect(res.status).toBe(404);
     expect(mockInsertPriceSource).not.toHaveBeenCalled();
     expect(mockExtract).not.toHaveBeenCalled();
+    expect(mockTriggerDrComputeIfMissing).not.toHaveBeenCalled();
   });
 
   it("returns 400 when rawText is missing", async () => {
@@ -135,6 +162,7 @@ describe("POST /internal/outlets/:id/price-sources", () => {
       .send({ rawText: "Sponsored post $500" });
 
     expect(res.status).toBe(502);
+    expect(mockTriggerDrComputeIfMissing).not.toHaveBeenCalled();
   });
 
   it("returns 401 without x-api-key", async () => {
@@ -157,6 +185,7 @@ describe("POST /internal/outlets/:id/pricing/reextract", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.pricing.amountCents).toBe(50000);
+    expect(mockTriggerDrComputeIfMissing).toHaveBeenCalledWith(OUTLET_ID, null);
   });
 
   it("returns 404 when the outlet has no price sources", async () => {
@@ -168,6 +197,7 @@ describe("POST /internal/outlets/:id/pricing/reextract", () => {
 
     expect(res.status).toBe(404);
     expect(mockExtract).not.toHaveBeenCalled();
+    expect(mockTriggerDrComputeIfMissing).not.toHaveBeenCalled();
   });
 });
 
@@ -307,6 +337,9 @@ describe("POST /internal/pricing-sources/:id/price-sources", () => {
     expect(res.status).toBe(201);
     expect(res.body.priceSourceId).toBe("note-id-1");
     expect(res.body.extracted).toHaveLength(2);
+    expect(mockTriggerDrComputeIfMissing).toHaveBeenCalledTimes(2);
+    expect(mockTriggerDrComputeIfMissing).toHaveBeenCalledWith(OUTLET_ID, null);
+    expect(mockTriggerDrComputeIfMissing).toHaveBeenCalledWith("44444444-4444-4444-4444-444444444444", null);
   });
 
   it("returns 404 when source missing", async () => {
@@ -317,6 +350,7 @@ describe("POST /internal/pricing-sources/:id/price-sources", () => {
       .send({ rawText: "x" });
     expect(res.status).toBe(404);
     expect(mockInsertBrokerPriceSource).not.toHaveBeenCalled();
+    expect(mockTriggerDrComputeIfMissing).not.toHaveBeenCalled();
   });
 
   it("returns 502 when fan-out extraction fails (note stored)", async () => {
@@ -328,5 +362,6 @@ describe("POST /internal/pricing-sources/:id/price-sources", () => {
       .set("x-api-key", API_KEY)
       .send({ rawText: "x" });
     expect(res.status).toBe(502);
+    expect(mockTriggerDrComputeIfMissing).not.toHaveBeenCalled();
   });
 });

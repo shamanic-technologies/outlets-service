@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock DB pool
 const mockQuery = vi.fn();
@@ -21,6 +21,7 @@ import {
   linkSourceOutlets,
   extractForSource,
   hasPriceSources,
+  triggerDrComputeIfMissingForOutlet,
 } from "../services/pricing";
 
 const OUTLET_ID = "11111111-1111-1111-1111-111111111111";
@@ -67,6 +68,20 @@ function findUpsertCall() {
 beforeEach(() => {
   vi.clearAllMocks();
 });
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+function okJson(body: unknown): Response {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+  } as unknown as Response;
+}
 
 describe("extractAndUpsertPricing", () => {
   it("loads all bronzes and calls the platform LLM (google/flash) with the pricing responseSchema", async () => {
@@ -231,6 +246,70 @@ describe("getInternalPricing", () => {
   it("returns null when no pricing exists", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     expect(await getInternalPricing(OUTLET_ID)).toBeNull();
+  });
+});
+
+describe("triggerDrComputeIfMissingForOutlet", () => {
+  it("checks cached DR first, then triggers compute when DR is missing", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(okJson([{ domain: "techcrunch.com", latestValidDr: null }]))
+      .mockResolvedValueOnce(okJson({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ outlet_domain: "techcrunch.com", fallback_org_id: null }],
+    });
+
+    await triggerDrComputeIfMissingForOutlet(OUTLET_ID, { orgId: ORG_ID, brandIds: [] });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][0]).toContain("/orgs/domains/dr-status?");
+    expect(fetchMock.mock.calls[1][0]).toContain("/orgs/domains/dr-compute");
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ domains: ["techcrunch.com"] });
+  });
+
+  it("does not trigger compute when ahref already has a valid DR", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(okJson([{ domain: "techcrunch.com", latestValidDr: 93 }]));
+    vi.stubGlobal("fetch", fetchMock);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ outlet_domain: "techcrunch.com", fallback_org_id: null }],
+    });
+
+    await triggerDrComputeIfMissingForOutlet(OUTLET_ID, { orgId: ORG_ID, brandIds: [] });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toContain("/orgs/domains/dr-status?");
+  });
+
+  it("uses the latest price-request org when the internal caller has no org headers", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(okJson([{ domain: "techcrunch.com", latestValidDr: null }]))
+      .mockResolvedValueOnce(okJson({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ outlet_domain: "techcrunch.com", fallback_org_id: ORG_ID }],
+    });
+
+    await triggerDrComputeIfMissingForOutlet(OUTLET_ID, null);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][1].headers["x-org-id"]).toBe(ORG_ID);
+    expect(fetchMock.mock.calls[1][1].headers["x-org-id"]).toBe(ORG_ID);
+  });
+
+  it("uses ahref internal platform compute when no org context can be resolved", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(okJson({ requested: 1, queued: 1 }));
+    vi.stubGlobal("fetch", fetchMock);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ outlet_domain: "techcrunch.com", fallback_org_id: null }],
+    });
+
+    await triggerDrComputeIfMissingForOutlet(OUTLET_ID, null);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toContain("/internal/domains/dr-compute");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ domains: ["techcrunch.com"] });
+    expect(fetchMock.mock.calls[0][1].headers["x-org-id"]).toBeUndefined();
   });
 });
 
