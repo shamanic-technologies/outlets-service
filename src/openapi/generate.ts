@@ -52,12 +52,6 @@ const orgHeaders = [
   { in: "header", name: "x-workflow-slug", required: false, schema: { type: "string" }, description: "Workflow slug (optional)" },
 ];
 
-const priceRequestHeaders = orgHeaders.map((header) =>
-  header.name === "x-campaign-id"
-    ? { ...header, required: true, description: "Campaign ID (required for price-request outreach)" }
-    : header
-);
-
 /** Status counts object — hybrid: open/served/skipped from outlets-service, email fields from journalists-service. */
 const statusCountsObject = {
   type: "object",
@@ -634,7 +628,7 @@ const spec = {
       post: {
         summary: "Request pay-per-publish rate cards for outlets (org-scoped)",
         description: "For each owned outlet: resolves its editorial email (reusing editorial-email discovery), emails the pay-per-publish rate-card request via email-gateway (broadcast channel → Instantly warmed inboxes), and records the request as awaiting a reply. The reply is ingested later as a bronze pricing note; the outlet's priceRequestStatus then derives to 'received'. Per-outlet failures (no editorial email, unowned outlet, send error) are returned inline without aborting the batch. Max 50 outlets per request.",
-        parameters: [...priceRequestHeaders],
+        parameters: [...orgHeaders],
         requestBody: {
           required: true,
           content: {

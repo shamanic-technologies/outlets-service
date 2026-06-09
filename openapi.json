@@ -3636,12 +3636,12 @@
           {
             "in": "header",
             "name": "x-campaign-id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "Campaign ID (required for price-request outreach)"
+            "description": "Campaign ID (optional)"
           },
           {
             "in": "header",
