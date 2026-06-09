@@ -19,6 +19,9 @@ interface OutletRow {
   outlet_name: string;
   outlet_url: string;
   outlet_domain: string;
+  campaign_id: string;
+  brand_ids: string[] | null;
+  workflow_slug: string | null;
 }
 
 function escapeHtml(s: string): string {
@@ -26,6 +29,11 @@ function escapeHtml(s: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+function nonBlank(value: string | null | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
 }
 
 /**
@@ -78,13 +86,18 @@ export function buildPriceRequestEmail(outletName: string): { bodyHtml: string; 
 }
 
 /** Load the outlets this org owns (present in one of its campaigns), keyed by id. */
-async function loadOwnedOutlets(outletIds: string[], orgId: string): Promise<Map<string, OutletRow>> {
+async function loadOwnedOutlets(outletIds: string[], ctx: OrgContext): Promise<Map<string, OutletRow>> {
   const r = await pool.query(
-    `SELECT DISTINCT o.id, o.outlet_name, o.outlet_url, o.outlet_domain
+    `SELECT DISTINCT ON (o.id)
+            o.id, o.outlet_name, o.outlet_url, o.outlet_domain,
+            co.campaign_id, co.brand_ids, co.workflow_slug
      FROM outlets o
      JOIN campaign_outlets co ON co.outlet_id = o.id
-     WHERE o.id = ANY($1) AND co.org_id = $2`,
-    [outletIds, orgId]
+     WHERE o.id = ANY($1) AND co.org_id = $2
+     ORDER BY o.id,
+              CASE WHEN $3::text IS NOT NULL AND co.campaign_id::text = $3::text THEN 0 ELSE 1 END,
+              co.updated_at DESC`,
+    [outletIds, ctx.orgId, nonBlank(ctx.campaignId) ?? null]
   );
   const map = new Map<string, OutletRow>();
   for (const row of r.rows as OutletRow[]) map.set(row.id, row);
@@ -129,6 +142,12 @@ async function requestPriceForOutlet(outlet: OutletRow, ctx: OrgContext): Promis
     }
 
     const { bodyHtml, bodyText } = buildPriceRequestEmail(outlet.outlet_name);
+    const sendCtx: OrgContext = {
+      ...ctx,
+      campaignId: nonBlank(ctx.campaignId) ?? outlet.campaign_id,
+      brandIds: ctx.brandIds.length > 0 ? ctx.brandIds : outlet.brand_ids ?? [],
+      workflowSlug: nonBlank(ctx.workflowSlug) ?? nonBlank(outlet.workflow_slug),
+    };
     const send = await sendBroadcastEmail(
       {
         to: best.email,
@@ -138,13 +157,13 @@ async function requestPriceForOutlet(outlet: OutletRow, ctx: OrgContext): Promis
         subject: PRICE_REQUEST_SUBJECT,
         sequence: [{ step: 1, daysSinceLastStep: 0, bodyHtml, bodyText }],
         leadId: outlet.id,
-        campaignId: ctx.campaignId,
-        workflowSlug: ctx.workflowSlug,
+        campaignId: sendCtx.campaignId,
+        workflowSlug: sendCtx.workflowSlug,
         tag: PRICE_REQUEST_TAG,
         metadata: { outletId: outlet.id, outletDomain: outlet.outlet_domain },
         idempotencyKey: `price-request:${outlet.id}`,
       },
-      ctx
+      sendCtx
     );
 
     await recordPriceRequest(outlet.id, ctx.orgId, best.email, send.messageId ?? null);
@@ -166,7 +185,7 @@ export async function requestPricesForOutlets(
   ctx: OrgContext,
   concurrency = 8
 ): Promise<PriceRequestResult[]> {
-  const owned = await loadOwnedOutlets(outletIds, ctx.orgId);
+  const owned = await loadOwnedOutlets(outletIds, ctx);
   const results = new Array<PriceRequestResult>(outletIds.length);
 
   let cursor = 0;
