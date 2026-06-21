@@ -1418,6 +1418,16 @@
               "type": "string"
             },
             "description": "Workflow slug (optional)"
+          },
+          {
+            "in": "header",
+            "name": "x-audience-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Audience attribution ID — forwarded to runs-service for per-audience cost attribution (optional)"
           }
         ],
         "requestBody": {
@@ -1531,6 +1541,16 @@
               "type": "string"
             },
             "description": "Workflow slug (optional)"
+          },
+          {
+            "in": "header",
+            "name": "x-audience-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Audience attribution ID — forwarded to runs-service for per-audience cost attribution (optional)"
           },
           {
             "in": "query",
@@ -2283,6 +2303,16 @@
               "type": "string"
             },
             "description": "Workflow slug (optional)"
+          },
+          {
+            "in": "header",
+            "name": "x-audience-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Audience attribution ID — forwarded to runs-service for per-audience cost attribution (optional)"
           }
         ],
         "responses": {
@@ -2396,6 +2426,16 @@
               "type": "string"
             },
             "description": "Workflow slug (optional)"
+          },
+          {
+            "in": "header",
+            "name": "x-audience-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Audience attribution ID — forwarded to runs-service for per-audience cost attribution (optional)"
           }
         ],
         "requestBody": {
@@ -2504,6 +2544,16 @@
               "type": "string"
             },
             "description": "Workflow slug (optional)"
+          },
+          {
+            "in": "header",
+            "name": "x-audience-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Audience attribution ID — forwarded to runs-service for per-audience cost attribution (optional)"
           }
         ],
         "requestBody": {
@@ -2655,6 +2705,16 @@
               "type": "string"
             },
             "description": "Workflow slug (optional)"
+          },
+          {
+            "in": "header",
+            "name": "x-audience-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Audience attribution ID — forwarded to runs-service for per-audience cost attribution (optional)"
           }
         ],
         "responses": {
@@ -2752,6 +2812,16 @@
               "type": "string"
             },
             "description": "Workflow slug (optional)"
+          },
+          {
+            "in": "header",
+            "name": "x-audience-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Audience attribution ID — forwarded to runs-service for per-audience cost attribution (optional)"
           }
         ],
         "requestBody": {
@@ -2851,6 +2921,16 @@
               "type": "string"
             },
             "description": "Workflow slug (optional)"
+          },
+          {
+            "in": "header",
+            "name": "x-audience-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Audience attribution ID — forwarded to runs-service for per-audience cost attribution (optional)"
           }
         ],
         "requestBody": {
@@ -2967,6 +3047,16 @@
               "type": "string"
             },
             "description": "Workflow slug (optional)"
+          },
+          {
+            "in": "header",
+            "name": "x-audience-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Audience attribution ID — forwarded to runs-service for per-audience cost attribution (optional)"
           },
           {
             "in": "query",
@@ -3157,6 +3247,16 @@
             "description": "Workflow slug (optional)"
           },
           {
+            "in": "header",
+            "name": "x-audience-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Audience attribution ID — forwarded to runs-service for per-audience cost attribution (optional)"
+          },
+          {
             "in": "query",
             "name": "brandId",
             "schema": {
@@ -3282,6 +3382,16 @@
               "type": "string"
             },
             "description": "Workflow slug (optional)"
+          },
+          {
+            "in": "header",
+            "name": "x-audience-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Audience attribution ID — forwarded to runs-service for per-audience cost attribution (optional)"
           }
         ],
         "requestBody": {
@@ -3401,6 +3511,16 @@
               "type": "string"
             },
             "description": "Workflow slug (optional)"
+          },
+          {
+            "in": "header",
+            "name": "x-audience-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Audience attribution ID — forwarded to runs-service for per-audience cost attribution (optional)"
           }
         ],
         "requestBody": {
@@ -3534,6 +3654,16 @@
               "type": "string"
             },
             "description": "Workflow slug (optional)"
+          },
+          {
+            "in": "header",
+            "name": "x-audience-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Audience attribution ID — forwarded to runs-service for per-audience cost attribution (optional)"
           }
         ],
         "requestBody": {
@@ -3660,6 +3790,16 @@
               "type": "string"
             },
             "description": "Workflow slug (optional)"
+          },
+          {
+            "in": "header",
+            "name": "x-audience-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Audience attribution ID — forwarded to runs-service for per-audience cost attribution (optional)"
           }
         ],
         "requestBody": {
@@ -3792,6 +3932,16 @@
               "type": "string"
             },
             "description": "Workflow slug (optional)"
+          },
+          {
+            "in": "header",
+            "name": "x-audience-id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Audience attribution ID — forwarded to runs-service for per-audience cost attribution (optional)"
           }
         ],
         "requestBody": {

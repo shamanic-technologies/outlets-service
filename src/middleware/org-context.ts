@@ -13,6 +13,7 @@ export interface OrgContext {
   campaignId?: string;
   brandIds: string[];
   workflowSlug?: string;
+  audienceId?: string;
 }
 
 declare global {
@@ -48,6 +49,7 @@ export function requireOrgId(
     .map((s) => s.trim())
     .filter(Boolean);
   const workflowSlug = req.headers["x-workflow-slug"] as string | undefined;
+  const audienceId = req.headers["x-audience-id"] as string | undefined;
 
   req.orgContext = {
     orgId,
@@ -57,6 +59,7 @@ export function requireOrgId(
     campaignId: campaignId || undefined,
     brandIds,
     workflowSlug: workflowSlug || undefined,
+    audienceId: audienceId || undefined,
   };
   next();
 }
