@@ -10,6 +10,7 @@ const FULL_CTX: OrgContext = {
   brandIds: ["brand-1"],
   featureSlug: "outlets",
   workflowSlug: "discover",
+  audienceId: "11111111-2222-3333-4444-555555555555",
 };
 
 const BASE_CTX: OrgContext = {
@@ -30,7 +31,20 @@ describe("buildServiceHeaders", () => {
       "x-brand-id": "brand-1",
       "x-feature-slug": "outlets",
       "x-workflow-slug": "discover",
+      "x-audience-id": "11111111-2222-3333-4444-555555555555",
     });
+  });
+
+  it("forwards x-audience-id when present, omits when absent (cost attribution)", () => {
+    const withAudience = buildServiceHeaders("sk-test", {
+      orgId: "org-1",
+      brandIds: [],
+      audienceId: "aud-9",
+    });
+    expect(withAudience["x-audience-id"]).toBe("aud-9");
+
+    const withoutAudience = buildServiceHeaders("sk-test", BASE_CTX);
+    expect(withoutAudience).not.toHaveProperty("x-audience-id");
   });
 
   it("forwards multiple brand IDs as CSV", () => {
@@ -72,5 +86,6 @@ describe("buildServiceHeaders", () => {
     expect(h).not.toHaveProperty("x-brand-id");
     expect(h).not.toHaveProperty("x-feature-slug");
     expect(h).not.toHaveProperty("x-workflow-slug");
+    expect(h).not.toHaveProperty("x-audience-id");
   });
 });

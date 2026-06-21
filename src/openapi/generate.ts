@@ -50,6 +50,7 @@ const orgHeaders = [
   { in: "header", name: "x-campaign-id", required: false, schema: { type: "string", format: "uuid" }, description: "Campaign ID (optional)" },
   { in: "header", name: "x-brand-id", required: false, schema: { type: "string" }, description: "Brand ID(s) — comma-separated UUIDs (optional)" },
   { in: "header", name: "x-workflow-slug", required: false, schema: { type: "string" }, description: "Workflow slug (optional)" },
+  { in: "header", name: "x-audience-id", required: false, schema: { type: "string", format: "uuid" }, description: "Audience attribution ID — forwarded to runs-service for per-audience cost attribution (optional)" },
 ];
 
 /** Status counts object — hybrid: open/served/skipped from outlets-service, email fields from journalists-service. */

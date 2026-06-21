@@ -20,5 +20,6 @@ export function buildServiceHeaders(
   if (ctx.brandIds.length > 0) headers["x-brand-id"] = ctx.brandIds.join(",");
   if (ctx.featureSlug) headers["x-feature-slug"] = ctx.featureSlug;
   if (ctx.workflowSlug) headers["x-workflow-slug"] = ctx.workflowSlug;
+  if (ctx.audienceId) headers["x-audience-id"] = ctx.audienceId;
   return headers;
 }
