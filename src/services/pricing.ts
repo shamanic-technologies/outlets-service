@@ -3,6 +3,7 @@ import { pool } from "../db/pool";
 import type { OrgContext } from "../middleware/org-context";
 import { getDrStatus, triggerDrCompute, triggerInternalDrCompute } from "./ahref";
 import { platformComplete } from "./chat";
+import { resolveOutletDomain } from "../lib/domain";
 import type { CreatePriceSource } from "../schemas";
 
 export const PRICING_PROMPT_VERSION = "v1";
@@ -415,13 +416,16 @@ export async function ensureOutlet(
   url: string,
   domain: string
 ): Promise<EnsureOutletResult> {
+  // Junk/placeholder/path-bearing domain -> NULL (recovered from the real URL
+  // host when the explicit domain is junk). Never store "-".
+  const resolved = resolveOutletDomain(domain, url);
   const r = await pool.query(
     `INSERT INTO outlets (outlet_name, outlet_url, outlet_domain)
      VALUES ($1, $2, $3)
      ON CONFLICT (outlet_domain)
      DO UPDATE SET outlet_name = EXCLUDED.outlet_name, outlet_url = EXCLUDED.outlet_url, updated_at = CURRENT_TIMESTAMP
      RETURNING id, outlet_name, outlet_domain, (xmax = 0) AS created`,
-    [name, url, domain]
+    [name, url, resolved]
   );
   const row = r.rows[0];
   return { id: row.id, outletName: row.outlet_name, outletDomain: row.outlet_domain, created: row.created };

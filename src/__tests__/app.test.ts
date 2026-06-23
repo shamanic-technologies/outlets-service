@@ -183,6 +183,67 @@ describe("POST /orgs/outlets", () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toBe("Validation error");
   });
+
+  it("never stores a junk outletDomain — recovers the real host from the URL", async () => {
+    const outletRow = {
+      id: "11111111-1111-1111-1111-111111111111",
+      outlet_name: "TechCrunch",
+      outlet_url: "https://techcrunch.com",
+      outlet_domain: "techcrunch.com",
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+    };
+    mockQuery
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({ rows: [outletRow] }) // INSERT outlets
+      .mockResolvedValueOnce({ rows: [] }) // INSERT campaign_outlets
+      .mockResolvedValueOnce({}); // COMMIT
+
+    const res = await withFullHeaders(request(app).post("/orgs/outlets")).send({
+      outletName: "TechCrunch",
+      outletUrl: "https://techcrunch.com",
+      outletDomain: "-", // junk placeholder
+      whyRelevant: "x",
+      whyNotRelevant: "y",
+      relevanceScore: 80,
+    });
+
+    expect(res.status).toBe(201);
+    const insertCall = mockQuery.mock.calls[1];
+    // 3rd INSERT param is the domain — must be the recovered host, NEVER "-".
+    expect(insertCall[1][2]).toBe("techcrunch.com");
+    expect(insertCall[1][2]).not.toBe("-");
+  });
+
+  it("stores NULL when both the domain and the URL host are junk (no fake fallback)", async () => {
+    const outletRow = {
+      id: "11111111-1111-1111-1111-111111111111",
+      outlet_name: "No Domain",
+      outlet_url: "https://-",
+      outlet_domain: null,
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+    };
+    mockQuery
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({ rows: [outletRow] }) // INSERT outlets
+      .mockResolvedValueOnce({ rows: [] }) // INSERT campaign_outlets
+      .mockResolvedValueOnce({}); // COMMIT
+
+    const res = await withFullHeaders(request(app).post("/orgs/outlets")).send({
+      outletName: "No Domain",
+      outletUrl: "https://-",
+      outletDomain: "-",
+      whyRelevant: "x",
+      whyNotRelevant: "y",
+      relevanceScore: 50,
+    });
+
+    expect(res.status).toBe(201);
+    const insertCall = mockQuery.mock.calls[1];
+    expect(insertCall[1][2]).toBeNull();
+    expect(res.body.outletDomain).toBeNull();
+  });
 });
 
 describe("GET /orgs/outlets", () => {
@@ -416,10 +477,12 @@ describe("GET /orgs/outlets", () => {
     expect(res.body.outlets.find((o: any) => o.outletDomain === "techcrunch.com").trafficMonthlyAvg).toBe(31800);
     expect(res.body.outlets.find((o: any) => o.outletDomain === "-").domainRating).toBeNull();
     expect(res.body.outlets.find((o: any) => o.outletDomain === "-").trafficMonthlyAvg).toBeNull();
+    // BOTH ahref readers (DR status AND traffic-history) receive the same
+    // pre-filtered list — the "-" never reaches either, symmetrically.
     expect(mockGetDrStatusForEnrich).toHaveBeenCalledWith(["techcrunch.com"], expect.any(Object));
     expect(mockGetTrafficForEnrich).toHaveBeenCalledWith(["techcrunch.com"], expect.any(Object));
     expect(warnSpy).toHaveBeenCalledWith(
-      "[outlets-service] skipping invalid outlet domain(s) for ahref DR lookup: -"
+      "[outlets-service] skipping invalid outlet domain(s) for ahref enrichment: -"
     );
     warnSpy.mockRestore();
   });

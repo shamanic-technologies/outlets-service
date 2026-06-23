@@ -14,6 +14,7 @@ import {
   type BrandPromptContext,
 } from "../prompts";
 import { isOutletBlocked } from "./journalists";
+import { normalizeOutletDomain } from "../lib/domain";
 import type { OrgContext } from "../middleware/org-context";
 
 const OUTLET_BATCH_SIZE = 10;
@@ -346,13 +347,29 @@ export async function discoverOutletsInCategory(
     return { inserted: 0, domains: [] };
   }
 
+  // Normalize LLM-emitted domains to valid bare hosts; DROP any that are junk
+  // (e.g. "-", path-bearing, whitespace) so a non-domain value never enters the
+  // outlets table or, later, an ahref enrichment batch. This is the producer
+  // root-cause fix — the LLM occasionally emits a placeholder domain.
+  const normalizedOutlets = parsedOutlets.map((o) => ({
+    ...o,
+    domain: normalizeOutletDomain(o.domain),
+    rawDomain: o.domain,
+  }));
+  const droppedDomains = normalizedOutlets.filter((o) => o.domain === null);
+  if (droppedDomains.length > 0) {
+    console.warn(
+      `[outlets-service] discovery: dropping ${droppedDomains.length} outlet(s) with invalid domain from LLM output: ${droppedDomains
+        .slice(0, 5)
+        .map((o) => JSON.stringify(o.rawDomain))
+        .join(", ")}`
+    );
+  }
+
   // Filter out already-known domains (LLM might repeat them despite instructions)
   const knownSet = new Set(knownDomains);
-  const candidates = parsedOutlets
-    .map((o) => ({
-      ...o,
-      domain: o.domain.replace(/^www\./, "").toLowerCase(),
-    }))
+  const candidates = normalizedOutlets
+    .filter((o): o is typeof o & { domain: string } => o.domain !== null)
     .filter((o) => !knownSet.has(o.domain));
 
   if (candidates.length === 0) {

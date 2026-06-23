@@ -245,7 +245,7 @@ const spec = {
                           id: { type: "string", format: "uuid" },
                           outletName: { type: "string" },
                           outletUrl: { type: "string" },
-                          outletDomain: { type: "string" },
+                          outletDomain: { type: "string", nullable: true, description: "Normalized bare-host domain, or null when the outlet has no valid domain (never a '-' placeholder or path-bearing value)." },
                           domainRating: { type: "integer", nullable: true, description: "Ahrefs Domain Rating from ahref-service (always-on, server-side cache read, chunked + partial-tolerant). null when ahref has no cached value for this domain or that chunk stayed unreachable after retries." },
                           trafficMonthlyAvg: { type: "integer", nullable: true, description: "Ahrefs monthly organic traffic average from ahref-service (always-on, server-side cache read, chunked + partial-tolerant). null when ahref has no cached/trustworthy value for this domain or that chunk stayed unreachable after retries." },
                           createdAt: { type: "string", format: "date-time" },
