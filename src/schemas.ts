@@ -63,7 +63,8 @@ export const outletResponseSchema = z.object({
   id: z.string().uuid(),
   outletName: z.string(),
   outletUrl: z.string(),
-  outletDomain: z.string(),
+  // null when the outlet has no valid bare-host domain (never a "-" placeholder).
+  outletDomain: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -257,7 +258,7 @@ export const bufferNextResponseSchema = z.object({
       outletId: z.string().uuid(),
       outletName: z.string(),
       outletUrl: z.string(),
-      outletDomain: z.string(),
+      outletDomain: z.string().nullable(),
       campaignId: z.string().uuid(),
       brandIds: z.array(z.string().uuid()),
       relevanceScore: z.number(),
