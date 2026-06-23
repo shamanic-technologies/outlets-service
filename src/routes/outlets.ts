@@ -11,7 +11,7 @@ import {
 } from "../schemas";
 import { fetchOutletStatuses, countOutletStatuses, mergeStatusCounts, type ScopeFilters } from "../services/outlet-status";
 import { getPublicPricingForOrg } from "../services/pricing";
-import { getDrStatus } from "../services/ahref";
+import { getDrStatus, getDrStatusForEnrich, getTrafficForEnrich } from "../services/ahref";
 import { derivePriceRequestStatus } from "../services/price-requests";
 import type { OrgContext } from "../middleware/org-context";
 
@@ -437,19 +437,30 @@ router.get(
         };
       });
 
-      // Enrich page outlets with Domain Rating from ahref-service (live read).
-      // null = ahref has not scraped that domain yet or the decorative DR read
-      // is unavailable. Core journalist-status enrichment above remains fail-loud.
-      const pageDomains = buildDrLookupDomains(outlets.map((o) => o.outletDomain));
-      const drMap = await getDrStatusBestEffort(pageDomains, ctx);
-      const outletsWithDr = outlets.map((o) => ({
-        ...o,
-        domainRating: normalizeDomainForDrLookup(o.outletDomain)
-          ? drMap.get(normalizeDomain(o.outletDomain)) ?? null
-          : null,
-      }));
+      // Opt-in ahref enrichment (enrich=ahref). Each outlet gains domainRating +
+      // trafficMonthlyAvg, read server-side from ahref-service's domain-keyed
+      // CACHE (no scrape, no spend). Best-effort + per-chunk tolerant: a slow or
+      // failed ahref batch leaves those domains null rather than failing the list.
+      // null = ahref has no cached/trustworthy value, or that chunk was unreachable.
+      // Absent enrich → no ahref call, no fields added (high-frequency callers stay fast).
+      let outletsOut: Array<Record<string, unknown>> = outlets;
+      if (q.enrich === "ahref") {
+        const pageDomains = buildDrLookupDomains(outlets.map((o) => o.outletDomain));
+        const [drMap, trafficMap] = await Promise.all([
+          getDrStatusForEnrich(pageDomains, ctx),
+          getTrafficForEnrich(pageDomains, ctx),
+        ]);
+        outletsOut = outlets.map((o) => {
+          const key = normalizeDomainForDrLookup(o.outletDomain);
+          return {
+            ...o,
+            domainRating: key ? drMap.get(key) ?? null : null,
+            trafficMonthlyAvg: key ? trafficMap.get(key) ?? null : null,
+          };
+        });
+      }
 
-      res.json({ outlets: outletsWithDr, total, byOutreachStatus: hybridByOutreachStatus });
+      res.json({ outlets: outletsOut, total, byOutreachStatus: hybridByOutreachStatus });
     } catch (err) {
       console.error("[outlets-service] Error listing outlets:", err);
       res.status(500).json({ error: "Internal server error" });

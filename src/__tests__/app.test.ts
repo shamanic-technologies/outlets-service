@@ -29,10 +29,15 @@ vi.mock("../services/outlet-status", async (importOriginal) => {
   };
 });
 
-// Mock ahref service (DR enrichment on GET /orgs/outlets and /:id)
+// Mock ahref service. /:id uses getDrStatus (always-on); GET /orgs/outlets?enrich=ahref
+// uses the resilient enrich readers (DR + traffic).
 const mockGetDrStatus = vi.fn();
+const mockGetDrStatusForEnrich = vi.fn();
+const mockGetTrafficForEnrich = vi.fn();
 vi.mock("../services/ahref", () => ({
   getDrStatus: (...args: unknown[]) => mockGetDrStatus(...args),
+  getDrStatusForEnrich: (...args: unknown[]) => mockGetDrStatusForEnrich(...args),
+  getTrafficForEnrich: (...args: unknown[]) => mockGetTrafficForEnrich(...args),
   triggerDrCompute: (...args: unknown[]) => Promise.resolve(),
 }));
 
@@ -83,6 +88,8 @@ beforeEach(() => {
   mockConnect.mockResolvedValue(undefined);
   mockFetchOutletStatuses.mockResolvedValue(emptyEnrichment());
   mockGetDrStatus.mockResolvedValue(new Map());
+  mockGetDrStatusForEnrich.mockResolvedValue(new Map());
+  mockGetTrafficForEnrich.mockResolvedValue(new Map());
   app = createApp();
 });
 
@@ -297,44 +304,57 @@ describe("GET /orgs/outlets", () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ open_count: 1, served_count: 0, skipped_count: 0 }] });
   }
 
-  it("merges domainRating from ahref-service into each outlet", async () => {
+  it("omits ahref fields and skips the ahref call when enrich is absent", async () => {
     singleOutletListMocks("techcrunch.com");
-    mockGetDrStatus.mockResolvedValueOnce(new Map([["techcrunch.com", 93]]));
 
     const res = await withIdentity(request(app).get("/orgs/outlets")).query({ campaignId: CAMPAIGN_ID });
+
+    expect(res.status).toBe(200);
+    expect(res.body.outlets[0]).not.toHaveProperty("domainRating");
+    expect(res.body.outlets[0]).not.toHaveProperty("trafficMonthlyAvg");
+    expect(mockGetDrStatusForEnrich).not.toHaveBeenCalled();
+    expect(mockGetTrafficForEnrich).not.toHaveBeenCalled();
+  });
+
+  it("merges domainRating + trafficMonthlyAvg from ahref-service when enrich=ahref", async () => {
+    singleOutletListMocks("techcrunch.com");
+    mockGetDrStatusForEnrich.mockResolvedValueOnce(new Map([["techcrunch.com", 93]]));
+    mockGetTrafficForEnrich.mockResolvedValueOnce(new Map([["techcrunch.com", 31800]]));
+
+    const res = await withIdentity(request(app).get("/orgs/outlets")).query({ campaignId: CAMPAIGN_ID, enrich: "ahref" });
 
     expect(res.status).toBe(200);
     expect(res.body.outlets[0].domainRating).toBe(93);
-    expect(mockGetDrStatus).toHaveBeenCalledWith(["techcrunch.com"], expect.any(Object));
+    expect(res.body.outlets[0].trafficMonthlyAvg).toBe(31800);
+    expect(mockGetDrStatusForEnrich).toHaveBeenCalledWith(["techcrunch.com"], expect.any(Object));
+    expect(mockGetTrafficForEnrich).toHaveBeenCalledWith(["techcrunch.com"], expect.any(Object));
   });
 
-  it("sets domainRating null when ahref has not scraped the domain", async () => {
+  it("sets ahref fields null when ahref has no cached value", async () => {
     singleOutletListMocks("newpaper.com");
-    mockGetDrStatus.mockResolvedValueOnce(new Map([["newpaper.com", null]]));
+    mockGetDrStatusForEnrich.mockResolvedValueOnce(new Map([["newpaper.com", null]]));
+    mockGetTrafficForEnrich.mockResolvedValueOnce(new Map([["newpaper.com", null]]));
 
-    const res = await withIdentity(request(app).get("/orgs/outlets")).query({ campaignId: CAMPAIGN_ID });
+    const res = await withIdentity(request(app).get("/orgs/outlets")).query({ campaignId: CAMPAIGN_ID, enrich: "ahref" });
 
     expect(res.status).toBe(200);
     expect(res.body.outlets[0].domainRating).toBeNull();
+    expect(res.body.outlets[0].trafficMonthlyAvg).toBeNull();
   });
 
-  it("sets domainRating null when ahref dr-status fails", async () => {
+  it("degrades ahref fields to null when ahref is unreachable (resilient reader yields empty map)", async () => {
     singleOutletListMocks("techcrunch.com");
-    mockGetDrStatus.mockRejectedValueOnce(new Error("ahref-service /orgs/domains/dr-status failed (503): down"));
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    mockGetDrStatusForEnrich.mockResolvedValueOnce(new Map());
+    mockGetTrafficForEnrich.mockResolvedValueOnce(new Map());
 
-    const res = await withIdentity(request(app).get("/orgs/outlets")).query({ campaignId: CAMPAIGN_ID });
+    const res = await withIdentity(request(app).get("/orgs/outlets")).query({ campaignId: CAMPAIGN_ID, enrich: "ahref" });
 
     expect(res.status).toBe(200);
     expect(res.body.outlets[0].domainRating).toBeNull();
-    expect(warnSpy).toHaveBeenCalledWith(
-      "[outlets-service] ahref dr-status unavailable; returning null domainRating:",
-      expect.any(Error)
-    );
-    warnSpy.mockRestore();
+    expect(res.body.outlets[0].trafficMonthlyAvg).toBeNull();
   });
 
-  it("skips invalid outlet domains before calling ahref dr-status", async () => {
+  it("skips invalid outlet domains before calling ahref when enrich=ahref", async () => {
     const OUTLET_ID_1 = "11111111-1111-1111-1111-111111111111";
     const OUTLET_ID_2 = "22222222-2222-2222-2222-222222222222";
     mockQuery.mockResolvedValueOnce({ rows: [{ id: OUTLET_ID_1 }, { id: OUTLET_ID_2 }], rowCount: 2 });
@@ -384,15 +404,19 @@ describe("GET /orgs/outlets", () => {
     });
     mockFetchOutletStatuses.mockResolvedValueOnce(emptyEnrichment());
     mockQuery.mockResolvedValueOnce({ rows: [{ open_count: 2, served_count: 0, skipped_count: 0 }] });
-    mockGetDrStatus.mockResolvedValueOnce(new Map([["techcrunch.com", 93]]));
+    mockGetDrStatusForEnrich.mockResolvedValueOnce(new Map([["techcrunch.com", 93]]));
+    mockGetTrafficForEnrich.mockResolvedValueOnce(new Map([["techcrunch.com", 31800]]));
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
-    const res = await withIdentity(request(app).get("/orgs/outlets")).query({ campaignId: CAMPAIGN_ID });
+    const res = await withIdentity(request(app).get("/orgs/outlets")).query({ campaignId: CAMPAIGN_ID, enrich: "ahref" });
 
     expect(res.status).toBe(200);
     expect(res.body.outlets.find((o: any) => o.outletDomain === "techcrunch.com").domainRating).toBe(93);
+    expect(res.body.outlets.find((o: any) => o.outletDomain === "techcrunch.com").trafficMonthlyAvg).toBe(31800);
     expect(res.body.outlets.find((o: any) => o.outletDomain === "-").domainRating).toBeNull();
-    expect(mockGetDrStatus).toHaveBeenCalledWith(["techcrunch.com"], expect.any(Object));
+    expect(res.body.outlets.find((o: any) => o.outletDomain === "-").trafficMonthlyAvg).toBeNull();
+    expect(mockGetDrStatusForEnrich).toHaveBeenCalledWith(["techcrunch.com"], expect.any(Object));
+    expect(mockGetTrafficForEnrich).toHaveBeenCalledWith(["techcrunch.com"], expect.any(Object));
     expect(warnSpy).toHaveBeenCalledWith(
       "[outlets-service] skipping invalid outlet domain(s) for ahref DR lookup: -"
     );

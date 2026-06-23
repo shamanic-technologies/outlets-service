@@ -45,6 +45,9 @@ export const listOutletsQuerySchema = z.object({
   featureSlugs: z.string().optional(),
   limit: z.coerce.number().int().positive().optional(),
   offset: z.coerce.number().int().min(0).optional().default(0),
+  // Opt-in ahref enrichment. When "ahref", each outlet gains domainRating +
+  // trafficMonthlyAvg (cache reads). Absent → no ahref call, fields omitted.
+  enrich: z.enum(["ahref"]).optional(),
 });
 
 export const bulkCreateOutletsSchema = z.object({
