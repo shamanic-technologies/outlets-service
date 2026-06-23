@@ -1615,17 +1615,6 @@
               "default": 0
             },
             "description": "Pagination offset (only used when limit is provided)"
-          },
-          {
-            "in": "query",
-            "name": "enrich",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "ahref"
-              ]
-            },
-            "description": "Opt-in ahref enrichment. When 'ahref', each outlet gains domainRating + trafficMonthlyAvg (server-side cache reads, no scrape). Omit to keep the response free of those fields and skip the ahref round-trip."
           }
         ],
         "responses": {
@@ -1657,12 +1646,12 @@
                           "domainRating": {
                             "type": "integer",
                             "nullable": true,
-                            "description": "Ahrefs Domain Rating from ahref-service (cache read). Present ONLY when enrich=ahref. null when ahref has no cached value for this domain or that batch was unreachable."
+                            "description": "Ahrefs Domain Rating from ahref-service (always-on, server-side cache read, chunked + partial-tolerant). null when ahref has no cached value for this domain or that chunk stayed unreachable after retries."
                           },
                           "trafficMonthlyAvg": {
                             "type": "integer",
                             "nullable": true,
-                            "description": "Ahrefs monthly organic traffic average from ahref-service (cache read). Present ONLY when enrich=ahref. null when ahref has no cached/trustworthy value for this domain or that batch was unreachable."
+                            "description": "Ahrefs monthly organic traffic average from ahref-service (always-on, server-side cache read, chunked + partial-tolerant). null when ahref has no cached/trustworthy value for this domain or that chunk stayed unreachable after retries."
                           },
                           "createdAt": {
                             "type": "string",
@@ -2051,6 +2040,8 @@
                           "outletName",
                           "outletUrl",
                           "outletDomain",
+                          "domainRating",
+                          "trafficMonthlyAvg",
                           "createdAt",
                           "relevanceScore",
                           "status",
