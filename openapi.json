@@ -252,7 +252,8 @@
                   "type": "string"
                 },
                 "outletDomain": {
-                  "type": "string"
+                  "type": "string",
+                  "nullable": true
                 },
                 "campaignId": {
                   "type": "string",
@@ -317,7 +318,8 @@
             "type": "string"
           },
           "outletDomain": {
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "createdAt": {
             "type": "string"
@@ -349,7 +351,8 @@
             "type": "string"
           },
           "outletDomain": {
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "createdAt": {
             "type": "string"
@@ -1641,7 +1644,9 @@
                             "type": "string"
                           },
                           "outletDomain": {
-                            "type": "string"
+                            "type": "string",
+                            "nullable": true,
+                            "description": "Normalized bare-host domain, or null when the outlet has no valid domain (never a '-' placeholder or path-bearing value)."
                           },
                           "domainRating": {
                             "type": "integer",

@@ -13,56 +13,33 @@ import { fetchOutletStatuses, countOutletStatuses, mergeStatusCounts, type Scope
 import { getPublicPricingForOrg } from "../services/pricing";
 import { getDrStatus, getDrStatusForEnrich, getTrafficForEnrich } from "../services/ahref";
 import { derivePriceRequestStatus } from "../services/price-requests";
+import { resolveOutletDomain, normalizeOutletDomain } from "../lib/domain";
 import type { OrgContext } from "../middleware/org-context";
 
 const router = Router();
 
-function extractDomain(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return url;
-  }
-}
-
-/** Normalize a domain the same way ahref-service does (www stripped, case-folded) so DR lookups match. */
-function normalizeDomain(domain: string): string {
-  return domain.trim().toLowerCase().replace(/^www\./, "");
-}
-
-function isValidDomainForDrLookup(domain: string): boolean {
-  if (domain.length === 0 || domain.length > 253 || domain.includes("..")) return false;
-
-  const labels = domain.split(".");
-  if (labels.length < 2) return false;
-
-  const labelPattern = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
-  if (!labels.every((label) => labelPattern.test(label))) return false;
-
-  return /^[a-z]{2,63}$/.test(labels[labels.length - 1]);
-}
-
-function normalizeDomainForDrLookup(domain: string): string | null {
-  const normalized = normalizeDomain(domain);
-  return isValidDomainForDrLookup(normalized) ? normalized : null;
-}
-
-function buildDrLookupDomains(domains: string[]): string[] {
+/**
+ * Build the deduped list of valid bare-host domains to send to ahref, skipping
+ * any non-domain value (e.g. a "-" placeholder or a path-bearing string). A
+ * single junk entry would otherwise make ahref-service 400 the WHOLE batch, so
+ * the skip is a safety net mirrored from the centralized write-time validation.
+ */
+function buildDrLookupDomains(domains: Array<string | null>): string[] {
   const validDomains = new Set<string>();
   const invalidDomains = new Set<string>();
 
   for (const domain of domains) {
-    const normalized = normalizeDomainForDrLookup(domain);
+    const normalized = normalizeOutletDomain(domain);
     if (normalized) {
       validDomains.add(normalized);
-    } else {
+    } else if (domain != null) {
       invalidDomains.add(domain);
     }
   }
 
   if (invalidDomains.size > 0) {
     console.warn(
-      `[outlets-service] skipping invalid outlet domain(s) for ahref DR lookup: ${[...invalidDomains].slice(0, 5).join(", ")}`
+      `[outlets-service] skipping invalid outlet domain(s) for ahref enrichment: ${[...invalidDomains].slice(0, 5).join(", ")}`
     );
   }
 
@@ -92,7 +69,10 @@ router.post(
 
     try {
       const b = req.body;
-      const domain = b.outletDomain || extractDomain(b.outletUrl);
+      // Junk/placeholder/path-bearing domains -> NULL (never stored as "-"). A
+      // valid host is recovered from the real outletUrl when the explicit
+      // outletDomain is junk; otherwise the column is left NULL.
+      const domain = resolveOutletDomain(b.outletDomain, b.outletUrl);
 
       const client = await pool.connect();
       try {
@@ -450,7 +430,7 @@ router.get(
         getTrafficForEnrich(pageDomains, ctx),
       ]);
       const outletsOut = outlets.map((o) => {
-        const key = normalizeDomainForDrLookup(o.outletDomain);
+        const key = normalizeOutletDomain(o.outletDomain);
         return {
           ...o,
           domainRating: key ? drMap.get(key) ?? null : null,
@@ -485,7 +465,7 @@ router.get("/:id", async (req: Request, res: Response): Promise<void> => {
     }
 
     const r = result.rows[0];
-    const drDomain = normalizeDomainForDrLookup(r.outlet_domain);
+    const drDomain = normalizeOutletDomain(r.outlet_domain);
     const drMap = await getDrStatusBestEffort(drDomain ? [drDomain] : [], ctx);
     res.json({
       id: r.id,
@@ -544,7 +524,7 @@ router.patch(
 
       if (b.outletName !== undefined) { sets.push(`outlet_name = $${idx++}`); params.push(b.outletName); }
       if (b.outletUrl !== undefined) { sets.push(`outlet_url = $${idx++}`); params.push(b.outletUrl); }
-      if (b.outletDomain !== undefined) { sets.push(`outlet_domain = $${idx++}`); params.push(b.outletDomain); }
+      if (b.outletDomain !== undefined) { sets.push(`outlet_domain = $${idx++}`); params.push(normalizeOutletDomain(b.outletDomain)); }
 
       sets.push(`updated_at = CURRENT_TIMESTAMP`);
       params.push(req.params.id);
@@ -632,7 +612,7 @@ router.post(
         await client.query("BEGIN");
 
         for (const b of outlets) {
-          const domain = b.outletDomain || extractDomain(b.outletUrl);
+          const domain = resolveOutletDomain(b.outletDomain, b.outletUrl);
 
           const outletResult = await client.query(
             `INSERT INTO outlets (outlet_name, outlet_url, outlet_domain)
