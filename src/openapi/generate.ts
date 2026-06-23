@@ -228,7 +228,6 @@ const spec = {
           { in: "query", name: "featureSlugs", schema: { type: "string" }, description: "Filter by feature slugs (comma-separated)" },
           { in: "query", name: "limit", schema: { type: "integer" }, description: "Max distinct outlets per page. Omit to return all outlets." },
           { in: "query", name: "offset", schema: { type: "integer", default: 0 }, description: "Pagination offset (only used when limit is provided)" },
-          { in: "query", name: "enrich", schema: { type: "string", enum: ["ahref"] }, description: "Opt-in ahref enrichment. When 'ahref', each outlet gains domainRating + trafficMonthlyAvg (server-side cache reads, no scrape). Omit to keep the response free of those fields and skip the ahref round-trip." },
         ],
         responses: {
           "200": {
@@ -247,8 +246,8 @@ const spec = {
                           outletName: { type: "string" },
                           outletUrl: { type: "string" },
                           outletDomain: { type: "string" },
-                          domainRating: { type: "integer", nullable: true, description: "Ahrefs Domain Rating from ahref-service (cache read). Present ONLY when enrich=ahref. null when ahref has no cached value for this domain or that batch was unreachable." },
-                          trafficMonthlyAvg: { type: "integer", nullable: true, description: "Ahrefs monthly organic traffic average from ahref-service (cache read). Present ONLY when enrich=ahref. null when ahref has no cached/trustworthy value for this domain or that batch was unreachable." },
+                          domainRating: { type: "integer", nullable: true, description: "Ahrefs Domain Rating from ahref-service (always-on, server-side cache read, chunked + partial-tolerant). null when ahref has no cached value for this domain or that chunk stayed unreachable after retries." },
+                          trafficMonthlyAvg: { type: "integer", nullable: true, description: "Ahrefs monthly organic traffic average from ahref-service (always-on, server-side cache read, chunked + partial-tolerant). null when ahref has no cached/trustworthy value for this domain or that chunk stayed unreachable after retries." },
                           createdAt: { type: "string", format: "date-time" },
                           relevanceScore: { type: "number", description: "Max relevance score across all campaigns for this outlet." },
                           status: outletStatusObject,
@@ -277,7 +276,7 @@ const spec = {
                             },
                           },
                         },
-                        required: ["id", "outletName", "outletUrl", "outletDomain", "createdAt", "relevanceScore", "status", "pricing", "priceRequestStatus", "campaigns"],
+                        required: ["id", "outletName", "outletUrl", "outletDomain", "domainRating", "trafficMonthlyAvg", "createdAt", "relevanceScore", "status", "pricing", "priceRequestStatus", "campaigns"],
                       },
                     },
                     total: { type: "integer", description: "Total distinct outlets matching filters (not truncated by pagination)" },

@@ -54,11 +54,17 @@ Two classes of cross-service read enrichment, and they have OPPOSITE failure mod
 
 **Before choosing fail-loud for a cross-service read, confirm the dependency is deployed in EVERY target environment.** A prod-only dependency + fail-loud read = the non-prod environment 500s the whole endpoint. `ahref-service` is **prod-only** (no staging); Railway private DNS is environment-scoped, so `ahref-service.railway.internal` does not resolve from the staging environment. That's exactly why the DR read is best-effort (degrades to `null` on staging, real values in prod).
 
-## Domain Rating (ahref-service)
+## Domain Rating + traffic (ahref-service)
 
-- DR is owned by **ahref-service** (domain-keyed cache; it owns the Apify scrape spend). outlets-service stays cost-free.
+- DR **and** monthly organic traffic are owned by **ahref-service** (domain-keyed cache; it owns the Apify scrape spend). outlets-service stays cost-free — it reads ONLY ahref's CACHE endpoints, never the `*-compute` scrape endpoints.
 - **discover** (`POST /orgs/outlets/discover`) fires `POST /orgs/domains/dr-compute` **non-blocking** (`.catch` + log) for the freshly-discovered domains (deduped across cycles) — a trigger, never awaited, never fails discover.
-- **Reads** (`GET /orgs/outlets`, `GET /orgs/outlets/:id`) merge `domainRating` live from ahref `GET /orgs/domains/dr-status` (best-effort, see above). `null` = not yet scraped OR ahref unreachable.
+- **`GET /orgs/outlets` enriches each outlet ALWAYS-ON (no opt-in param)** with two nullable fields, keyed by the same normalized (www-stripped, lowercased) domain:
+  - `domainRating` ← ahref `GET /orgs/domains/dr-status` (`latestValidDr`)
+  - `trafficMonthlyAvg` ← ahref `GET /orgs/domains/traffic-history` (`trafficMonthlyAvg`)
+- **The reads MUST be partial-tolerant at scale (12k+ domains).** `getDrStatusForEnrich` / `getTrafficForEnrich` (`services/ahref.ts`) chunk by URL length, run chunks at bounded concurrency (6), and tolerate failures **per chunk**: a chunk that fails its bounded transient-retry budget drops only ITS domains to `null` — never the whole set. This replaced an all-or-nothing `getDrStatusBestEffort(getDrStatus)` whose single-chunk throw nulled every outlet for a real 12k-domain brand. Do NOT reintroduce a wrap that returns `{}` on any error.
+- **Chunk-level retry:** `fetchDomainCacheChunk` retries on THROWN transient transport errors (ahref cold-start / pool-saturation → `fetch failed` whose cause walks to ECONNRESET/ETIMEDOUT/ECONNREFUSED, or AbortSignal `TimeoutError`) — backoff 250/500/1000, idempotent GET so write-safe. An HTTP 5xx is a real answer (request reached ahref) and is NOT retried (fail-loud per chunk).
+- **`GET /orgs/outlets/:id`** merges `domainRating` ALWAYS-ON (single domain) via `getDrStatus` (fail-loud client, route degrades to `null`). It does NOT add `trafficMonthlyAvg`.
+- `null` (either field) = ahref has no cached/trustworthy value for that domain, OR that chunk stayed unreachable after retries.
 - `discoverCycle` / `discoverOutletsInCategory` in `category-discovery.ts` return `{ inserted, domains }` so the route can collect discovered domains for the trigger. The `buffer/next` discovery path does NOT trigger dr-compute (follow-up, not yet wired).
 - Env vars: `AHREF_SERVICE_URL`, `AHREF_SERVICE_API_KEY` (the key = ahref's own inbound key, shared).
 

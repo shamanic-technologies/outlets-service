@@ -10,8 +10,40 @@ interface DomainCacheRow {
 }
 
 const MAX_DOMAINS_URL_LENGTH = 6_000;
-/** Bound concurrent cache-read chunks so a wide enrich request never floods ahref's tiny compute. */
+/** Bound concurrent cache-read chunks so a wide request never floods ahref's tiny compute. */
 const ENRICH_CHUNK_CONCURRENCY = 6;
+/** Connect-phase retry for a chunk fetch: initial attempt + this many retries. */
+const CHUNK_FETCH_RETRIES = 3;
+const CHUNK_RETRY_BACKOFF_MS = [250, 500, 1000];
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * True for a TRANSIENT TRANSPORT failure that thrown a chunk GET — ahref-service
+ * cold-start / pool-saturation surfaces as a rejected fetch (TypeError: fetch
+ * failed) whose cause walks down to ECONNRESET / ETIMEDOUT / ECONNREFUSED, or as
+ * an AbortSignal TimeoutError. These reads are idempotent GETs, so a bounded
+ * retry is write-safe. An HTTP 5xx is a real answer (the request reached ahref)
+ * — NOT retried here (kept fail-loud per chunk).
+ */
+function isTransientTransportError(err: unknown): boolean {
+  const codes = new Set([
+    "ETIMEDOUT", "ECONNREFUSED", "ECONNRESET", "EAI_AGAIN",
+    "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_SOCKET",
+  ]);
+  const seen = new Set<unknown>();
+  let cur: unknown = err;
+  while (cur && !seen.has(cur)) {
+    seen.add(cur);
+    const e = cur as { name?: string; code?: string; message?: string; cause?: unknown; errors?: unknown[] };
+    if (e.name === "TimeoutError") return true;
+    if (typeof e.code === "string" && codes.has(e.code)) return true;
+    if (typeof e.message === "string" && /fetch failed|timed out|timeout|ETIMEDOUT|ECONNRESET|ECONNREFUSED/i.test(e.message)) return true;
+    if (Array.isArray(e.errors) && e.errors.some((sub) => isTransientTransportError(sub))) return true;
+    cur = e.cause;
+  }
+  return false;
+}
 
 function buildDomainsUrl(path: string, domains: string[]): string {
   const params = new URLSearchParams({ domains: domains.join(",") });
@@ -37,7 +69,13 @@ function chunkDomains(path: string, domains: string[]): string[][] {
   return chunks;
 }
 
-/** Fetch one chunk from a domain-keyed cache-read endpoint. Fail-loud (timeout / non-2xx throws). */
+/**
+ * Fetch one chunk from a domain-keyed cache-read endpoint, with a bounded
+ * connect-phase retry on transient transport errors (cold-start / pool
+ * saturation against ahref's tiny compute). Fail-loud after retries exhaust:
+ * a timeout / transport error / non-2xx throws so the caller decides (the
+ * resilient reader catches per-chunk and degrades only that chunk to null).
+ */
 async function fetchDomainCacheChunk(
   path: string,
   domains: string[],
@@ -45,31 +83,37 @@ async function fetchDomainCacheChunk(
 ): Promise<DomainCacheRow[]> {
   const url = buildDomainsUrl(path, domains);
 
-  let res: Response;
-  try {
-    res = await fetch(
-      url,
-      {
-        method: "GET",
-        headers: buildServiceHeaders(config.ahrefServiceApiKey, ctx),
-        signal: AbortSignal.timeout(30_000),
+  for (let attempt = 0; ; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(
+        url,
+        {
+          method: "GET",
+          headers: buildServiceHeaders(config.ahrefServiceApiKey, ctx),
+          signal: AbortSignal.timeout(30_000),
+        }
+      );
+    } catch (err) {
+      if (isTransientTransportError(err) && attempt < CHUNK_FETCH_RETRIES) {
+        await sleep(CHUNK_RETRY_BACKOFF_MS[Math.min(attempt, CHUNK_RETRY_BACKOFF_MS.length - 1)]);
+        continue;
       }
-    );
-  } catch (err) {
-    if (err instanceof DOMException && err.name === "TimeoutError") {
-      throw new Error(`[outlets-service] ahref-service ${path} timed out after 30s`);
+      if (err instanceof DOMException && err.name === "TimeoutError") {
+        throw new Error(`[outlets-service] ahref-service ${path} timed out after 30s`);
+      }
+      throw new Error(`[outlets-service] ahref-service ${path} fetch failed: ${err instanceof Error ? err.message : String(err)}`);
     }
-    throw new Error(`[outlets-service] ahref-service ${path} fetch failed: ${err instanceof Error ? err.message : String(err)}`);
-  }
 
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(
-      `[outlets-service] ahref-service ${path} failed (${res.status}): ${body}`
-    );
-  }
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(
+        `[outlets-service] ahref-service ${path} failed (${res.status}): ${body}`
+      );
+    }
 
-  return (await res.json()) as DomainCacheRow[];
+    return (await res.json()) as DomainCacheRow[];
+  }
 }
 
 /**

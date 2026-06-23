@@ -304,24 +304,12 @@ describe("GET /orgs/outlets", () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ open_count: 1, served_count: 0, skipped_count: 0 }] });
   }
 
-  it("omits ahref fields and skips the ahref call when enrich is absent", async () => {
-    singleOutletListMocks("techcrunch.com");
-
-    const res = await withIdentity(request(app).get("/orgs/outlets")).query({ campaignId: CAMPAIGN_ID });
-
-    expect(res.status).toBe(200);
-    expect(res.body.outlets[0]).not.toHaveProperty("domainRating");
-    expect(res.body.outlets[0]).not.toHaveProperty("trafficMonthlyAvg");
-    expect(mockGetDrStatusForEnrich).not.toHaveBeenCalled();
-    expect(mockGetTrafficForEnrich).not.toHaveBeenCalled();
-  });
-
-  it("merges domainRating + trafficMonthlyAvg from ahref-service when enrich=ahref", async () => {
+  it("always merges domainRating + trafficMonthlyAvg from ahref-service (no opt-in param)", async () => {
     singleOutletListMocks("techcrunch.com");
     mockGetDrStatusForEnrich.mockResolvedValueOnce(new Map([["techcrunch.com", 93]]));
     mockGetTrafficForEnrich.mockResolvedValueOnce(new Map([["techcrunch.com", 31800]]));
 
-    const res = await withIdentity(request(app).get("/orgs/outlets")).query({ campaignId: CAMPAIGN_ID, enrich: "ahref" });
+    const res = await withIdentity(request(app).get("/orgs/outlets")).query({ campaignId: CAMPAIGN_ID });
 
     expect(res.status).toBe(200);
     expect(res.body.outlets[0].domainRating).toBe(93);
@@ -335,7 +323,7 @@ describe("GET /orgs/outlets", () => {
     mockGetDrStatusForEnrich.mockResolvedValueOnce(new Map([["newpaper.com", null]]));
     mockGetTrafficForEnrich.mockResolvedValueOnce(new Map([["newpaper.com", null]]));
 
-    const res = await withIdentity(request(app).get("/orgs/outlets")).query({ campaignId: CAMPAIGN_ID, enrich: "ahref" });
+    const res = await withIdentity(request(app).get("/orgs/outlets")).query({ campaignId: CAMPAIGN_ID });
 
     expect(res.status).toBe(200);
     expect(res.body.outlets[0].domainRating).toBeNull();
@@ -347,14 +335,27 @@ describe("GET /orgs/outlets", () => {
     mockGetDrStatusForEnrich.mockResolvedValueOnce(new Map());
     mockGetTrafficForEnrich.mockResolvedValueOnce(new Map());
 
-    const res = await withIdentity(request(app).get("/orgs/outlets")).query({ campaignId: CAMPAIGN_ID, enrich: "ahref" });
+    const res = await withIdentity(request(app).get("/orgs/outlets")).query({ campaignId: CAMPAIGN_ID });
 
     expect(res.status).toBe(200);
     expect(res.body.outlets[0].domainRating).toBeNull();
     expect(res.body.outlets[0].trafficMonthlyAvg).toBeNull();
   });
 
-  it("skips invalid outlet domains before calling ahref when enrich=ahref", async () => {
+  it("partial tolerance: one metric populated, the other degraded to null independently", async () => {
+    singleOutletListMocks("techcrunch.com");
+    mockGetDrStatusForEnrich.mockResolvedValueOnce(new Map([["techcrunch.com", 93]]));
+    // traffic reader degraded for this domain (its chunk failed) → null, DR unaffected.
+    mockGetTrafficForEnrich.mockResolvedValueOnce(new Map());
+
+    const res = await withIdentity(request(app).get("/orgs/outlets")).query({ campaignId: CAMPAIGN_ID });
+
+    expect(res.status).toBe(200);
+    expect(res.body.outlets[0].domainRating).toBe(93);
+    expect(res.body.outlets[0].trafficMonthlyAvg).toBeNull();
+  });
+
+  it("skips invalid outlet domains before calling ahref", async () => {
     const OUTLET_ID_1 = "11111111-1111-1111-1111-111111111111";
     const OUTLET_ID_2 = "22222222-2222-2222-2222-222222222222";
     mockQuery.mockResolvedValueOnce({ rows: [{ id: OUTLET_ID_1 }, { id: OUTLET_ID_2 }], rowCount: 2 });
@@ -408,7 +409,7 @@ describe("GET /orgs/outlets", () => {
     mockGetTrafficForEnrich.mockResolvedValueOnce(new Map([["techcrunch.com", 31800]]));
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
-    const res = await withIdentity(request(app).get("/orgs/outlets")).query({ campaignId: CAMPAIGN_ID, enrich: "ahref" });
+    const res = await withIdentity(request(app).get("/orgs/outlets")).query({ campaignId: CAMPAIGN_ID });
 
     expect(res.status).toBe(200);
     expect(res.body.outlets.find((o: any) => o.outletDomain === "techcrunch.com").domainRating).toBe(93);
