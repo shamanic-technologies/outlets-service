@@ -29,6 +29,12 @@ vi.mock("../services/email-gateway", () => ({
   sendBroadcastEmail: (...args: unknown[]) => mockSend(...args),
 }));
 
+// Mock deliverability verification (gates the send)
+const mockPick = vi.fn();
+vi.mock("../services/email-verification", () => ({
+  pickDeliverableEmail: (...args: unknown[]) => mockPick(...args),
+}));
+
 const API_KEY = "test-key";
 const ORG_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const CAMPAIGN_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc";
@@ -60,6 +66,8 @@ beforeEach(() => {
     emails: [{ email: "editorial@outlet.com", score: 0, source: "https://outlet.com/contact" }],
   });
   mockSend.mockResolvedValue({ success: true, messageId: "msg-1", provider: "broadcast" });
+  // Default: discovered email verifies as deliverable.
+  mockPick.mockResolvedValue({ email: "editorial@outlet.com", score: 0, source: "https://outlet.com/contact" });
   mockQuery.mockResolvedValue({ rows: [] }); // default: record-insert + anything else
   app = createApp();
 });
@@ -127,6 +135,49 @@ describe("POST /orgs/outlets/price-requests", () => {
     expect(res.body.results[0].error).toContain("No editorial email found");
     expect(mockSend).not.toHaveBeenCalled();
     expect(mockQuery.mock.calls.some((c) => String(c[0]).includes("INSERT INTO outlet_price_requests"))).toBe(false);
+  });
+
+  it("skips the send when no candidate verifies as deliverable (no send, no row)", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [ownedRow(OUTLET_ID, "outlet.com")] });
+    mockDiscover.mockResolvedValue({
+      domain: "outlet.com",
+      status: "found",
+      emails: [{ email: "info@outlet.com", score: 0, source: "https://outlet.com/contact" }],
+    });
+    mockPick.mockResolvedValue(null); // verification rejected every candidate
+
+    const res = await withHeaders(request(app).post("/orgs/outlets/price-requests")).send({
+      outletIds: [OUTLET_ID],
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.results[0].status).toBe("error");
+    expect(res.body.results[0].error).toContain("No deliverable editorial email");
+    expect(mockSend).not.toHaveBeenCalled();
+    expect(mockQuery.mock.calls.some((c) => String(c[0]).includes("INSERT INTO outlet_price_requests"))).toBe(false);
+  });
+
+  it("sends to the verified deliverable email chosen by verification", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [ownedRow(OUTLET_ID, "outlet.com")] });
+    mockDiscover.mockResolvedValue({
+      domain: "outlet.com",
+      status: "found",
+      emails: [
+        { email: "catchall@outlet.com", score: 0, source: "https://outlet.com/contact" },
+        { email: "real@outlet.com", score: 5, source: "https://outlet.com/contact" },
+      ],
+    });
+    // verification skips the catch-all (rank 0), picks the lower-ranked valid one
+    mockPick.mockResolvedValue({ email: "real@outlet.com", score: 5, source: "https://outlet.com/contact" });
+
+    const res = await withHeaders(request(app).post("/orgs/outlets/price-requests")).send({
+      outletIds: [OUTLET_ID],
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.results[0]).toMatchObject({ status: "ongoing", editorialEmail: "real@outlet.com" });
+    expect(mockSend).toHaveBeenCalledTimes(1);
+    expect(mockSend.mock.calls[0][0].to).toBe("real@outlet.com");
   });
 
   it("returns a per-outlet error for an outlet the org does not own", async () => {

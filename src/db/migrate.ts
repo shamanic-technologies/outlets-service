@@ -499,6 +499,15 @@ export async function runMigration(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_outlet_price_requests_org ON outlet_price_requests(org_id);
   `);
 
+  // Step 27: Email deliverability verification — cache apify-service's per-address
+  // verdict on the silver email rows so a re-request reuses it within the TTL
+  // instead of re-paying for verification. `verification_status` is one of
+  // valid/invalid/risky/catch_all/unknown; NULL = not yet verified.
+  await pool.query(`
+    ALTER TABLE outlet_editorial_emails ADD COLUMN IF NOT EXISTS verification_status TEXT;
+    ALTER TABLE outlet_editorial_emails ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
+  `);
+
   console.log("[outlets-service] Migration complete.");
 }
 
