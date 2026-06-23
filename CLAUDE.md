@@ -54,11 +54,13 @@ Two classes of cross-service read enrichment, and they have OPPOSITE failure mod
 
 **Before choosing fail-loud for a cross-service read, confirm the dependency is deployed in EVERY target environment.** A prod-only dependency + fail-loud read = the non-prod environment 500s the whole endpoint. `ahref-service` is **prod-only** (no staging); Railway private DNS is environment-scoped, so `ahref-service.railway.internal` does not resolve from the staging environment. That's exactly why the DR read is best-effort (degrades to `null` on staging, real values in prod).
 
-## Domain Rating (ahref-service)
+## Domain Rating + traffic (ahref-service)
 
-- DR is owned by **ahref-service** (domain-keyed cache; it owns the Apify scrape spend). outlets-service stays cost-free.
+- DR **and** monthly organic traffic are owned by **ahref-service** (domain-keyed cache; it owns the Apify scrape spend). outlets-service stays cost-free — it only reads ahref's CACHE endpoints, never the `*-compute` scrape endpoints.
 - **discover** (`POST /orgs/outlets/discover`) fires `POST /orgs/domains/dr-compute` **non-blocking** (`.catch` + log) for the freshly-discovered domains (deduped across cycles) — a trigger, never awaited, never fails discover.
-- **Reads** (`GET /orgs/outlets`, `GET /orgs/outlets/:id`) merge `domainRating` live from ahref `GET /orgs/domains/dr-status` (best-effort, see above). `null` = not yet scraped OR ahref unreachable.
+- **`GET /orgs/outlets` enrichment is OPT-IN via `?enrich=ahref`.** When present, each outlet gains `domainRating` (ahref `GET /orgs/domains/dr-status` → `latestValidDr`) **and** `trafficMonthlyAvg` (ahref `GET /orgs/domains/traffic-history` → `trafficMonthlyAvg`). Without `enrich`, NO ahref call is made and NEITHER field is added (keeps high-frequency count/sidebar callers fast). The two enrich readers (`getDrStatusForEnrich`, `getTrafficForEnrich` in `services/ahref.ts`) are resilient: URL-bounded chunks, bounded concurrency (6), per-chunk tolerant (a failed batch → those domains `null`, never throws). This replaced a dashboard-side client fan-out that hung at 12k+ domains.
+- **`GET /orgs/outlets/:id`** still merges `domainRating` ALWAYS-ON (single domain, cheap) via `getDrStatus` (best-effort, see above). It does NOT add `trafficMonthlyAvg`.
+- `null` (on either field) = not yet scraped / no trustworthy value OR ahref unreachable for that chunk.
 - `discoverCycle` / `discoverOutletsInCategory` in `category-discovery.ts` return `{ inserted, domains }` so the route can collect discovered domains for the trigger. The `buffer/next` discovery path does NOT trigger dr-compute (follow-up, not yet wired).
 - Env vars: `AHREF_SERVICE_URL`, `AHREF_SERVICE_API_KEY` (the key = ahref's own inbound key, shared).
 
