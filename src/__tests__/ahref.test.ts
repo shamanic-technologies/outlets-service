@@ -99,6 +99,61 @@ describe("getDrStatus", () => {
   });
 });
 
+describe("chunk fetch retry (transient transport errors)", () => {
+  it("retries a thrown transient error then succeeds", async () => {
+    const transient = Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNRESET" } });
+    fetchMock
+      .mockRejectedValueOnce(transient)
+      .mockResolvedValueOnce(okJson([{ domain: "ft.com", latestValidDr: 92 }]));
+
+    const map = await getDrStatus(["ft.com"], ctx);
+
+    expect(map.get("ft.com")).toBe(92);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives up (fail-loud) after the bounded retry budget on persistent transient errors", async () => {
+    const transient = Object.assign(new TypeError("fetch failed"), { cause: { code: "ETIMEDOUT" } });
+    fetchMock.mockRejectedValue(transient);
+
+    await expect(getDrStatus(["x.com"], ctx)).rejects.toThrow(/fetch failed/);
+    expect(fetchMock).toHaveBeenCalledTimes(4); // initial + 3 retries
+  });
+
+  it("does NOT retry a non-2xx HTTP response (real answer, fail-loud immediately)", async () => {
+    fetchMock.mockResolvedValueOnce(errResponse(503, "saturated"));
+
+    await expect(getDrStatus(["x.com"], ctx)).rejects.toThrow(/dr-status failed \(503\)/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("enrich reader degrades only the persistently-failing chunk to null (partial tolerance)", async () => {
+    // Two URL-bounded chunks; chunk A always transient-fails (exhausts retries),
+    // chunk B succeeds → A's domains absent (null), B's domains populated.
+    const domains = Array.from(
+      { length: 240 },
+      (_, i) => `long-domain-${String(i).padStart(3, "0")}-${"a".repeat(40)}.example.com`
+    );
+    const transient = Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNRESET" } });
+    let firstChunkUrl: string | null = null;
+    fetchMock.mockImplementation(async (url: string) => {
+      if (firstChunkUrl === null) firstChunkUrl = url;
+      if (url === firstChunkUrl) throw transient; // this chunk fails every attempt
+      const encodedDomains = url.split("domains=")[1] ?? "";
+      const chunkDomains = decodeURIComponent(encodedDomains).split(",").filter(Boolean);
+      return okJson(chunkDomains.map((domain) => ({ domain, trafficMonthlyAvg: 500 })));
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const map = await getTrafficForEnrich(domains, ctx);
+
+    expect(map.size).toBeGreaterThan(0);
+    expect(map.size).toBeLessThan(domains.length);
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+});
+
 describe("getTrafficForEnrich", () => {
   it("maps domains to trafficMonthlyAvg (null preserved)", async () => {
     fetchMock.mockResolvedValueOnce(

@@ -437,28 +437,26 @@ router.get(
         };
       });
 
-      // Opt-in ahref enrichment (enrich=ahref). Each outlet gains domainRating +
+      // ALWAYS-ON ahref enrichment. Each outlet carries domainRating +
       // trafficMonthlyAvg, read server-side from ahref-service's domain-keyed
-      // CACHE (no scrape, no spend). Best-effort + per-chunk tolerant: a slow or
-      // failed ahref batch leaves those domains null rather than failing the list.
-      // null = ahref has no cached/trustworthy value, or that chunk was unreachable.
-      // Absent enrich → no ahref call, no fields added (high-frequency callers stay fast).
-      let outletsOut: Array<Record<string, unknown>> = outlets;
-      if (q.enrich === "ahref") {
-        const pageDomains = buildDrLookupDomains(outlets.map((o) => o.outletDomain));
-        const [drMap, trafficMap] = await Promise.all([
-          getDrStatusForEnrich(pageDomains, ctx),
-          getTrafficForEnrich(pageDomains, ctx),
-        ]);
-        outletsOut = outlets.map((o) => {
-          const key = normalizeDomainForDrLookup(o.outletDomain);
-          return {
-            ...o,
-            domainRating: key ? drMap.get(key) ?? null : null,
-            trafficMonthlyAvg: key ? trafficMap.get(key) ?? null : null,
-          };
-        });
-      }
+      // CACHE (no scrape, no spend), chunked + bounded-concurrency + per-chunk
+      // tolerant: a slow/failed/timed-out ahref batch (after retries) degrades
+      // only ITS domains to null, never the whole set. null = ahref has no
+      // cached/trustworthy value for that domain, or that chunk stayed unreachable.
+      // Core journalist-status enrichment above remains fail-loud.
+      const pageDomains = buildDrLookupDomains(outlets.map((o) => o.outletDomain));
+      const [drMap, trafficMap] = await Promise.all([
+        getDrStatusForEnrich(pageDomains, ctx),
+        getTrafficForEnrich(pageDomains, ctx),
+      ]);
+      const outletsOut = outlets.map((o) => {
+        const key = normalizeDomainForDrLookup(o.outletDomain);
+        return {
+          ...o,
+          domainRating: key ? drMap.get(key) ?? null : null,
+          trafficMonthlyAvg: key ? trafficMap.get(key) ?? null : null,
+        };
+      });
 
       res.json({ outlets: outletsOut, total, byOutreachStatus: hybridByOutreachStatus });
     } catch (err) {
