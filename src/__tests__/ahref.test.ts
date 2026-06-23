@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { getDrStatus, triggerDrCompute, triggerInternalDrCompute } from "../services/ahref";
+import {
+  getDrStatus,
+  getDrStatusForEnrich,
+  getTrafficForEnrich,
+  triggerDrCompute,
+  triggerInternalDrCompute,
+} from "../services/ahref";
 import type { OrgContext } from "../middleware/org-context";
 
 const ctx: OrgContext = {
@@ -90,6 +96,71 @@ describe("getDrStatus", () => {
   it("throws on non-2xx (fail-loud)", async () => {
     fetchMock.mockResolvedValueOnce(errResponse(503, "down"));
     await expect(getDrStatus(["x.com"], ctx)).rejects.toThrow(/dr-status failed \(503\)/);
+  });
+});
+
+describe("getTrafficForEnrich", () => {
+  it("maps domains to trafficMonthlyAvg (null preserved)", async () => {
+    fetchMock.mockResolvedValueOnce(
+      okJson([
+        { domain: "citywire.com", trafficMonthlyAvg: 31800, hasData: true },
+        { domain: "newpaper.com", trafficMonthlyAvg: null, hasData: false },
+      ])
+    );
+
+    const map = await getTrafficForEnrich(["citywire.com", "newpaper.com"], ctx);
+
+    expect(map.get("citywire.com")).toBe(31800);
+    expect(map.get("newpaper.com")).toBeNull();
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toContain("/orgs/domains/traffic-history?");
+    expect((init as RequestInit).method).toBe("GET");
+    expect((init as any).headers["x-org-id"]).toBe(ctx.orgId);
+  });
+
+  it("does not fetch for empty input", async () => {
+    const map = await getTrafficForEnrich([], ctx);
+    expect(map.size).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("tolerates a failed chunk (those domains absent, never throws)", async () => {
+    // Wide list forces multiple URL-bounded chunks; fail exactly one of them.
+    const domains = Array.from(
+      { length: 240 },
+      (_, i) => `long-domain-${String(i).padStart(3, "0")}-${"a".repeat(40)}.example.com`
+    );
+    let call = 0;
+    fetchMock.mockImplementation(async (url: string) => {
+      call += 1;
+      if (call === 1) return errResponse(503, "down");
+      const encodedDomains = url.split("domains=")[1] ?? "";
+      const chunkDomains = decodeURIComponent(encodedDomains).split(",").filter(Boolean);
+      return okJson(chunkDomains.map((domain) => ({ domain, trafficMonthlyAvg: 100 })));
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const map = await getTrafficForEnrich(domains, ctx);
+
+    // Some domains resolved from the surviving chunks; the failed chunk's domains are absent.
+    expect(map.size).toBeGreaterThan(0);
+    expect(map.size).toBeLessThan(domains.length);
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+});
+
+describe("getDrStatusForEnrich", () => {
+  it("maps domains to latestValidDr and never throws on total outage", async () => {
+    fetchMock.mockResolvedValue(errResponse(503, "down"));
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const map = await getDrStatusForEnrich(["citywire.com"], ctx);
+
+    expect(map.size).toBe(0); // all chunks failed → empty map → caller serves null
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
   });
 });
 
