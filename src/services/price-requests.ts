@@ -1,6 +1,7 @@
 import { pool } from "../db/pool";
 import type { OrgContext } from "../middleware/org-context";
 import { discoverEditorialEmails } from "./editorial-emails";
+import { pickDeliverableEmail } from "./email-verification";
 import { sendBroadcastEmail } from "./email-gateway";
 
 export const PRICE_REQUEST_SUBJECT = "Branded content placement — rate card request";
@@ -123,9 +124,19 @@ async function requestPriceForOutlet(outlet: OutletRow, ctx: OrgContext): Promis
       { outletName: outlet.outlet_name, domain: outlet.outlet_domain, url: outlet.outlet_url },
       ctx
     );
-    const best = discovery.emails[0];
-    if (!best) {
+    if (discovery.emails.length === 0) {
       return { outletId: outlet.id, status: "error", error: `No editorial email found (${discovery.status})` };
+    }
+
+    // Verify deliverability before sending — never email an unverified address
+    // (bounces hurt sender reputation). Picks the highest-ranked `valid` candidate.
+    const best = await pickDeliverableEmail(discovery.domain, discovery.emails, ctx);
+    if (!best) {
+      return {
+        outletId: outlet.id,
+        status: "error",
+        error: `No deliverable editorial email (none of ${discovery.emails.length} candidate(s) verified valid)`,
+      };
     }
 
     const { bodyHtml, bodyText } = buildPriceRequestEmail(outlet.outlet_name);
