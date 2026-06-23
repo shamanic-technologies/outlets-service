@@ -508,6 +508,17 @@ export async function runMigration(): Promise<void> {
     ALTER TABLE outlet_editorial_emails ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
   `);
 
+  // Step 28: Allow outlet_domain to be NULL. A "no domain" outlet (or one whose
+  // ingested domain was junk — "-", path-bearing, whitespace) must store NULL
+  // rather than a non-host placeholder that would poison downstream ahref calls.
+  // The existing unique index idx_outlets_domain is NULLS DISTINCT (the default),
+  // so multiple NULL-domain rows are allowed and `INSERT ... ON CONFLICT
+  // (outlet_domain)` still infers the index for real domains — no index change
+  // needed. Catalog-only DDL, instant, boot-safe. Existing junk rows are
+  // reconciled to NULL out-of-band by scripts/reconcile-outlet-domains.ts
+  // (idempotent + reversible + dry-runnable).
+  await pool.query(`ALTER TABLE outlets ALTER COLUMN outlet_domain DROP NOT NULL;`);
+
   console.log("[outlets-service] Migration complete.");
 }
 
