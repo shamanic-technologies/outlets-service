@@ -1,8 +1,7 @@
 import { pool } from "../db/pool";
 import type { OrgContext } from "../middleware/org-context";
 import { discoverEditorialEmails } from "./editorial-emails";
-import { pickDeliverableEmail } from "./email-verification";
-import { sendBroadcastEmail } from "./email-gateway";
+import { sendBroadcastEmail, type BroadcastSequenceStep } from "./email-gateway";
 
 export const PRICE_REQUEST_SUBJECT = "Branded content placement — rate card request";
 const PRICE_REQUEST_TAG = "outlet-price-request";
@@ -30,19 +29,21 @@ function escapeHtml(s: string): string {
 }
 
 /**
- * Pay-per-publish rate-card outreach email, outlet name interpolated. Returned as
- * both HTML and plaintext. Same body for every outlet — only the publication name
- * changes. Cold editorial outreach, signed by the PR agency (matches the Instantly
- * warmed-inbox identity).
+ * Pay-per-publish rate-card outreach as a 3-step Instantly sequence: the opening
+ * ask plus two follow-ups (+3 days, +6 days) on the same thread so a busy
+ * editorial desk gets a couple of nudges. Outlet name interpolated; same copy for
+ * every outlet. Cold editorial outreach signed by the PR agency (matches the
+ * Instantly warmed-inbox identity).
  */
-export function buildPriceRequestEmail(outletName: string): { bodyHtml: string; bodyText: string } {
+export function buildPriceRequestSequence(outletName: string): BroadcastSequenceStep[] {
   const name = escapeHtml(outletName);
-  const bodyHtml = [
+
+  const step1Html = [
     `<p>Hi,</p>`,
     `<p>I'm an independent PR agency interested in branded content placement on ${name}.</p>`,
     `<p><strong>Format</strong>: written article, like interview, Q&amp;A or op-ed/byline.</p>`,
-    `<p>Can you send your rate card — per-article and package/bundle pricing?</p>`,
-    `<p><strong>Volume</strong>: one client to start, potentially 2 for testing, scaling to ~10 articles/month if the SEO outcome is positive — and more clients each month as results hold.</p>`,
+    `<p>Can you send your rate card, per-article and package/bundle pricing?</p>`,
+    `<p><strong>Volume</strong>: one client to start, potentially 2 for testing, scaling to ~10 articles/month if the SEO outcome is positive, and more clients each month as results hold.</p>`,
     `<p><strong><em>A few specifics:</em></strong></p>`,
     `<ul>`,
     `<li><strong>Sponsored or organic?</strong> Is the article labelled "sponsored"/"partner", or does it run as organic editorial?</li>`,
@@ -53,16 +54,16 @@ export function buildPriceRequestEmail(outletName: string): { bodyHtml: string; 
     `<p>Thanks,<br/>Kevin</p>`,
   ].join("\n");
 
-  const bodyText = [
+  const step1Text = [
     `Hi,`,
     ``,
     `I'm an independent PR agency interested in branded content placement on ${outletName}.`,
     ``,
     `Format: written article, like interview, Q&A or op-ed/byline.`,
     ``,
-    `Can you send your rate card — per-article and package/bundle pricing?`,
+    `Can you send your rate card, per-article and package/bundle pricing?`,
     ``,
-    `Volume: one client to start, potentially 2 for testing, scaling to ~10 articles/month if the SEO outcome is positive — and more clients each month as results hold.`,
+    `Volume: one client to start, potentially 2 for testing, scaling to ~10 articles/month if the SEO outcome is positive, and more clients each month as results hold.`,
     ``,
     `A few specifics:`,
     `- Sponsored or organic? Is the article labelled "sponsored"/"partner", or does it run as organic editorial?`,
@@ -75,7 +76,44 @@ export function buildPriceRequestEmail(outletName: string): { bodyHtml: string; 
     `Kevin`,
   ].join("\n");
 
-  return { bodyHtml, bodyText };
+  const step2Html = [
+    `<p>Hi,</p>`,
+    `<p>Just following up on my note about branded content placement on ${name}. Could you share your rate card and conditions?</p>`,
+    `<p>Happy to start with one client and scale from there.</p>`,
+    `<p>Thanks,<br/>Kevin</p>`,
+  ].join("\n");
+
+  const step2Text = [
+    `Hi,`,
+    ``,
+    `Just following up on my note about branded content placement on ${outletName}. Could you share your rate card and conditions?`,
+    ``,
+    `Happy to start with one client and scale from there.`,
+    ``,
+    `Thanks,`,
+    `Kevin`,
+  ].join("\n");
+
+  const step3Html = [
+    `<p>Hi,</p>`,
+    `<p>Last nudge on this. If branded content placement on ${name} is something you offer, I'd love your pricing and conditions. If it's not a fit, a quick no works too.</p>`,
+    `<p>Thanks,<br/>Kevin</p>`,
+  ].join("\n");
+
+  const step3Text = [
+    `Hi,`,
+    ``,
+    `Last nudge on this. If branded content placement on ${outletName} is something you offer, I'd love your pricing and conditions. If it's not a fit, a quick no works too.`,
+    ``,
+    `Thanks,`,
+    `Kevin`,
+  ].join("\n");
+
+  return [
+    { step: 1, daysSinceLastStep: 0, bodyHtml: step1Html, bodyText: step1Text },
+    { step: 2, daysSinceLastStep: 3, bodyHtml: step2Html, bodyText: step2Text },
+    { step: 3, daysSinceLastStep: 3, bodyHtml: step3Html, bodyText: step3Text },
+  ];
 }
 
 /** Load the outlets this org owns (present in one of its campaigns), keyed by id. */
@@ -125,29 +163,24 @@ async function requestPriceForOutlet(outlet: OutletRow, ctx: OrgContext): Promis
       ctx
     );
     if (discovery.emails.length === 0) {
-      return { outletId: outlet.id, status: "error", error: `No editorial email found (${discovery.status})` };
+      return { outletId: outlet.id, status: "error", error: `No valid editorial email (${discovery.status})` };
     }
 
-    // Verify deliverability before sending — never email an unverified address
-    // (bounces hurt sender reputation). Picks the highest-ranked `valid` candidate.
-    const best = await pickDeliverableEmail(discovery.domain, discovery.emails, ctx);
-    if (!best) {
-      return {
-        outletId: outlet.id,
-        status: "error",
-        error: `No deliverable editorial email (none of ${discovery.emails.length} candidate(s) verified valid)`,
-      };
-    }
+    // The discovery step already vetted every address (LLM-categorized as a real,
+    // sendable editorial contact for this outlet), best-first. Email the top one
+    // and BCC the rest so the whole editorial desk sees the same single thread.
+    const [best, ...rest] = discovery.emails;
+    const bcc = rest.map((e) => e.email).join(",") || undefined;
 
-    const { bodyHtml, bodyText } = buildPriceRequestEmail(outlet.outlet_name);
     const send = await sendBroadcastEmail(
       {
         to: best.email,
+        bcc,
         recipientFirstName: "Editorial",
         recipientLastName: "Team",
         recipientCompany: outlet.outlet_name,
         subject: PRICE_REQUEST_SUBJECT,
-        sequence: [{ step: 1, daysSinceLastStep: 0, bodyHtml, bodyText }],
+        sequence: buildPriceRequestSequence(outlet.outlet_name),
         leadId: outlet.id,
         campaignId: ctx.campaignId,
         workflowSlug: ctx.workflowSlug,

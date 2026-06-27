@@ -5,14 +5,8 @@ import type { Express } from "express";
 
 // Mock DB pool
 const mockQuery = vi.fn();
-const mockConnect = vi.fn();
-const mockRelease = vi.fn();
 vi.mock("../db/pool", () => ({
-  pool: {
-    query: (...args: unknown[]) => mockQuery(...args),
-    connect: () =>
-      mockConnect().then(() => ({ query: mockQuery, release: mockRelease })),
-  },
+  pool: { query: (...args: unknown[]) => mockQuery(...args) },
 }));
 
 // Mock runs service
@@ -25,16 +19,30 @@ vi.mock("../services/runs", () => ({
 
 // Mock scraping-service client
 const mockScrape = vi.fn();
-const mockMap = vi.fn();
+const mockMapSitemap = vi.fn();
 vi.mock("../services/scraping", () => ({
   scrapeRawHtml: (...args: unknown[]) => mockScrape(...args),
-  mapContactUrls: (...args: unknown[]) => mockMap(...args),
+  mapSitemapUrls: (...args: unknown[]) => mockMapSitemap(...args),
 }));
 
-// Mock google-service serper fallback
-const mockSerper = vi.fn();
+// Mock google-service serper (top result URLs)
+const mockSerperUrls = vi.fn();
 vi.mock("../services/google", () => ({
-  serperEditorialEmails: (...args: unknown[]) => mockSerper(...args),
+  serperTopResultUrls: (...args: unknown[]) => mockSerperUrls(...args),
+}));
+
+// Mock the LLM categorize + URL-pick steps
+const mockCategorize = vi.fn();
+const mockPickUrls = vi.fn();
+vi.mock("../services/editorial-categorize", () => ({
+  categorizeEditorialEmails: (...args: unknown[]) => mockCategorize(...args),
+  pickContactUrls: (...args: unknown[]) => mockPickUrls(...args),
+}));
+
+// Mock the curated-bronze Rung-0 (own feature, tested separately) → default no curated entry.
+const mockCurated = vi.fn();
+vi.mock("../services/editorial-email-sources", () => ({
+  readCuratedEditorial: (...args: unknown[]) => mockCurated(...args),
 }));
 
 const API_KEY = "test-key";
@@ -50,11 +58,14 @@ let app: Express;
 
 beforeEach(() => {
   vi.resetAllMocks();
-  mockConnect.mockResolvedValue(undefined);
   mockCreateChildRun.mockResolvedValue(CHILD_RUN_ID);
   mockCloseRun.mockResolvedValue(undefined);
-  mockMap.mockResolvedValue([]);
-  mockSerper.mockResolvedValue([]);
+  mockSerperUrls.mockResolvedValue([]);
+  mockMapSitemap.mockResolvedValue([]);
+  mockPickUrls.mockResolvedValue([]);
+  mockCategorize.mockResolvedValue([]);
+  mockCurated.mockResolvedValue(null); // no curated bronze entry by default
+  mockScrape.mockResolvedValue("<html>nothing</html>");
   // Default: every DB query returns empty → cache miss + writes succeed.
   mockQuery.mockResolvedValue({ rows: [] });
   app = createApp();
@@ -63,46 +74,13 @@ beforeEach(() => {
 const body = { outletName: "Outlet", domain: "outlet.com", url: URL };
 
 describe("POST /orgs/outlets/editorial-emails/discover", () => {
-  it("finds emails on /contact, early-stops, sorts editorial first, status=found", async () => {
-    mockScrape.mockImplementation(async (url: string) => {
-      if (url === URL) return "<html>homepage, no email</html>";
-      if (url === `${URL}/contact`)
-        return `<a href="mailto:editorial@outlet.com">editorial@outlet.com</a> info@outlet.com`;
-      return "";
-    });
-
-    const res = await withHeaders(
-      request(app).post("/orgs/outlets/editorial-emails/discover")
-    ).send(body);
-
-    expect(res.status).toBe(200);
-    expect(res.body.status).toBe("found");
-    expect(res.body.domain).toBe("outlet.com");
-    expect(res.body.emails[0].email).toBe("editorial@outlet.com"); // editorial scored first
-    expect(res.body.emails.map((e: { email: string }) => e.email)).toContain("info@outlet.com");
-    // early-stop: only homepage + /contact fetched
-    expect(mockScrape).toHaveBeenCalledTimes(2);
-    expect(mockCreateChildRun).toHaveBeenCalledWith("editorial-email-discover", expect.objectContaining({ orgId: ORG_ID }));
-    expect(mockCloseRun).toHaveBeenCalledWith(CHILD_RUN_ID, "completed", expect.anything());
-  });
-
-  it("flags parked domains and stops the ladder", async () => {
-    mockScrape.mockResolvedValue(`<script>location.href="/lander?oref=x"</script>`);
-
-    const res = await withHeaders(
-      request(app).post("/orgs/outlets/editorial-emails/discover")
-    ).send(body);
-
-    expect(res.status).toBe(200);
-    expect(res.body.status).toBe("parked_dead");
-    expect(res.body.emails).toEqual([]);
-    expect(mockScrape).toHaveBeenCalledTimes(1); // stopped on homepage lander
-    expect(mockSerper).not.toHaveBeenCalled();
-  });
-
-  it("falls back to serper Google and tags status=found_google", async () => {
-    mockScrape.mockResolvedValue("<html>no contact email here</html>");
-    mockSerper.mockResolvedValue(["news@outlet.com"]);
+  it("Path A: scrapes top Google result pages, LLM-vets, status=found_google", async () => {
+    mockSerperUrls.mockResolvedValue(["https://press-db.example/outlet"]);
+    mockScrape.mockResolvedValue(`editorial@outlet.com info@outlet.com`);
+    mockCategorize.mockResolvedValueOnce([
+      { email: "editorial@outlet.com", category: "editorial" },
+      { email: "info@outlet.com", category: "generic" },
+    ]);
 
     const res = await withHeaders(
       request(app).post("/orgs/outlets/editorial-emails/discover")
@@ -110,18 +88,68 @@ describe("POST /orgs/outlets/editorial-emails/discover", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("found_google");
-    expect(res.body.emails[0].email).toBe("news@outlet.com");
-    expect(mockSerper).toHaveBeenCalledWith("Outlet", "outlet.com", expect.anything());
-    // rung 3 escalates to JS render before the serper fallback
-    expect(mockScrape).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.anything(),
-      expect.objectContaining({ render: true })
-    );
+    expect(res.body.emails[0].email).toBe("editorial@outlet.com"); // LLM rank, best-first
+    expect(res.body.emails[0].score).toBe(0);
+    expect(res.body.emails.map((e: { email: string }) => e.email)).toEqual([
+      "editorial@outlet.com",
+      "info@outlet.com",
+    ]);
+    expect(mockSerperUrls).toHaveBeenCalledWith("Outlet", "outlet.com", expect.anything(), 2);
+    expect(mockMapSitemap).not.toHaveBeenCalled(); // Path B not reached
+    expect(mockCloseRun).toHaveBeenCalledWith(CHILD_RUN_ID, "completed", expect.anything());
   });
 
-  it("returns no_email_found when every rung is empty", async () => {
-    mockScrape.mockResolvedValue("<html>nothing</html>");
+  it("drops junk non-email tokens via the LLM (e.g. @apps.globoid)", async () => {
+    mockSerperUrls.mockResolvedValue(["https://g1.globo.com/contato"]);
+    mockScrape.mockResolvedValue(
+      `cobertura-ao-vivo-frontend@apps.globoid redacao@g1.globo.com`
+    );
+    // LLM keeps only the real editorial inbox, drops the app identifier.
+    mockCategorize.mockResolvedValueOnce([{ email: "redacao@g1.globo.com", category: "editorial" }]);
+
+    const res = await withHeaders(
+      request(app).post("/orgs/outlets/editorial-emails/discover")
+    ).send({ outletName: "GloboNews", domain: "g1.globo.com", url: "https://g1.globo.com" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("found_google");
+    expect(res.body.emails.map((e: { email: string }) => e.email)).toEqual(["redacao@g1.globo.com"]);
+    // the categorize step received the junk token as a candidate but it was dropped
+    expect(mockCategorize.mock.calls[0][2]).toContain("cobertura-ao-vivo-frontend@apps.globoid");
+  });
+
+  it("Path B: when Google yields nothing, sitemap → LLM picks URLs → status=found", async () => {
+    mockSerperUrls.mockResolvedValue(["https://outlet.com/article"]);
+    mockScrape.mockImplementation(async (url: string) =>
+      url === "https://outlet.com/imprensa" ? "press@outlet.com" : "<html>no email</html>"
+    );
+    mockMapSitemap.mockResolvedValue([
+      "https://outlet.com/article",
+      "https://outlet.com/imprensa",
+    ]);
+    mockPickUrls.mockResolvedValue(["https://outlet.com/imprensa"]);
+    // categorize: A (no emails) → [], then B → press@
+    mockCategorize.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      { email: "press@outlet.com", category: "press" },
+    ]);
+
+    const res = await withHeaders(
+      request(app).post("/orgs/outlets/editorial-emails/discover")
+    ).send(body);
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("found");
+    expect(res.body.emails[0].email).toBe("press@outlet.com");
+    expect(mockMapSitemap).toHaveBeenCalled();
+    expect(mockPickUrls).toHaveBeenCalled();
+  });
+
+  it("returns no_email_found when neither path yields a vetted address", async () => {
+    mockSerperUrls.mockResolvedValue(["https://outlet.com/article"]);
+    mockScrape.mockResolvedValue("<html>nothing useful</html>");
+    mockMapSitemap.mockResolvedValue(["https://outlet.com/article"]);
+    mockPickUrls.mockResolvedValue(["https://outlet.com/article"]);
+    mockCategorize.mockResolvedValue([]); // both paths vet to nothing
 
     const res = await withHeaders(
       request(app).post("/orgs/outlets/editorial-emails/discover")
@@ -132,7 +160,22 @@ describe("POST /orgs/outlets/editorial-emails/discover", () => {
     expect(res.body.emails).toEqual([]);
   });
 
-  it("serves a fresh cache hit without calling any scraper", async () => {
+  it("flags parked domains as parked_dead", async () => {
+    mockSerperUrls.mockResolvedValue(["https://outlet.com/"]);
+    mockScrape.mockResolvedValue(`<script>location.href="/lander?oref=x"</script>`);
+    mockMapSitemap.mockResolvedValue(["https://outlet.com/"]);
+    mockPickUrls.mockResolvedValue(["https://outlet.com/"]);
+
+    const res = await withHeaders(
+      request(app).post("/orgs/outlets/editorial-emails/discover")
+    ).send(body);
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("parked_dead");
+    expect(res.body.emails).toEqual([]);
+  });
+
+  it("serves a fresh cache hit without scraping or searching", async () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [{ status: "found" }] }) // lookup
       .mockResolvedValueOnce({ rows: [{ email: "cached@outlet.com", score: 0, source: "cache" }] }); // emails
@@ -145,12 +188,13 @@ describe("POST /orgs/outlets/editorial-emails/discover", () => {
     expect(res.body.status).toBe("found");
     expect(res.body.emails[0].email).toBe("cached@outlet.com");
     expect(mockScrape).not.toHaveBeenCalled();
-    expect(mockSerper).not.toHaveBeenCalled();
+    expect(mockSerperUrls).not.toHaveBeenCalled();
   });
 
-  it("returns 502 and closes the run as failed on upstream error", async () => {
+  it("returns 502 and closes the run as failed on upstream scrape error", async () => {
+    mockSerperUrls.mockResolvedValue(["https://outlet.com/x"]);
     mockScrape.mockRejectedValue(
-      new Error("[outlets-service] scraping-service POST /scrape failed (502) for https://outlet.com: down")
+      new Error("[outlets-service] scraping-service POST /scrape failed (502) for https://outlet.com/x: down")
     );
 
     const res = await withHeaders(
@@ -183,9 +227,9 @@ describe("POST /orgs/outlets/editorial-emails/discover", () => {
 
 describe("POST /orgs/outlets/editorial-emails/discover-batch", () => {
   it("returns one result per outlet", async () => {
-    mockScrape.mockImplementation(async (url: string) =>
-      url.endsWith("/contact") ? "press@outlet.com" : "<html>no email</html>"
-    );
+    mockSerperUrls.mockResolvedValue(["https://outlet.com/contact"]);
+    mockScrape.mockResolvedValue("press@outlet.com");
+    mockCategorize.mockResolvedValue([{ email: "press@outlet.com", category: "press" }]);
 
     const res = await withHeaders(
       request(app).post("/orgs/outlets/editorial-emails/discover-batch")
@@ -193,7 +237,7 @@ describe("POST /orgs/outlets/editorial-emails/discover-batch", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.results).toHaveLength(1);
-    expect(res.body.results[0].status).toBe("found");
+    expect(res.body.results[0].status).toBe("found_google");
     expect(res.body.results[0].emails[0].email).toBe("press@outlet.com");
     expect(mockCreateChildRun).toHaveBeenCalledWith("editorial-email-discover-batch", expect.anything());
   });

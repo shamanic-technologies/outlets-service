@@ -55,16 +55,17 @@ export async function scrapeRawHtml(
 }
 
 /**
- * Discover candidate URLs on a site via scraping-service /map (sitemap-guided),
- * filtered to contact/about/team/masthead-style pages.
+ * Discover candidate URLs on a site via scraping-service /map (sitemap-guided).
+ * Returns the raw URL list (capped) — the caller's LLM step picks the few most
+ * likely editorial/contact pages to scrape, rather than a brittle keyword filter.
  */
-export async function mapContactUrls(url: string, ctx: OrgContext): Promise<string[]> {
+export async function mapSitemapUrls(url: string, ctx: OrgContext, limit = 200): Promise<string[]> {
   let res: Response;
   try {
     res = await fetch(`${config.scrapingServiceUrl}/map`, {
       method: "POST",
       headers: buildServiceHeaders(config.scrapingServiceApiKey, ctx),
-      body: JSON.stringify({ url, sitemapOnly: true, limit: 200 }),
+      body: JSON.stringify({ url, sitemapOnly: true, limit }),
       signal: AbortSignal.timeout(MAP_TIMEOUT_MS),
     });
   } catch (err) {
@@ -80,7 +81,5 @@ export async function mapContactUrls(url: string, ctx: OrgContext): Promise<stri
   }
 
   const data = (await res.json()) as { urls?: string[] };
-  return (data.urls ?? [])
-    .filter((u) => /contact|about|team|impressum|connect|reach|masthead|write-for/i.test(u))
-    .slice(0, 4);
+  return data.urls ?? [];
 }
