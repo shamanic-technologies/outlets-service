@@ -321,6 +321,14 @@
             "type": "string",
             "nullable": true
           },
+          "editorialEmailStatus": {
+            "type": "string",
+            "enum": [
+              "found",
+              "not_found"
+            ],
+            "nullable": true
+          },
           "createdAt": {
             "type": "string"
           },
@@ -352,6 +360,14 @@
           },
           "outletDomain": {
             "type": "string",
+            "nullable": true
+          },
+          "editorialEmailStatus": {
+            "type": "string",
+            "enum": [
+              "found",
+              "not_found"
+            ],
             "nullable": true
           },
           "createdAt": {
@@ -1293,6 +1309,112 @@
         },
         "required": [
           "outletIds"
+        ]
+      },
+      "EditorialEmailSourcesBody": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "domain": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "outletName": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "url": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "found",
+                    "not_found"
+                  ]
+                },
+                "emails": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "email": {
+                        "type": "string"
+                      },
+                      "role": {
+                        "type": "string"
+                      },
+                      "sourceUrl": {
+                        "type": "string"
+                      },
+                      "captureMethod": {
+                        "type": "string",
+                        "enum": [
+                          "page",
+                          "search",
+                          "social",
+                          "manual"
+                        ]
+                      },
+                      "confidence": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      }
+                    },
+                    "required": [
+                      "email",
+                      "captureMethod"
+                    ]
+                  }
+                },
+                "note": {
+                  "type": "string"
+                },
+                "capturedBy": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "domain",
+                "outletName",
+                "status",
+                "capturedBy"
+              ]
+            }
+          }
+        },
+        "required": [
+          "entries"
+        ]
+      },
+      "EditorialEmailSourcesResponse": {
+        "type": "object",
+        "properties": {
+          "outlets": {
+            "type": "integer"
+          },
+          "emailsUpserted": {
+            "type": "integer"
+          },
+          "found": {
+            "type": "integer"
+          },
+          "notFound": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "outlets",
+          "emailsUpserted",
+          "found",
+          "notFound"
         ]
       },
       "HealthResponse": {
@@ -4311,6 +4433,81 @@
           },
           "400": {
             "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/editorial-emails/sources": {
+      "post": {
+        "summary": "Seed curated editorial-email bronze (internal)",
+        "description": "Seeds the GLOBAL, org-agnostic curated editorial-email bronze from a manually-verified list. Each entry upserts the outlet by domain and records its verdict: `found` (with >=1 curated email + provenance) or `not_found` (a verified dead/unreachable editorial contact). Curated data takes precedence over the scrape-derived org cache on discover, and a `not_found` verdict stops re-scraping + powers the dashboard 'not found' state.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorialEmailSourcesBody"
+              },
+              "example": {
+                "entries": [
+                  {
+                    "domain": "exame.com",
+                    "outletName": "Exame",
+                    "url": "https://exame.com",
+                    "status": "found",
+                    "capturedBy": "curated-2026-06",
+                    "emails": [
+                      {
+                        "email": "publicidade.exame@exame.com",
+                        "role": "advertising",
+                        "sourceUrl": "https://exame.com/institucional/expediente/",
+                        "captureMethod": "page",
+                        "confidence": 0.9
+                      }
+                    ]
+                  },
+                  {
+                    "domain": "g1.globo.com",
+                    "outletName": "GloboNews",
+                    "status": "not_found",
+                    "capturedBy": "curated-2026-06",
+                    "note": "Globo Ads self-service; rep page 403"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Curated bronze seeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorialEmailSourcesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
             "content": {
               "application/json": {
                 "schema": {

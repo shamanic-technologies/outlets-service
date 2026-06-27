@@ -65,6 +65,8 @@ export const outletResponseSchema = z.object({
   outletUrl: z.string(),
   // null when the outlet has no valid bare-host domain (never a "-" placeholder).
   outletDomain: z.string().nullable(),
+  // Global curated editorial-email verdict: 'found' | 'not_found' | null (never curated).
+  editorialEmailStatus: z.enum(["found", "not_found"]).nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -344,6 +346,55 @@ export const editorialEmailBatchResultSchema = z.object({
 
 export type EditorialEmailDiscover = z.infer<typeof editorialEmailDiscoverSchema>;
 export type EditorialEmailDiscoverBatch = z.infer<typeof editorialEmailDiscoverBatchSchema>;
+
+// --- Curated editorial-email bronze (internal seed) ---
+
+const captureMethodEnum = z.enum(["page", "search", "social", "manual"]);
+
+/** One curated editorial email + its provenance. */
+export const editorialEmailSourceSchema = z.object({
+  email: z.string().email(),
+  role: z.string().optional(),
+  sourceUrl: z.string().optional(),
+  captureMethod: captureMethodEnum,
+  confidence: z.number().min(0).max(1).optional(),
+});
+
+/**
+ * One outlet's curated verdict. `status: "found"` requires >=1 email;
+ * `status: "not_found"` records a verified dead/unreachable editorial contact
+ * (form-only / bot-walled / brand-owned) so discover never re-scrapes it and the
+ * dashboard can show a "not found" state. Mutually exclusive — enforced below.
+ */
+export const editorialEmailSourceEntrySchema = z
+  .object({
+    domain: z.string().min(1),
+    outletName: z.string().min(1),
+    url: z.string().url().optional(),
+    status: z.enum(["found", "not_found"]),
+    emails: z.array(editorialEmailSourceSchema).optional(),
+    note: z.string().optional(),
+    capturedBy: z.string().min(1),
+  })
+  .refine(
+    (e) => (e.status === "found" ? (e.emails?.length ?? 0) >= 1 : (e.emails?.length ?? 0) === 0),
+    { message: "status 'found' requires >=1 email; status 'not_found' requires no emails" }
+  );
+
+export const editorialEmailSourcesBodySchema = z.object({
+  entries: z.array(editorialEmailSourceEntrySchema).min(1).max(500),
+});
+
+export const editorialEmailSourcesResponseSchema = z.object({
+  outlets: z.number().int(),
+  emailsUpserted: z.number().int(),
+  found: z.number().int(),
+  notFound: z.number().int(),
+});
+
+export type EditorialEmailSource = z.infer<typeof editorialEmailSourceSchema>;
+export type EditorialEmailSourceEntry = z.infer<typeof editorialEmailSourceEntrySchema>;
+export type EditorialEmailSourcesBody = z.infer<typeof editorialEmailSourcesBodySchema>;
 
 // --- Price requests (pay-per-publish) ---
 

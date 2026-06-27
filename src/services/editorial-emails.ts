@@ -9,6 +9,7 @@ import {
   isLander,
   type EditorialStatus,
 } from "../lib/email-extract";
+import { readCuratedEditorial } from "./editorial-email-sources";
 
 // Editorial emails change rarely — cache per (org, domain) for 60 days.
 const CACHE_TTL_DAYS = 60;
@@ -31,6 +32,8 @@ export interface EditorialEmail {
   email: string;
   score: number;
   source: string;
+  // Optional explicit role from the curated bronze; falls back to roleOf(email).
+  role?: string;
 }
 
 export interface EditorialResult {
@@ -44,6 +47,16 @@ export async function discoverEditorialEmails(
   input: EditorialEmailInput,
   ctx: OrgContext
 ): Promise<EditorialResult> {
+  // Rung 0 — curated bronze wins over the scrape cache, for every org. A 'found'
+  // verdict serves the curated emails; a 'not_found' verdict serves the terminal
+  // "no email" status WITHOUT scraping a known-dead domain. Either way we refresh
+  // the org silver cache so the dashboard read stays consistent.
+  const curated = await readCuratedEditorial(input.domain);
+  if (curated) {
+    await writeCache(curated, ctx);
+    return curated;
+  }
+
   const cached = await readCache(input.domain, ctx);
   if (cached) return cached;
 
@@ -170,7 +183,7 @@ async function writeCache(result: EditorialResult, ctx: OrgContext): Promise<voi
        VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
        ON CONFLICT (org_id, domain, email)
        DO UPDATE SET role = EXCLUDED.role, score = EXCLUDED.score, source = EXCLUDED.source, discovered_at = CURRENT_TIMESTAMP`,
-      [ctx.orgId, result.domain, e.email, roleOf(e.email), e.score, e.source]
+      [ctx.orgId, result.domain, e.email, e.role ?? roleOf(e.email), e.score, e.source]
     );
   }
 }
