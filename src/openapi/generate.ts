@@ -25,6 +25,7 @@ import {
   editorialEmailResultSchema,
   editorialEmailBatchResultSchema,
   priceRequestBatchSchema,
+  priceRequestSendSchema,
   priceRequestResultSchema,
   priceRequestBatchResponseSchema,
   createPriceSourceSchema,
@@ -158,6 +159,7 @@ const spec = {
       EditorialEmailResult: zodToJsonSchema(editorialEmailResultSchema),
       EditorialEmailBatchResult: zodToJsonSchema(editorialEmailBatchResultSchema),
       PriceRequestBatch: zodToJsonSchema(priceRequestBatchSchema),
+      PriceRequestSend: zodToJsonSchema(priceRequestSendSchema),
       PriceRequestResult: zodToJsonSchema(priceRequestResultSchema),
       PriceRequestBatchResponse: zodToJsonSchema(priceRequestBatchResponseSchema),
       CreatePriceSource: zodToJsonSchema(createPriceSourceSchema),
@@ -654,6 +656,39 @@ const spec = {
                 example: {
                   results: [
                     { outletId: "11111111-2222-3333-4444-555555555555", status: "ongoing", editorialEmail: "editorial@citywealthmag.com", messageId: "instantly-lead-abc123" },
+                  ],
+                },
+              },
+            },
+          },
+          "400": { description: "Validation error", content: { "application/json": { schema: ref("ErrorResponse") } } },
+          "502": { description: "Upstream service error (runs-service / email-gateway)", content: { "application/json": { schema: ref("ErrorResponse") } } },
+        },
+      },
+    },
+    "/orgs/outlets/price-requests/send": {
+      post: {
+        summary: "Send-only rate-card sequence to curated outlets (org-scoped)",
+        description: "SEND-ONLY mid-workflow step: fires the 3-step pay-per-publish rate-card sequence to 1..100 outlets whose editorial emails are ALREADY in the curated bronze (read by outlet id, best-first, top address to + the rest BCC'd). NO discovery/scrape/LLM and NO org-ownership gate — use when the research is already done (e.g. the curated seed). An outlet with no curated email (a 'not_found' verdict or never curated) is skipped with status='error'. The reply is ingested later as a bronze pricing note. Per-outlet failures returned inline without aborting the batch. Max 100 outlets per request.",
+        parameters: [...orgHeaders],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: ref("PriceRequestSend"),
+              example: { outletIds: ["11111111-2222-3333-4444-555555555555"] },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Per-outlet results. status='ongoing' when the sequence was sent; status='error' (e.g. 'No curated editorial email', 'Outlet not found') otherwise.",
+            content: {
+              "application/json": {
+                schema: ref("PriceRequestBatchResponse"),
+                example: {
+                  results: [
+                    { outletId: "11111111-2222-3333-4444-555555555555", status: "ongoing", editorialEmail: "press@statista.com", messageId: "instantly-lead-abc123" },
                   ],
                 },
               },

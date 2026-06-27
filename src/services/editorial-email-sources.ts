@@ -118,3 +118,31 @@ export async function readCuratedEditorial(domain: string): Promise<EditorialRes
 
   return { domain, status: "found", emails };
 }
+
+export interface CuratedEmail {
+  email: string;
+  role?: string;
+}
+
+/**
+ * Read an outlet's curated editorial emails by id, editorial-first (best first).
+ * Pure bronze lookup — NO discovery/scrape/LLM. Empty when the outlet has no
+ * curated emails (a `not_found` verdict or never curated). Used by the send-only
+ * price-request path so the workflow can fire the sequence without re-researching.
+ */
+export async function getCuratedEmailsForOutlet(outletId: string): Promise<CuratedEmail[]> {
+  const rows = await pool.query(
+    `SELECT email, role
+       FROM outlet_editorial_email_sources
+      WHERE outlet_id = $1`,
+    [outletId]
+  );
+  return rows.rows
+    .map((r: { email: string; role: string | null }) => ({
+      email: r.email,
+      role: r.role ?? undefined,
+      score: scoreEmail(r.email),
+    }))
+    .sort((a, b) => a.score - b.score)
+    .map(({ email, role }) => ({ email, role }));
+}
