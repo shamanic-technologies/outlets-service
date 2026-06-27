@@ -22,6 +22,4 @@ export const config = {
   scrapingServiceApiKey: process.env.SCRAPING_SERVICE_API_KEY || "",
   emailGatewayServiceUrl: process.env.EMAIL_GATEWAY_SERVICE_URL || "",
   emailGatewayServiceApiKey: process.env.EMAIL_GATEWAY_SERVICE_API_KEY || "",
-  apifyServiceUrl: process.env.APIFY_SERVICE_URL || "",
-  apifyServiceApiKey: process.env.APIFY_SERVICE_API_KEY || "",
 };

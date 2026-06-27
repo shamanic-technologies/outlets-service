@@ -1,7 +1,6 @@
 import { config } from "../config";
 import type { OrgContext } from "../middleware/org-context";
 import { buildServiceHeaders } from "./headers";
-import { extractEmails, rootDomain } from "../lib/email-extract";
 
 const GOOGLE_TIMEOUT_MS = 60_000; // 60 seconds
 
@@ -150,22 +149,25 @@ export async function validateOutletBatch<T extends { name: string; domain: stri
 }
 
 /**
- * Editorial-email Google fallback via serper (google-service /search/web).
- * Reuses the existing searchSingle wrapper (google-service declares the serper
- * cost on the forwarded run). Returns only emails whose domain matches the
- * outlet root (drops junk picked up from snippets).
+ * Editorial-contact Google search via serper (google-service /search/web).
+ * Returns the top result-page URLs to scrape — NOT snippet-extracted emails.
+ * A Google query like `"<outlet>" press contact email` reliably surfaces the
+ * real editorial/press inbox on the first results, so we scrape those pages and
+ * regex the addresses out of them (then an LLM categorizes). google-service
+ * declares the serper cost on the forwarded run; outlets-service stays cost-free.
  */
-export async function serperEditorialEmails(
+export async function serperTopResultUrls(
   outletName: string,
   domain: string,
-  ctx: OrgContext
+  ctx: OrgContext,
+  limit = 2
 ): Promise<string[]> {
-  const query = `"${outletName}" (editor OR editorial OR press OR newsroom) email contact ${domain}`;
-  const response = await searchSingle(query, "web", ctx, { num: 20 });
-  const root = rootDomain(domain);
-  return extractEmails(JSON.stringify(response.results)).filter((e) =>
-    (e.split("@")[1] || "").includes(root)
-  );
+  const query = `"${outletName}" (press OR editorial OR newsroom OR media OR imprensa OR contato) contact email ${domain}`;
+  const response = await searchSingle(query, "web", ctx, { num: 10 });
+  return response.results
+    .map((r) => r.url)
+    .filter((u): u is string => Boolean(u))
+    .slice(0, limit);
 }
 
 export { searchSingle };

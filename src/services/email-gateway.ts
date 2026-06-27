@@ -20,6 +20,10 @@ export interface BroadcastSequenceStep {
  */
 export interface BroadcastSendRequest {
   to: string;
+  /** Comma-separated BCC list — the email-gateway broadcast channel forwards it
+   *  to instantly-service, which sets the Instantly campaign `bcc_list`. Used to
+   *  copy an outlet's other editorial contacts on the same rate-card thread. */
+  bcc?: string;
   recipientFirstName: string;
   recipientLastName: string;
   recipientCompany: string;
