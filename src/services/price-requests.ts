@@ -1,6 +1,7 @@
 import { pool } from "../db/pool";
 import type { OrgContext } from "../middleware/org-context";
 import { discoverEditorialEmails } from "./editorial-emails";
+import { getCuratedEmailsForOutlet } from "./editorial-email-sources";
 import { sendBroadcastEmail, type BroadcastSequenceStep } from "./email-gateway";
 
 export const PRICE_REQUEST_SUBJECT = "Branded content placement — rate card request";
@@ -151,6 +152,41 @@ async function recordPriceRequest(
 }
 
 /**
+ * Send the 3-step rate-card sequence to one outlet's editorial desk (top address
+ * to, the rest BCC'd onto the same thread) and record the awaiting-reply row.
+ * The single send+record primitive shared by the discovery flow and the
+ * send-only flow — both resolve emails differently, then funnel here.
+ */
+async function sendPriceRequestSequence(
+  outlet: OutletRow,
+  to: string,
+  bcc: string | undefined,
+  ctx: OrgContext
+): Promise<PriceRequestResult> {
+  const send = await sendBroadcastEmail(
+    {
+      to,
+      bcc,
+      recipientFirstName: "Editorial",
+      recipientLastName: "Team",
+      recipientCompany: outlet.outlet_name,
+      subject: PRICE_REQUEST_SUBJECT,
+      sequence: buildPriceRequestSequence(outlet.outlet_name),
+      leadId: outlet.id,
+      campaignId: ctx.campaignId,
+      workflowSlug: ctx.workflowSlug,
+      tag: PRICE_REQUEST_TAG,
+      metadata: { outletId: outlet.id, outletDomain: outlet.outlet_domain },
+      idempotencyKey: `price-request:${outlet.id}`,
+    },
+    ctx
+  );
+
+  await recordPriceRequest(outlet.id, ctx.orgId, to, send.messageId ?? null);
+  return { outletId: outlet.id, status: "ongoing", editorialEmail: to, messageId: send.messageId };
+}
+
+/**
  * Run one outlet through the pay-per-publish flow: resolve its editorial email,
  * email the rate-card request via email-gateway (broadcast/Instantly), and record
  * the request as awaiting a reply. Per-outlet failures are returned as `error`
@@ -172,27 +208,7 @@ async function requestPriceForOutlet(outlet: OutletRow, ctx: OrgContext): Promis
     const [best, ...rest] = discovery.emails;
     const bcc = rest.map((e) => e.email).join(",") || undefined;
 
-    const send = await sendBroadcastEmail(
-      {
-        to: best.email,
-        bcc,
-        recipientFirstName: "Editorial",
-        recipientLastName: "Team",
-        recipientCompany: outlet.outlet_name,
-        subject: PRICE_REQUEST_SUBJECT,
-        sequence: buildPriceRequestSequence(outlet.outlet_name),
-        leadId: outlet.id,
-        campaignId: ctx.campaignId,
-        workflowSlug: ctx.workflowSlug,
-        tag: PRICE_REQUEST_TAG,
-        metadata: { outletId: outlet.id, outletDomain: outlet.outlet_domain },
-        idempotencyKey: `price-request:${outlet.id}`,
-      },
-      ctx
-    );
-
-    await recordPriceRequest(outlet.id, ctx.orgId, best.email, send.messageId ?? null);
-    return { outletId: outlet.id, status: "ongoing", editorialEmail: best.email, messageId: send.messageId };
+    return await sendPriceRequestSequence(outlet, best.email, bcc, ctx);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[outlets-service] Price request failed for outlet ${outlet.id}:`, message);
@@ -224,6 +240,64 @@ export async function requestPricesForOutlets(
         continue;
       }
       results[idx] = await requestPriceForOutlet(outlet, ctx);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, outletIds.length) }, worker));
+  return results;
+}
+
+/** Load outlets by id from the GLOBAL registry — no org-ownership gate. */
+async function loadOutletsGlobal(outletIds: string[]): Promise<Map<string, OutletRow>> {
+  const r = await pool.query(
+    `SELECT id, outlet_name, outlet_url, outlet_domain FROM outlets WHERE id = ANY($1)`,
+    [outletIds]
+  );
+  const map = new Map<string, OutletRow>();
+  for (const row of r.rows as OutletRow[]) map.set(row.id, row);
+  return map;
+}
+
+/**
+ * SEND-ONLY pay-per-publish: fire the rate-card sequence to outlets whose
+ * editorial emails are ALREADY known (read from the curated bronze by id) — the
+ * mid-workflow "send" step with NO discovery/scrape/LLM and NO org-ownership gate.
+ * An outlet with no curated email (a `not_found` verdict or never curated) is
+ * skipped with an `error` result; the global price/record row is keyed on outlet,
+ * so the org is audit-only (the inbound workflow's org). Per-outlet failures are
+ * surfaced, never abort the batch. Results preserve input order.
+ */
+export async function sendCuratedPriceRequests(
+  outletIds: string[],
+  ctx: OrgContext,
+  concurrency = 8
+): Promise<PriceRequestResult[]> {
+  const outlets = await loadOutletsGlobal(outletIds);
+  const results = new Array<PriceRequestResult>(outletIds.length);
+
+  let cursor = 0;
+  async function worker(): Promise<void> {
+    while (cursor < outletIds.length) {
+      const idx = cursor++;
+      const outletId = outletIds[idx];
+      const outlet = outlets.get(outletId);
+      if (!outlet) {
+        results[idx] = { outletId, status: "error", error: "Outlet not found" };
+        continue;
+      }
+      try {
+        const emails = await getCuratedEmailsForOutlet(outletId);
+        if (emails.length === 0) {
+          results[idx] = { outletId, status: "error", error: "No curated editorial email" };
+          continue;
+        }
+        const [best, ...rest] = emails;
+        const bcc = rest.map((e) => e.email).join(",") || undefined;
+        results[idx] = await sendPriceRequestSequence(outlet, best.email, bcc, ctx);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`[outlets-service] Curated price request failed for outlet ${outletId}:`, message);
+        results[idx] = { outletId, status: "error", error: message };
+      }
     }
   }
   await Promise.all(Array.from({ length: Math.min(concurrency, outletIds.length) }, worker));
