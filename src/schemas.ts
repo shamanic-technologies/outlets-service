@@ -403,6 +403,15 @@ export const priceRequestBatchSchema = z.object({
   outletIds: z.array(z.string().uuid()).min(1).max(50),
 });
 
+/**
+ * Body for POST /orgs/outlets/price-requests/send — SEND-ONLY: fire the rate-card
+ * sequence to outlets whose editorial emails are already in the curated bronze.
+ * No discovery, no org-ownership gate. Cap 100/call.
+ */
+export const priceRequestSendSchema = z.object({
+  outletIds: z.array(z.string().uuid()).min(1).max(100),
+});
+
 export const priceRequestResultSchema = z.object({
   outletId: z.string().uuid(),
   status: z.enum(["ongoing", "error"]),
@@ -416,6 +425,7 @@ export const priceRequestBatchResponseSchema = z.object({
 });
 
 export type PriceRequestBatch = z.infer<typeof priceRequestBatchSchema>;
+export type PriceRequestSend = z.infer<typeof priceRequestSendSchema>;
 
 // Type exports
 export type CreateOutlet = z.infer<typeof createOutletSchema>;
