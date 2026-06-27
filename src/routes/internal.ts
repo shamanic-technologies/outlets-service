@@ -10,7 +10,9 @@ import {
   ensureOutletSchema,
   createPricingSourceSchema,
   linkSourceOutletsSchema,
+  editorialEmailSourcesBodySchema,
 } from "../schemas";
+import { seedEditorialEmailSources } from "../services/editorial-email-sources";
 import { fetchOutletStatuses } from "../services/outlet-status";
 import { buildServiceHeaders } from "../services/headers";
 import {
@@ -377,6 +379,25 @@ router.post(
     } catch (err) {
       console.error("[outlets-service] Error fanning out broker extraction:", err);
       res.status(502).json({ error: "Pricing extraction failed" });
+    }
+  }
+);
+
+// POST /internal/editorial-emails/sources — seed the curated editorial-email
+// bronze (global, org-agnostic). Each entry upserts the outlet by domain, records
+// its verdict (found / not_found), and — for `found` — stores its curated emails
+// with provenance. Curated data takes precedence over the scrape cache on read,
+// and a `not_found` verdict stops re-scraping + powers the dashboard "not found".
+router.post(
+  "/editorial-emails/sources",
+  validateBody(editorialEmailSourcesBodySchema),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const summary = await seedEditorialEmailSources(req.body.entries);
+      res.status(201).json(summary);
+    } catch (err) {
+      console.error("[outlets-service] Error seeding editorial-email sources:", err);
+      res.status(500).json({ error: "Internal server error" });
     }
   }
 );

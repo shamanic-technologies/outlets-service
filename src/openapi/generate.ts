@@ -34,6 +34,8 @@ import {
   ensureOutletSchema,
   createPricingSourceSchema,
   linkSourceOutletsSchema,
+  editorialEmailSourcesBodySchema,
+  editorialEmailSourcesResponseSchema,
 } from "../schemas";
 import { zodToJsonSchema } from "./zod-to-json";
 
@@ -165,6 +167,8 @@ const spec = {
       EnsureOutlet: zodToJsonSchema(ensureOutletSchema),
       CreatePricingSource: zodToJsonSchema(createPricingSourceSchema),
       LinkSourceOutlets: zodToJsonSchema(linkSourceOutletsSchema),
+      EditorialEmailSourcesBody: zodToJsonSchema(editorialEmailSourcesBodySchema),
+      EditorialEmailSourcesResponse: zodToJsonSchema(editorialEmailSourcesResponseSchema),
       HealthResponse: zodToJsonSchema(healthResponseSchema),
       ErrorResponse: zodToJsonSchema(errorResponseSchema),
     },
@@ -794,6 +798,31 @@ const spec = {
           "200": { description: "Outlet already existed" },
           "201": { description: "Outlet created" },
           "400": { description: "Validation error", content: { "application/json": { schema: ref("ErrorResponse") } } },
+        },
+      },
+    },
+    "/internal/editorial-emails/sources": {
+      post: {
+        summary: "Seed curated editorial-email bronze (internal)",
+        description: "Seeds the GLOBAL, org-agnostic curated editorial-email bronze from a manually-verified list. Each entry upserts the outlet by domain and records its verdict: `found` (with >=1 curated email + provenance) or `not_found` (a verified dead/unreachable editorial contact). Curated data takes precedence over the scrape-derived org cache on discover, and a `not_found` verdict stops re-scraping + powers the dashboard 'not found' state.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: ref("EditorialEmailSourcesBody"),
+              example: {
+                entries: [
+                  { domain: "exame.com", outletName: "Exame", url: "https://exame.com", status: "found", capturedBy: "curated-2026-06", emails: [{ email: "publicidade.exame@exame.com", role: "advertising", sourceUrl: "https://exame.com/institucional/expediente/", captureMethod: "page", confidence: 0.9 }] },
+                  { domain: "g1.globo.com", outletName: "GloboNews", status: "not_found", capturedBy: "curated-2026-06", note: "Globo Ads self-service; rep page 403" },
+                ],
+              },
+            },
+          },
+        },
+        responses: {
+          "201": { description: "Curated bronze seeded", content: { "application/json": { schema: ref("EditorialEmailSourcesResponse") } } },
+          "400": { description: "Validation error", content: { "application/json": { schema: ref("ErrorResponse") } } },
+          "500": { description: "Internal error", content: { "application/json": { schema: ref("ErrorResponse") } } },
         },
       },
     },

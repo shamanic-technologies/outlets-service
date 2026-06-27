@@ -519,6 +519,43 @@ export async function runMigration(): Promise<void> {
   // (idempotent + reversible + dry-runnable).
   await pool.query(`ALTER TABLE outlets ALTER COLUMN outlet_domain DROP NOT NULL;`);
 
+  // Step 29: Curated editorial-email BRONZE — a manually-verified, GLOBAL
+  // (org-agnostic) layer that takes precedence over the scrape-derived org
+  // silver cache. Two tables:
+  //   * outlet_editorial_curation — one verdict row per outlet: 'found' (we
+  //     have curated email(s) in the sources table) or 'not_found' (verified no
+  //     reachable editorial email — form-only/bot-walled/brand-owned). The
+  //     verdict is PERMANENT (no TTL) and powers the dashboard "not found"
+  //     state + stops discover from re-scraping a known-dead domain.
+  //   * outlet_editorial_email_sources — the curated emails themselves, one row
+  //     per (outlet, email, captured_by) with provenance (source_url,
+  //     capture_method, confidence). Append/refresh; never crosses /orgs as-is —
+  //     it feeds the existing silver `outlet_editorial_emails` cache on read.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS outlet_editorial_curation (
+      outlet_id UUID PRIMARY KEY REFERENCES outlets(id) ON DELETE CASCADE,
+      status TEXT NOT NULL CHECK (status IN ('found', 'not_found')),
+      note TEXT,
+      captured_by TEXT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS outlet_editorial_email_sources (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      outlet_id UUID NOT NULL REFERENCES outlets(id) ON DELETE CASCADE,
+      email TEXT NOT NULL,
+      role TEXT,
+      source_url TEXT,
+      capture_method TEXT CHECK (capture_method IN ('page', 'search', 'social', 'manual')),
+      confidence NUMERIC(4,3),
+      captured_by TEXT NOT NULL DEFAULT 'curated',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_oees_outlet ON outlet_editorial_email_sources(outlet_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_oees_dedup
+      ON outlet_editorial_email_sources(outlet_id, email, captured_by);
+  `);
+
   console.log("[outlets-service] Migration complete.");
 }
 
