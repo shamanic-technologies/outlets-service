@@ -252,11 +252,13 @@ router.get(
                 p.sell_price_cents, p.currency, p.article_type, p.allows_dofollow_backlink,
                 p.online_duration_months, p.is_permanent, p.conditions_note,
                 p.updated_at AS pricing_updated_at,
-                req.requested_at AS price_requested_at
+                req.requested_at AS price_requested_at,
+                ec.status AS editorial_email_status
          FROM outlets o
          JOIN campaign_outlets co ON o.id = co.outlet_id
          LEFT JOIN outlet_pricing p ON p.outlet_id = o.id
          LEFT JOIN outlet_price_requests req ON req.outlet_id = o.id
+         LEFT JOIN outlet_editorial_curation ec ON ec.outlet_id = o.id
          ${dataWhere}
          ORDER BY co.updated_at DESC`,
         dataParams
@@ -280,6 +282,7 @@ router.get(
         conditionsNote: string | null;
         pricingUpdatedAt: string | null;
         priceRequestedAt: string | null;
+        editorialEmailStatus: "found" | "not_found" | null;
         campaigns: Array<{
           campaignId: string;
           featureSlug: string;
@@ -316,6 +319,7 @@ router.get(
             conditionsNote: r.conditions_note ?? null,
             pricingUpdatedAt: r.pricing_updated_at ?? null,
             priceRequestedAt: r.price_requested_at ?? null,
+            editorialEmailStatus: r.editorial_email_status ?? null,
             campaigns: [],
           };
           outletsMap.set(r.id, outlet);
@@ -413,6 +417,7 @@ router.get(
           status,
           pricing,
           priceRequestStatus: derivePriceRequestStatus(outlet.priceRequestedAt, outlet.pricingUpdatedAt),
+          editorialEmailStatus: outlet.editorialEmailStatus,
           campaigns: campaignsOut,
         };
       });
@@ -451,9 +456,11 @@ router.get("/:id", async (req: Request, res: Response): Promise<void> => {
   try {
     const ctx = req.orgContext!;
     const result = await pool.query(
-      `SELECT o.id, o.outlet_name, o.outlet_url, o.outlet_domain, o.created_at, o.updated_at
+      `SELECT o.id, o.outlet_name, o.outlet_url, o.outlet_domain, o.created_at, o.updated_at,
+              ec.status AS editorial_email_status
        FROM outlets o
        JOIN campaign_outlets co ON o.id = co.outlet_id
+       LEFT JOIN outlet_editorial_curation ec ON ec.outlet_id = o.id
        WHERE o.id = $1 AND co.org_id = $2
        LIMIT 1`,
       [req.params.id, ctx.orgId]
@@ -473,6 +480,7 @@ router.get("/:id", async (req: Request, res: Response): Promise<void> => {
       outletUrl: r.outlet_url,
       outletDomain: r.outlet_domain,
       domainRating: drDomain ? drMap.get(drDomain) ?? null : null,
+      editorialEmailStatus: r.editorial_email_status ?? null,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     });
