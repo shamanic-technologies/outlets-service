@@ -5,6 +5,7 @@ import { serperTopResultUrls } from "./google";
 import { categorizeEditorialEmails, pickContactUrls } from "./editorial-categorize";
 import { extractEmails, isLander, type EditorialStatus } from "../lib/email-extract";
 import { readCuratedEditorial } from "./editorial-email-sources";
+import { isTransientTransportError } from "../lib/transient";
 
 // Editorial emails change rarely — cache per (org, domain) for 60 days.
 const CACHE_TTL_DAYS = 60;
@@ -57,8 +58,43 @@ export async function discoverEditorialEmails(
   if (cached) return cached;
 
   const result = await runLadder(input, ctx);
-  await writeCache(result, ctx);
+  // `discovery_error` = a rung stayed unreachable after its transport failure, so
+  // "no email" is inconclusive, NOT confirmed. Do NOT cache it (a 60-day cache of
+  // a timeout would suppress every retry) — leave the domain uncached so the next
+  // call re-attempts. Terminal found/no_email_found/parked_dead ARE cached.
+  if (result.status !== "discovery_error") await writeCache(result, ctx);
   return result;
+}
+
+/**
+ * Run one collection rung (Google or sitemap), tolerating a TRANSIENT TRANSPORT
+ * failure of THAT rung: a cold-start / pool-saturation / timeout on scraping- or
+ * google-service surfaces as a thrown fetch error, and the ladder is a
+ * degradation ladder — one rung failing to reach its provider must fall through
+ * to the next rung, never abort the whole discovery. The rung degrades to "found
+ * nothing" and flags `degraded` so the terminal status is the honest
+ * `discovery_error` (inconclusive) rather than a false `no_email_found`.
+ *
+ * An HTTP 5xx from the provider is a REAL answer (the request reached it) and is
+ * NOT transient → it propagates (fail-loud), same as the per-chunk rule in ahref.
+ * A non-transport error (LLM categorize failure, a bug) also propagates.
+ */
+const EMPTY_SCRAPE: RawScrape = { emails: [], sourceByEmail: new Map(), parked: false };
+
+async function collectTolerant(
+  rung: string,
+  collect: () => Promise<RawScrape>
+): Promise<{ raw: RawScrape; degraded: boolean }> {
+  try {
+    return { raw: await collect(), degraded: false };
+  } catch (err) {
+    if (isTransientTransportError(err)) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[outlets-service] editorial discovery ${rung} rung degraded (transient transport): ${msg}`);
+      return { raw: EMPTY_SCRAPE, degraded: true };
+    }
+    throw err;
+  }
 }
 
 /**
@@ -81,21 +117,28 @@ export async function discoverEditorialEmails(
 async function runLadder(input: EditorialEmailInput, ctx: OrgContext): Promise<EditorialResult> {
   const base = input.url.replace(/\/$/, "");
 
-  // Path A — Google top results.
-  const aRaw = await collectFromGoogle(input, ctx);
-  const aVetted = await categorizeEditorialEmails(input.outletName, input.domain, aRaw.emails, ctx);
+  // Path A — Google top results. A transient transport failure of this rung
+  // degrades it to empty and lets Path B still try (the real robustness win).
+  const a = await collectTolerant("google", () => collectFromGoogle(input, ctx));
+  const aVetted = await categorizeEditorialEmails(input.outletName, input.domain, a.raw.emails, ctx);
   if (aVetted.length > 0) {
-    return buildResult(input.domain, "found_google", aVetted, aRaw.sourceByEmail, "google");
+    return buildResult(input.domain, "found_google", aVetted, a.raw.sourceByEmail, "google");
   }
 
-  // Path B — sitemap-guided contact pages.
-  const bRaw = await collectFromSitemap(input, base, ctx);
-  const bVetted = await categorizeEditorialEmails(input.outletName, input.domain, bRaw.emails, ctx);
+  // Path B — sitemap-guided contact pages (only reached because A yielded nothing).
+  const b = await collectTolerant("sitemap", () => collectFromSitemap(input, base, ctx));
+  const bVetted = await categorizeEditorialEmails(input.outletName, input.domain, b.raw.emails, ctx);
   if (bVetted.length > 0) {
-    return buildResult(input.domain, "found", bVetted, bRaw.sourceByEmail, "sitemap");
+    return buildResult(input.domain, "found", bVetted, b.raw.sourceByEmail, "sitemap");
   }
 
-  const parked = aRaw.parked || bRaw.parked;
+  // No vetted address. If a rung stayed unreachable (transport failure), discovery
+  // was inconclusive → `discovery_error` (uncached, retryable). Otherwise this is a
+  // real terminal: parked landers → `parked_dead`, else confirmed `no_email_found`.
+  if (a.degraded || b.degraded) {
+    return { domain: input.domain, status: "discovery_error", emails: [] };
+  }
+  const parked = a.raw.parked || b.raw.parked;
   return {
     domain: input.domain,
     status: parked ? "parked_dead" : "no_email_found",

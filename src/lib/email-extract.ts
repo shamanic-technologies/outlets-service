@@ -8,7 +8,10 @@ export type EditorialStatus =
   | "found"
   | "found_google"
   | "parked_dead"
-  | "no_email_found";
+  | "no_email_found"
+  // A discovery rung stayed unreachable after a transient transport failure, so
+  // "no email" is inconclusive (not confirmed). Uncached → the next call retries.
+  | "discovery_error";
 
 const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 const EMAIL_VALIDATE = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
