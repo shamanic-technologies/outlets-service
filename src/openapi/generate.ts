@@ -575,7 +575,7 @@ const spec = {
     "/orgs/outlets/editorial-emails/discover": {
       post: {
         summary: "Discover editorial emails for one outlet (org-scoped)",
-        description: "Resolves newsroom/editorial contact emails from an outlet domain via a fallback ladder (scraping-service raw fetch of contact/about paths → sitemap discovery → render retry → serper Google fallback). Results are cached per (org, domain) for 60 days, including terminal no_email_found / parked_dead. Editorial-typed addresses (editorial@/editor/news/press…) are surfaced first.",
+        description: "Resolves newsroom/editorial contact emails from an outlet domain via a fallback ladder (scraping-service raw fetch of contact/about paths → sitemap discovery → render retry → serper Google fallback). Each rung tolerates its own transient transport failure (cold-start/timeout) and degrades past it — an HTTP 5xx from a provider still fails loud. Results are cached per (org, domain) for 60 days, including terminal no_email_found / parked_dead; discovery_error (a rung stayed unreachable, so 'no email' is inconclusive) is NOT cached and is retryable. Editorial-typed addresses (editorial@/editor/news/press…) are surfaced first.",
         parameters: [...orgHeaders],
         requestBody: {
           required: true,
@@ -588,7 +588,7 @@ const spec = {
         },
         responses: {
           "200": {
-            description: "Discovery result (status ∈ found | found_google | parked_dead | no_email_found)",
+            description: "Discovery result (status ∈ found | found_google | parked_dead | no_email_found | discovery_error)",
             content: {
               "application/json": {
                 schema: ref("EditorialEmailResult"),
