@@ -1,6 +1,7 @@
 import { config } from "../config";
 import type { OrgContext } from "../middleware/org-context";
 import { buildServiceHeaders } from "./headers";
+import { isTransientTransportError } from "../lib/transient";
 
 /** A domain-keyed cache row from ahref-service (DR or traffic). */
 interface DomainCacheRow {
@@ -17,33 +18,6 @@ const CHUNK_FETCH_RETRIES = 3;
 const CHUNK_RETRY_BACKOFF_MS = [250, 500, 1000];
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-
-/**
- * True for a TRANSIENT TRANSPORT failure that thrown a chunk GET — ahref-service
- * cold-start / pool-saturation surfaces as a rejected fetch (TypeError: fetch
- * failed) whose cause walks down to ECONNRESET / ETIMEDOUT / ECONNREFUSED, or as
- * an AbortSignal TimeoutError. These reads are idempotent GETs, so a bounded
- * retry is write-safe. An HTTP 5xx is a real answer (the request reached ahref)
- * — NOT retried here (kept fail-loud per chunk).
- */
-function isTransientTransportError(err: unknown): boolean {
-  const codes = new Set([
-    "ETIMEDOUT", "ECONNREFUSED", "ECONNRESET", "EAI_AGAIN",
-    "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_SOCKET",
-  ]);
-  const seen = new Set<unknown>();
-  let cur: unknown = err;
-  while (cur && !seen.has(cur)) {
-    seen.add(cur);
-    const e = cur as { name?: string; code?: string; message?: string; cause?: unknown; errors?: unknown[] };
-    if (e.name === "TimeoutError") return true;
-    if (typeof e.code === "string" && codes.has(e.code)) return true;
-    if (typeof e.message === "string" && /fetch failed|timed out|timeout|ETIMEDOUT|ECONNRESET|ECONNREFUSED/i.test(e.message)) return true;
-    if (Array.isArray(e.errors) && e.errors.some((sub) => isTransientTransportError(sub))) return true;
-    cur = e.cause;
-  }
-  return false;
-}
 
 function buildDomainsUrl(path: string, domains: string[]): string {
   const params = new URLSearchParams({ domains: domains.join(",") });

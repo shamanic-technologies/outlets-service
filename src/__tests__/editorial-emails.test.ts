@@ -225,6 +225,88 @@ describe("POST /orgs/outlets/editorial-emails/discover", () => {
   });
 });
 
+describe("ladder degradation — a rung's transient transport failure does not abort discovery", () => {
+  const timeoutErr = () =>
+    new Error("[outlets-service] scraping-service POST /map timed out after 30000ms (https://outlet.com)");
+
+  it("Path A transient timeout degrades → Path B still runs and finds the email", async () => {
+    // Path A (Google) rung throws a transient timeout → must degrade, not abort.
+    mockSerperUrls.mockRejectedValue(
+      new Error("[outlets-service] google-service /search/web fetch failed (ETIMEDOUT)")
+    );
+    // Path B (sitemap) succeeds and yields a real editorial address.
+    mockMapSitemap.mockResolvedValue(["https://outlet.com/imprensa"]);
+    mockPickUrls.mockResolvedValue(["https://outlet.com/imprensa"]);
+    mockScrape.mockResolvedValue("press@outlet.com");
+    // categorize: A (empty, degraded) → [], then B → press@
+    mockCategorize.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      { email: "press@outlet.com", category: "press" },
+    ]);
+
+    const res = await withHeaders(
+      request(app).post("/orgs/outlets/editorial-emails/discover")
+    ).send(body);
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("found");
+    expect(res.body.emails[0].email).toBe("press@outlet.com");
+    expect(mockMapSitemap).toHaveBeenCalled(); // Path B reached despite A's timeout
+  });
+
+  it("both rungs empty + Path B /map transient timeout → discovery_error, NOT cached", async () => {
+    mockSerperUrls.mockResolvedValue([]); // Path A yields nothing (no error)
+    mockMapSitemap.mockRejectedValue(timeoutErr()); // Path B map times out (transient)
+    mockCategorize.mockResolvedValue([]);
+
+    const res = await withHeaders(
+      request(app).post("/orgs/outlets/editorial-emails/discover")
+    ).send(body);
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("discovery_error");
+    expect(res.body.emails).toEqual([]);
+    // Inconclusive → must NOT poison the 60-day cache (no lookup upsert).
+    const wroteCache = mockQuery.mock.calls.some((c) =>
+      typeof c[0] === "string" && c[0].includes("INSERT INTO outlet_editorial_email_lookups")
+    );
+    expect(wroteCache).toBe(false);
+  });
+
+  it("Path B /map HTTP 5xx (real answer, non-transient) still fails loud → 502", async () => {
+    mockSerperUrls.mockResolvedValue([]); // Path A nothing
+    mockMapSitemap.mockRejectedValue(
+      new Error("[outlets-service] scraping-service POST /map failed (503) for https://outlet.com: down")
+    );
+    mockCategorize.mockResolvedValue([]);
+
+    const res = await withHeaders(
+      request(app).post("/orgs/outlets/editorial-emails/discover")
+    ).send(body);
+
+    expect(res.status).toBe(502);
+    expect(mockCloseRun).toHaveBeenCalledWith(CHILD_RUN_ID, "failed", expect.anything());
+  });
+
+  it("both rungs empty with NO transport error → no_email_found IS cached (unchanged)", async () => {
+    mockSerperUrls.mockResolvedValue(["https://outlet.com/article"]);
+    mockScrape.mockResolvedValue("<html>nothing useful</html>");
+    mockMapSitemap.mockResolvedValue(["https://outlet.com/article"]);
+    mockPickUrls.mockResolvedValue(["https://outlet.com/article"]);
+    mockCategorize.mockResolvedValue([]);
+
+    const res = await withHeaders(
+      request(app).post("/orgs/outlets/editorial-emails/discover")
+    ).send(body);
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("no_email_found");
+    const wroteCache = mockQuery.mock.calls.some((c) =>
+      typeof c[0] === "string" && c[0].includes("INSERT INTO outlet_editorial_email_lookups")
+    );
+    expect(wroteCache).toBe(true);
+  });
+});
+
 describe("POST /orgs/outlets/editorial-emails/discover-batch", () => {
   it("returns one result per outlet", async () => {
     mockSerperUrls.mockResolvedValue(["https://outlet.com/contact"]);

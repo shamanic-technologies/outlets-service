@@ -326,6 +326,7 @@ const editorialEmailStatusEnum = z.enum([
   "found_google",
   "parked_dead",
   "no_email_found",
+  "discovery_error",
 ]);
 
 export const editorialEmailItemSchema = z.object({
