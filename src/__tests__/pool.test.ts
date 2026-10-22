@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("pg", () => ({
-  Pool: vi.fn().mockImplementation((opts: { connectionString: string }) => ({
-    connectionString: opts.connectionString,
-  })),
+  Pool: vi.fn().mockImplementation(function (opts: { connectionString: string }) {
+    return { connectionString: opts.connectionString };
+  }),
 }));
 
 describe("pool", () => {
