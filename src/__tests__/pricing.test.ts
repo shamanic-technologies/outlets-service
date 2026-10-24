@@ -114,6 +114,13 @@ describe("extractAndUpsertPricing", () => {
     expect(call.responseSchema.required).toEqual(["rationale"]);
     // The message feeds the raw bronze note to the model
     expect(call.message).toContain("Sponsored post $500");
+    // Whose work: staff catalogue upkeep, no run behind it -> declared support.
+    expect(mockPlatformComplete.mock.calls[0][1]).toEqual({
+      support: {
+        kind: "product_feature",
+        reason: "Staff ingestion of publisher rate cards into the outlet price catalogue.",
+      },
+    });
 
     const upsert = findUpsertCall();
     expect(upsert).toBeDefined();
