@@ -2,7 +2,7 @@ import { z } from "zod";
 import { pool } from "../db/pool";
 import type { OrgContext } from "../middleware/org-context";
 import { getDrStatus, triggerDrCompute, triggerInternalDrCompute } from "./ahref";
-import { platformComplete } from "./chat";
+import { platformComplete, type PlatformCaller } from "./chat";
 import { resolveOutletDomain } from "../lib/domain";
 import type { CreatePriceSource } from "../schemas";
 
@@ -195,6 +195,19 @@ export async function insertPriceSource(
  * caller maps that to a 502/404. `sales_multiplier` is intentionally left out of
  * the UPDATE so any manual per-outlet override survives re-extraction.
  */
+/**
+ * Pricing extraction runs from staff-only `/internal` routes (rate-card notes
+ * ingested by hand, no org, no run): it maintains the outlet price catalogue
+ * that serves `sell_price_cents`, and produces no catalogue outcome. So it is
+ * declared as support, never on an outcome.
+ */
+export const PRICING_EXTRACTION_CALLER: PlatformCaller = {
+  support: {
+    kind: "product_feature",
+    reason: "Staff ingestion of publisher rate cards into the outlet price catalogue.",
+  },
+};
+
 export async function extractAndUpsertPricing(
   outletId: string
 ): Promise<OutletPricingInternal> {
@@ -228,7 +241,7 @@ export async function extractAndUpsertPricing(
       responseFormat: "json",
       responseSchema: pricingExtractionJsonSchema,
       temperature: 0.2,
-    });
+    }, PRICING_EXTRACTION_CALLER);
 
     const result = pricingExtractionSchema.safeParse(response.json);
     if (result.success) {

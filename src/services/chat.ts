@@ -68,15 +68,37 @@ export interface PlatformCompleteRequest {
   temperature?: number;
 }
 
+/** Support functions chat-service accepts in `support.kind` (cost-accounting doctrine). */
+export type SupportKind =
+  | "payment_fees"
+  | "brand_setup"
+  | "copilot"
+  | "platform_llm"
+  | "staff_experiment"
+  | "product_feature"
+  | "retired_product";
+
+/**
+ * Whose work a platform call is. Exactly one: this service's OWN run doing the
+ * work (`runId`, sent as `x-run-id`; never a run forwarded from an inbound
+ * request), or a declared support function when no run stands behind the call
+ * by design (`support`, sent in the body). chat-service 400s both, and soon
+ * neither.
+ */
+export type PlatformCaller =
+  | { runId: string; support?: never }
+  | { support: { kind: SupportKind; reason: string }; runId?: never };
+
 /**
  * Org-less platform LLM completion. Hits chat-service /internal/platform-complete,
  * which creates its OWN platform run and declares token (+ search) cost on it,
  * failing loud (502) if the cost can't be tracked. So outlets-service does NOT
- * declare any cost here — it just forwards the call with the platform api-key
- * (no org/user/run identity headers).
+ * declare any cost here — it forwards the call with the platform api-key, no
+ * org/user identity, plus the caller statement (`x-run-id` or `support`).
  */
 export async function platformComplete(
-  req: PlatformCompleteRequest
+  req: PlatformCompleteRequest,
+  caller: PlatformCaller
 ): Promise<CompleteResponse> {
   const start = Date.now();
   console.log(`[outlets-service] platformComplete: calling chat-service model=${req.model} provider=${req.provider}`);
@@ -88,8 +110,9 @@ export async function platformComplete(
       headers: {
         "Content-Type": "application/json",
         "x-api-key": config.chatServiceApiKey,
+        ...(caller.runId ? { "x-run-id": caller.runId } : {}),
       },
-      body: JSON.stringify(req),
+      body: JSON.stringify(caller.support ? { ...req, support: caller.support } : req),
       signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
     });
   } catch (err) {
