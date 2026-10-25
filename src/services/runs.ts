@@ -1,10 +1,19 @@
 import { config } from "../config";
 import type { OrgContext } from "../middleware/org-context";
 import { buildServiceHeaders } from "./headers";
+import type { SupportKind } from "./chat";
 
+/**
+ * Open a run for this service's work. With a caller run (`ctx.runId`) it is that
+ * run's child and its cost rides the caller's outcome: never marked. Without one
+ * it is a ROOT, and `supportWhenRoot` states the support function it serves
+ * (runs-service body `support`, marked in the same transaction), so its subtree's
+ * spend never lands undeclared on this service.
+ */
 export async function createChildRun(
   taskName: string,
-  ctx: OrgContext
+  ctx: OrgContext,
+  supportWhenRoot?: { kind: SupportKind; reason: string }
 ): Promise<string> {
   let res: Response;
   try {
@@ -14,6 +23,7 @@ export async function createChildRun(
       body: JSON.stringify({
         serviceName: "outlets-service",
         taskName,
+        ...(supportWhenRoot && !ctx.runId ? { support: supportWhenRoot } : {}),
       }),
       signal: AbortSignal.timeout(30_000),
     });

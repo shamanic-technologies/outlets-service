@@ -99,8 +99,25 @@ describe("POST /orgs/outlets/price-requests", () => {
     const insertCall = mockQuery.mock.calls.find((c) => String(c[0]).includes("INSERT INTO outlet_price_requests"));
     expect(insertCall).toBeTruthy();
 
-    expect(mockCreateChildRun).toHaveBeenCalledWith("outlet-price-request", expect.objectContaining({ orgId: ORG_ID }));
+    expect(mockCreateChildRun).toHaveBeenCalledWith(
+      "outlet-price-request",
+      expect.objectContaining({ orgId: ORG_ID }),
+      expect.objectContaining({ kind: "product_feature" })
+    );
     expect(mockCloseRun).toHaveBeenCalledWith(CHILD_RUN_ID, "completed", expect.anything());
+  });
+
+  it("runs discovery and the send under its OWN run (x-run-id = the price-request run)", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [ownedRow(OUTLET_ID, "outlet.com")] });
+
+    const res = await withHeaders(request(app).post("/orgs/outlets/price-requests")).set("x-run-id", "99999999-9999-4999-8999-999999999999").send({
+      outletIds: [OUTLET_ID],
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockCreateChildRun.mock.calls[0][1].runId).toBe("99999999-9999-4999-8999-999999999999");
+    expect(mockDiscover.mock.calls[0][1].runId).toBe(CHILD_RUN_ID);
+    expect(mockSend.mock.calls[0][1].runId).toBe(CHILD_RUN_ID);
   });
 
   it("emails the top-ranked contact in To and BCCs the rest of the editorial desk", async () => {
