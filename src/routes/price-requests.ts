@@ -11,6 +11,19 @@ import { createChildRun, closeRun } from "../services/runs";
 
 const router = Router();
 
+/**
+ * A price request asks an outlet's editorial desk for its rate card: it feeds the
+ * GLOBAL outlet pricing catalogue (silver `outlet_pricing`, org-agnostic), never a
+ * catalogue outcome of a client. Called with no caller run (staff catalogue
+ * upkeep), its run is support `product_feature`, like the pricing extraction.
+ * Every downstream call (sends, replies handled later on the same thread) rides
+ * THIS run as `x-run-id`, so their spend stops at it.
+ */
+const PRICE_REQUEST_SUPPORT = {
+  kind: "product_feature",
+  reason: "outlets-service rate-card request to an outlet editorial desk: feeds the global outlet pricing catalogue, no client outcome",
+} as const;
+
 // POST /orgs/outlets/price-requests — request pay-per-publish rate cards for
 // 1..N outlets. For each owned outlet: resolve its editorial email, email the
 // rate-card request via email-gateway (broadcast/Instantly), and record the
@@ -24,8 +37,8 @@ router.post(
 
     let childRunId: string | undefined;
     try {
-      childRunId = await createChildRun("outlet-price-request", ctx);
-      const results = await requestPricesForOutlets(outletIds, ctx);
+      childRunId = await createChildRun("outlet-price-request", ctx, PRICE_REQUEST_SUPPORT);
+      const results = await requestPricesForOutlets(outletIds, { ...ctx, runId: childRunId });
       await closeRun(childRunId, "completed", ctx);
       res.json({ results });
     } catch (err) {
@@ -56,8 +69,8 @@ router.post(
 
     let childRunId: string | undefined;
     try {
-      childRunId = await createChildRun("outlet-price-request-send", ctx);
-      const results = await sendCuratedPriceRequests(outletIds, ctx);
+      childRunId = await createChildRun("outlet-price-request-send", ctx, PRICE_REQUEST_SUPPORT);
+      const results = await sendCuratedPriceRequests(outletIds, { ...ctx, runId: childRunId });
       await closeRun(childRunId, "completed", ctx);
       res.json({ results });
     } catch (err) {

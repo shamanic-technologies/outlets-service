@@ -54,6 +54,11 @@ Two classes of cross-service read enrichment, and they have OPPOSITE failure mod
 
 **Before choosing fail-loud for a cross-service read, confirm the dependency is actually reachable in EVERY environment you deploy to.** A prod-only dependency + fail-loud read = the non-prod environment 500s the whole endpoint. `ahref-service` is **prod-only** (no staging): outlets-service reaches it only through the `AHREF_SERVICE_URL` env var, and outside prod that URL points at nothing deployed. That's exactly why the DR read is best-effort (degrades to `null` where ahref is absent, real values in prod). This was first learned on Railway, whose private DNS was environment-scoped so `ahref-service.railway.internal` did not resolve from the staging environment; Railway is gone, but a per-environment service URL fails the same way — the address resolves to nothing and the read throws.
 
+## Runs and the cost ledger
+
+- **A price-request run (`outlet-price-request`, `outlet-price-request-send`) opened with NO caller run is a ROOT marked support `product_feature`** at creation (`createChildRun(..., supportWhenRoot)` → runs-service body `support`): rate cards feed the global outlet pricing catalogue, never a client outcome. With a caller run it is that run's child and rides the caller's outcome: never marked.
+- **Downstream calls ride OUR run** (`{ ...ctx, runId: childRunId }`): sends, discovery LLM calls, and anything a sibling later files under the same thread (2026-10-12: instantly's retired unanswered-reply sweep filed $0.14 of chat judgments under staff root runs, undeclared until the 9 top-level runs were owner-marked `product_feature`, LEDGER-RESIDUAL-1025).
+
 ## Domain Rating + traffic (ahref-service)
 
 - DR **and** monthly organic traffic are owned by **ahref-service** (domain-keyed cache; it owns the Apify scrape spend). outlets-service stays cost-free — it reads ONLY ahref's CACHE endpoints, never the `*-compute` scrape endpoints.
