@@ -11,8 +11,9 @@ vi.mock("../db/pool", () => ({
   },
 }));
 
+const mockCreateChildRun = vi.fn();
 vi.mock("../services/runs", () => ({
-  createChildRun: vi.fn().mockResolvedValue("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"),
+  createChildRun: (...args: unknown[]) => mockCreateChildRun(...args),
   closeRun: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -36,6 +37,7 @@ let app: Express;
 
 beforeEach(() => {
   vi.resetAllMocks();
+  mockCreateChildRun.mockResolvedValue("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
   mockSend.mockResolvedValue({ success: true, messageId: "mid-1", provider: "instantly" });
   mockQuery.mockResolvedValue({ rows: [] });
   app = createApp();
@@ -123,5 +125,19 @@ describe("POST /orgs/outlets/price-requests/send", () => {
   it("401 without the api key", async () => {
     const res = await request(app).post("/orgs/outlets/price-requests/send").set("x-org-id", ORG_ID).send({ outletIds: [OUTLET_A] });
     expect(res.status).toBe(401);
+  });
+
+  it("opens its run as support product_feature when no caller run, and sends under it", async () => {
+    routeQueries([OUTLET_A], { [OUTLET_A]: [{ email: "press@x.com", role: "press" }] });
+
+    const res = await withHeaders(request(app).post("/orgs/outlets/price-requests/send")).send({ outletIds: [OUTLET_A] });
+
+    expect(res.status).toBe(200);
+    expect(mockCreateChildRun).toHaveBeenCalledWith(
+      "outlet-price-request-send",
+      expect.objectContaining({ orgId: ORG_ID }),
+      expect.objectContaining({ kind: "product_feature" })
+    );
+    expect(mockSend.mock.calls[0][1].runId).toBe("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
   });
 });
